@@ -1,49 +1,49 @@
 {
-  "generatedAt": "2026-11-11T16:24:58.655Z",
-  "note": "T5 尺度探针基线：T3/T4 扩建前的现状实测。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
+  "generatedAt": "2026-11-11T18:03:34.268Z",
+  "note": "T5 尺度探针基线：cemetery 为 m4-T3 扩建后实测（长卷布局 spawn→雾门 130.5m≈21s 达标 20-30s；Boss 房 d24；zones 八分区 A×6+C×2，场景本体 32 DC/整机 52@intro、60@战斗峰值，均达标）；highwall 仍为扩建前现状（T4 待改）。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径，含角色/Boss）；面积=legacy anchors 推导（zones 口径见 scene-cemetery.ts 分区表）。CI 预算断言见 scale.spec.ts 内 TODO；T3 验收探针 web/scripts/t3-probe.mjs。",
   "walkSpeedMs": 6.2,
   "scenes": {
     "cemetery": {
       "walk": {
-        "spawnToGateSeconds": 1.18,
-        "gateToCenterSeconds": 0.9,
-        "totalSeconds": 2.09,
-        "pathMeters": 12.9,
+        "spawnToGateSeconds": 21.05,
+        "gateToCenterSeconds": 1.37,
+        "totalSeconds": 22.42,
+        "pathMeters": 139,
         "finalErrorM": 0
       },
       "render": {
-        "drawCallsMedian": 59,
-        "drawCallsMax": 59,
-        "trianglesMedian": 9278,
-        "trianglesMax": 9278,
+        "drawCallsMedian": 61,
+        "drawCallsMax": 61,
+        "trianglesMedian": 15950,
+        "trianglesMax": 15950,
         "fpsApprox": 61
       },
       "area": {
-        "corridorLengthM": 8.4,
+        "corridorLengthM": 131.7,
         "corridorWidthM": 2.9,
-        "corridorAreaM2": 24.4,
-        "arenaRadiusM": 5.7,
-        "arenaAreaM2": 102.1,
-        "totalWalkableM2": 126.4
+        "corridorAreaM2": 381.9,
+        "arenaRadiusM": 11.1,
+        "arenaAreaM2": 387.1,
+        "totalWalkableM2": 769
       },
       "anchors": {
         "spawn": [
-          -12.2,
+          -140.5,
           0,
           1.4
         ],
         "fogGate": [
-          -5,
+          -10,
           0,
           0
         ],
         "bossArena": [
-          0.6,
+          -1.5,
           0,
           0
         ],
-        "arenaRadius": 6.6,
-        "corridorMinX": -13.4
+        "arenaRadius": 12,
+        "corridorMinX": -141.7
       }
     },
     "highwall": {
@@ -59,7 +59,7 @@
         "drawCallsMax": 89,
         "trianglesMedian": 12172,
         "trianglesMax": 12172,
-        "fpsApprox": 61
+        "fpsApprox": 60
       },
       "area": {
         "corridorLengthM": 8.6,
