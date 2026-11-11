@@ -1,0 +1,61 @@
+web/src/scene-stormveil.ts
+  s_6adfea1a8382d2::t_4aaa8cbe58b68d 758-759,764-767
+  s_6adfea1a8382d2::t_d1cd5881e04839 1021-1027
+  s_6adfea1a8382d2::t_ed81a153d343ae 1276
+  s_6adfea1a8382d2::t_d87edf0a620f2a 830,914,1308,1310-1315
+  s_6adfea1a8382d2::t_95a51fc31f0182 990,992
+  s_6adfea1a8382d2::t_3130e1649420bd 1142-1143
+  s_6adfea1a8382d2::t_0614b24ed23342 747
+  s_6adfea1a8382d2::t_f962d5a5867ed3 402-403
+  s_6adfea1a8382d2::t_121a972c6f9f13 1309
+  s_6adfea1a8382d2::t_39b2208ec136ac 665-667,671-676,678,680-682,684-688,690-691,694-696,703-705,709-727,732-741,743-746,748-754,756-757,760-763,768-775
+  s_6adfea1a8382d2::t_a23b39875dd1e9 1147,1150-1153,1155-1157
+  s_6adfea1a8382d2::t_32409fd8782bc6 1230-1233
+  s_6adfea1a8382d2::t_8762c92a5ca547 1236
+  s_6adfea1a8382d2::t_4ed4d646065cff 13-19
+  s_6adfea1a8382d2::t_2a96b44cf5fc55 702,706-708
+  s_6adfea1a8382d2::t_9ffeed27e791e0 907-913
+  s_6adfea1a8382d2::t_5d876b3091cff7 75
+  s_6adfea1a8382d2::t_3a202b025e4051 1154
+  s_6adfea1a8382d2::t_9aa63eaf2b61da 781-784,788-790,793-795
+  s_6adfea1a8382d2::t_52793635ded2f6 796,802,804,807,811-829
+  s_6adfea1a8382d2::t_f9cf55f41e9e9a 915-974,976-989,991,993-997,999-1005,1007-1020,1028-1029
+  s_6adfea1a8382d2::t_5f9a823ddfe104 231,236-238
+  s_6adfea1a8382d2::t_d360f032cbfc97 74,77-79
+  s_6adfea1a8382d2::t_f698c2c149e22a 669-670,677,679,683,689,692-693,697-701
+  s_6adfea1a8382d2::t_b1f3d738d377fc 1006
+  s_6adfea1a8382d2::t_3643f5d9152b31 831-844,846,850,852-854
+  s_6adfea1a8382d2::t_a2e931bb6eba88 742
+  s_6adfea1a8382d2::t_6b92dd0c9e4d46 76
+  s_6adfea1a8382d2::t_a285a19351446f 755
+  s_6adfea1a8382d2::t_e45f0b130a93a0 845,849,851,855
+  s_6adfea1a8382d2::t_a48b510b1a32bf 857,864-875,878-886,888
+  s_6adfea1a8382d2::t_6029b1bbb89836 258-266
+  s_6adfea1a8382d2::t_6acc67cd51b8df 668
+  s_6adfea1a8382d2::t_b0242ceb515617 887
+  s_6adfea1a8382d2::t_5ed013269f98fe 728-731
+  s_6adfea1a8382d2::t_9049431201b59e 895-906
+  s_6adfea1a8382d2::t_74cbda0c5cbdfa 285
+web/scripts/stormveil-e4-probe.mjs
+  s_6adfea1a8382d2::t_8c172c4db0ee17 1-166,174-179,181-185,187-216
+  s_6adfea1a8382d2::t_1f14d5395a5ab6 168
+  s_6adfea1a8382d2::t_fa43c148585a82 169-173
+  s_6adfea1a8382d2::t_562adaecf73d86 167
+  s_6adfea1a8382d2::t_0a8dc7c8af2ca2 180,186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "90a0e41de53dc5a1f7116485f0e04a68f9550856",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
