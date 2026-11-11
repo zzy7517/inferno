@@ -1,0 +1,49 @@
+web/e2e/scale-baseline.json
+  s_6adfea1a8382d2::t_acc2ef28a45d73 2,19,105
+  s_6adfea1a8382d2::t_f568d2f3a64377 91-93,98-100,106-107,109,114-116,118,120-126,128-130
+  s_6adfea1a8382d2::t_f5b7852c68def5 3
+  s_6adfea1a8382d2::t_7515cc2e96e74a 94-97,101-104,108,110-113,117,119,127,131-132
+  s_6adfea1a8382d2::t_cea777105defb5 133
+web/e2e/scale.spec.ts
+  s_6adfea1a8382d2::t_e3663bf25894d6 31
+  s_6adfea1a8382d2::t_1015ef8e03a52e 93-114
+  s_6adfea1a8382d2::t_d9b4bfdceb2050 299
+web/playwright.config.ts
+  s_6adfea1a8382d2::t_985bf149355262 9-10,13-14,24,32-33
+web/src/scene-stormveil.ts
+  s_6adfea1a8382d2::t_1adf4faefa2c9b 1-9,11-19,22-24,32-47,50-53,55-66,69-190,192,194-200,202-211,214-227,229-240,242-244,246-250,252-395,398-452,454-564,568,571,573,577-585,587,589-597,600-640,642-648,654-676,684-690,692,703-764,769-771,773-774,776-821,823-927,929-979,981-998
+  s_6adfea1a8382d2::t_dd396a21cd0138 10
+  s_6adfea1a8382d2::t_073086ebe22b3e 48-49
+  s_6adfea1a8382d2::t_9cb4f39b48ad31 691,693-702
+  s_6adfea1a8382d2::t_f04f6f725f03fc 765-768,772
+  s_6adfea1a8382d2::t_4d0684dd753566 586
+  s_6adfea1a8382d2::t_541ba0177d3317 565-567,569-570,572,574-576
+  s_6adfea1a8382d2::t_9e1d4cfdad413b 453
+  s_6adfea1a8382d2::t_18e087c63ed4a7 212-213
+  s_6adfea1a8382d2::t_61ee44f4163046 652-653
+  s_6adfea1a8382d2::t_cd2dac3688ae0c 228
+  s_6adfea1a8382d2::t_737bc60419e832 245,251
+  s_6adfea1a8382d2::t_df73bf5947e017 241
+  s_6adfea1a8382d2::t_09ea783b31deb1 598-599
+  s_6adfea1a8382d2::t_062f90daf59ec5 822
+  s_6adfea1a8382d2::t_0e5db27f350952 588
+  s_6adfea1a8382d2::t_afc700be8e8028 641
+  s_6adfea1a8382d2::t_1fffeb8a648a1a 649-651
+  s_6adfea1a8382d2::t_13ed27d3d96904 677-683
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "53e2465dbb519cbd0ed14c52b5bc8e19c52a22cf",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
