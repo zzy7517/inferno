@@ -205,10 +205,11 @@ export class Game {
     this.enemies.clear();
     const specs = ENEMY_PRESETS[this.sceneId];
     if (!specs?.length) return;
+    // T8 前的硬编码布点表：坐标对齐 m4 扩建后地图（墓地 A2 墓园径/袋形墓苑、城垣之字坡）
     const spots: Record<string, THREE.Vector3[]> = {
-      cemetery: [new THREE.Vector3(-9.2, 0, 1.1), new THREE.Vector3(-7.0, 0, -1.1)],
+      cemetery: [new THREE.Vector3(-45.0, 0, 1.9), new THREE.Vector3(-18.5, 0, -1.2)],
       highwall: [new THREE.Vector3(-8.5, 0, 0.4), new THREE.Vector3(-10.2, 0, 2.2), new THREE.Vector3(-6.6, 0, -1.2)],
-      stormveil: [],
+      stormveil: [new THREE.Vector3(-30.0, 0, 4.0), new THREE.Vector3(-16.0, 0, -2.0), new THREE.Vector3(-11.0, 0, 1.5)],
     };
     for (const [i, p] of (spots[this.sceneId] ?? []).entries()) {
       if (i < specs.length) this.enemies.spawn(specs[i], p);

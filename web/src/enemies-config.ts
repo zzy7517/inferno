@@ -102,4 +102,9 @@ export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
     { kind: "crow", facing: -Math.PI / 2 },
     { kind: "hollow", facing: -Math.PI / 2 },
   ],
+  stormveil: [
+    { kind: "hollow", facing: Math.PI / 2 },
+    { kind: "hollow", facing: Math.PI / 2 },
+    { kind: "squire", facing: -Math.PI / 2 },
+  ],
 };

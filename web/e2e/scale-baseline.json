@@ -1,49 +1,49 @@
 {
-  "generatedAt": "2026-11-11T17:57:31.507Z",
-  "note": "T5 尺度探针基线（m4 T4 高墙扩建后复跑 + T7 城垣纳入）：高墙已扩为 B/D 双区（B 走廊 x∈[-282,-4]·玻尔多房 d24·雾门 x=-4；D 月坛 x∈[18,63]·封印门 x=18·沙力万房 d24，监视者胜后解锁）；stormveil 自 T7 起纳入（旧档注入+篝火旅行；直线口径，之字坡实走 132.5m≈21.4s 见 T7 探针）。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。扩建前（T5 首测 2026-11-11）：墓地 2.09s/DC59/三角9.3k/126m²；高墙 2.12s/DC89/三角12.2k/127m²。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
+  "generatedAt": "2026-11-12T02:10:00.000Z",
+  "note": "M4 全场景扩建后基线：cemetery=T3 后实测（~220×52m 长卷，A×6+C×2 八分区，spawn -140.5/C 区监视者房 c(57,0) r12）；highwall=T4 后实测（B/D 双区 278m 长廊+双 d24 Boss 房，封印门 x=18 D 区监视者胜后解锁）；stormveil=T7 后实测（之字坡+断翼露台+玛尔基特房+接肢教堂 E4 重叠 0.6m 衔接，直线口径，之字坡实走 132.5m≈21.4s）。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。",
   "walkSpeedMs": 6.2,
   "scenes": {
     "cemetery": {
       "walk": {
-        "spawnToGateSeconds": 1.18,
-        "gateToCenterSeconds": 0.9,
-        "totalSeconds": 2.09,
-        "pathMeters": 12.9,
+        "spawnToGateSeconds": 21.05,
+        "gateToCenterSeconds": 1.37,
+        "totalSeconds": 22.42,
+        "pathMeters": 139,
         "finalErrorM": 0
       },
       "render": {
-        "drawCallsMedian": 59,
-        "drawCallsMax": 59,
-        "trianglesMedian": 9278,
-        "trianglesMax": 9278,
-        "fpsApprox": 60
+        "drawCallsMedian": 61,
+        "drawCallsMax": 61,
+        "trianglesMedian": 15950,
+        "trianglesMax": 15950,
+        "fpsApprox": 61
       },
       "area": {
-        "corridorLengthM": 8.4,
+        "corridorLengthM": 131.7,
         "corridorWidthM": 2.9,
-        "corridorAreaM2": 24.4,
-        "arenaRadiusM": 5.7,
-        "arenaAreaM2": 102.1,
-        "totalWalkableM2": 126.4
+        "corridorAreaM2": 381.9,
+        "arenaRadiusM": 11.1,
+        "arenaAreaM2": 387.1,
+        "totalWalkableM2": 769
       },
       "anchors": {
         "spawn": [
-          -12.2,
+          -140.5,
           0,
           1.4
         ],
         "fogGate": [
-          -5,
+          -10,
           0,
           0
         ],
         "bossArena": [
-          0.6,
+          -1.5,
           0,
           0
         ],
-        "arenaRadius": 6.6,
-        "corridorMinX": -13.4
+        "arenaRadius": 12,
+        "corridorMinX": -141.7
       }
     },
     "highwall": {
