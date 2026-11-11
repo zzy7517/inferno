@@ -105,8 +105,10 @@ export class Game {
     this.renderer.toneMappingExposure = 1.15;
     document.body.prepend(this.renderer.domElement);
 
-    // 场景注册表：?scene=highwall 切洛斯里克的高墙（篝火旅行后站内切换，URL 仅作首入调试）
-    this.sceneId = params.get("scene") === "highwall" ? "highwall" : "cemetery";
+    // 场景注册表：首入场景优先级 ?scene= 调试参数 > 上次休息篝火(跨会话重生点，DS3 规则) > 墓地
+    const reqScene = params.get("scene") as SceneId | null;
+    const savedBonfire = this.progress.lastBonfire as SceneId;
+    this.sceneId = reqScene ?? (this.progress.unlockedScenes.includes(savedBonfire) ? savedBonfire : "cemetery");
 
     this.setupScene();
     this.vfx = new Vfx(this.scene);
