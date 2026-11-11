@@ -7,9 +7,11 @@ import { Boss } from "./boss";
 import { Player } from "./player";
 import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
+import { buildHighWall, SceneAnchors } from "./scene-highwall";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
+type SceneId = "cemetery" | "highwall";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -56,16 +58,20 @@ export class Game {
     this.scene.background = new THREE.Color(COLORS.bg);
     this.scene.fog = new THREE.FogExp2(COLORS.fog, 0.042);
 
-    // 灯光：冷月光 + 篝火
-    const moon = new THREE.DirectionalLight(COLORS.moon, 2.0);
-    moon.position.set(6, 9, 4);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(2048, 2048);
-    Object.assign(moon.shadow.camera, { left: -16, right: 16, top: 12, bottom: -8 });
-    this.scene.add(moon);
-    this.scene.add(new THREE.HemisphereLight(0x2c3548, 0x141210, 0.55));
+    // 场景注册表：?scene=highwall 切洛斯里克的高墙（M2 篝火旅行后改为站内切换）
+    this.sceneId = new URLSearchParams(location.search).get("scene") === "highwall" ? "highwall" : "cemetery";
+    if (this.sceneId === "cemetery") {
+      // 灰烬墓地灯光（高墙场景自带月光/环境光/雾/天幕）
+      const moon = new THREE.DirectionalLight(COLORS.moon, 2.0);
+      moon.position.set(6, 9, 4);
+      moon.castShadow = true;
+      moon.shadow.mapSize.set(2048, 2048);
+      Object.assign(moon.shadow.camera, { left: -16, right: 16, top: 12, bottom: -8 });
+      this.scene.add(moon);
+      this.scene.add(new THREE.HemisphereLight(0x2c3548, 0x141210, 0.55));
+    }
 
-    this.buildWorld();
+    this.setupScene();
     this.vfx = new Vfx(this.scene);
     this.projectiles = new Projectiles(this.scene);
 
@@ -88,10 +94,10 @@ export class Game {
       shake: a => this.shake(a),
     });
     this.player.bind(actions);
-    this.player.pos.set(-12.2, 0, 1.4);
+    this.player.pos.copy(this.anchors.spawn);
     this.scene.add(this.player.root);
 
-    this.boss = new Boss(this.scene, this.vfx, new THREE.Vector3(2.4, 0, 0), {
+    this.boss = new Boss(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
       onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),
       onBossReveal: () => this.revealBoss(),
       onBossTransform: point => this.transformShock(point),
@@ -104,11 +110,38 @@ export class Game {
 
     this.bindInput();
     this.camera.position.set(-16, 3, 4);
+    this.camPrevPos.copy(this.anchors.spawn);
+    this.prevPx = this.anchors.spawn.x;
     this.showMsg("无名的不死人啊，回到这片灰烬中来吧……", 4);
   }
 
-  // ---------------- 世界 ----------------
-  private buildWorld(): void {
+  // ---------------- 场景 ----------------
+  private sceneId: SceneId = "cemetery";
+  private anchors!: SceneAnchors;
+  private sceneUpdate: ((t: number, dt: number) => void) | null = null;
+
+  private setupScene(): void {
+    if (this.sceneId === "highwall") {
+      const hw = buildHighWall(this.scene);
+      this.anchors = hw.anchors;
+      this.sceneUpdate = hw.update;
+    } else {
+      this.buildCemetery();
+      this.anchors = {
+        spawn: new THREE.Vector3(-12.2, 0, 1.4),
+        bonfire: new THREE.Vector3(-12.2, 0, 0),
+        fogGate: new THREE.Vector3(-5.0, 0, 0),
+        bossArena: new THREE.Vector3(0.6, 0, 0),
+        arenaRadius: 6.6,
+        corridorMinX: -13.4,
+      };
+    }
+    this.bonfire = buildBonfire(this.scene, this.anchors.bonfire);
+    this.fog = new FogGate(this.scene, this.anchors.fogGate);
+  }
+
+  /** 灰烬墓地：走廊地面/墙 + 竞技场 + 残柱 + 远景地面 */
+  private buildCemetery(): void {
     const stoneMat = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
     const pathMat = new THREE.MeshStandardMaterial({ color: COLORS.groundPath, roughness: 1 });
     const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
@@ -140,9 +173,6 @@ export class Game {
     vast.rotation.x = -Math.PI / 2;
     vast.position.y = -0.05;
     this.scene.add(vast);
-
-    this.bonfire = buildBonfire(this.scene, new THREE.Vector3(-12.2, 0, 0));
-    this.fog = new FogGate(this.scene, new THREE.Vector3(-5.0, 0, 0));
   }
 
   // ---------------- 输入 ----------------
@@ -297,10 +327,10 @@ export class Game {
   }
 
   private restart(): void {
-    this.player.reset(new THREE.Vector3(-12.2, 0, 1.4));
+    this.player.reset(this.anchors.spawn);
     this.boss.reset();
     this.projectiles.clear();
-    this.prevPx = -12.2;
+    this.prevPx = this.anchors.spawn.x;
     this.fog.solid = false;
     this.flow = "intro";
     $("bossbar").classList.remove("on");
@@ -318,7 +348,7 @@ export class Game {
       this.vfx.embers.burst(this.bonfire.pos.clone().setY(0.8), 20, 2, 1.5);
       return;
     }
-    if (this.flow === "intro" && Math.abs(this.player.pos.x - (-5.0)) < 1.4 && Math.abs(this.player.pos.z) < 1.8) {
+    if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) {
       this.fog.open(); this.fog.solid = false;
       AU.fogGate();
       this.flow = "statue";
@@ -335,18 +365,19 @@ export class Game {
   // ---------------- 流程与主循环 ----------------
   private clampWorld(): void {
     const p = this.player.pos;
-    const gateX = -5.0;
+    const gateX = this.anchors.fogGate.x;
     if (this.fog.solid) {
       if (this.prevPx > gateX) p.x = Math.max(p.x, gateX + 0.4);
       else p.x = Math.min(p.x, gateX - 0.4);
     }
     if (p.x < gateX) {
-      p.x = Math.max(p.x, -13.4);
+      p.x = Math.max(p.x, this.anchors.corridorMinX);
       p.z = Math.max(-1.45, Math.min(1.45, p.z));
     } else {
-      const cx = p.x - 0.6, cz = p.z;
+      const cx = p.x - this.anchors.bossArena.x, cz = p.z - this.anchors.bossArena.z;
+      const maxR = this.anchors.arenaRadius - 0.9;
       const r = Math.hypot(cx, cz);
-      if (r > 5.7) { const k = 5.7 / r; p.x = 0.6 + cx * k; p.z = cz * k; }
+      if (r > maxR) { const k = maxR / r; p.x = this.anchors.bossArena.x + cx * k; p.z = this.anchors.bossArena.z + cz * k; }
     }
     // 玩家与 Boss 推挤
     const d = this.boss.root.position.clone().sub(p); d.y = 0;
@@ -358,7 +389,7 @@ export class Game {
   private prompt(): string | null {
     if (this.flow === "fight" && (this.boss.state === "parried" || this.boss.state === "stagger") && this.player.pos.distanceTo(this.boss.root.position) < 2.5) return "E 处决";
     if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return "E 篝火休息（补满血与原素瓶）";
-    if (this.flow === "intro" && Math.abs(this.player.pos.x + 5.0) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
+    if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) return "E 拔出螺旋剑";
     return null;
   }
@@ -483,6 +514,7 @@ export class Game {
         this.player.applyHit(def.dmg, dir, null, def.feelKey);
       });
       this.fog.update(this.elapsed);
+      this.sceneUpdate?.(this.elapsed, dt);
       this.tune.updateViz();
 
       // 篝火粒子
