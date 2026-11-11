@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-11T16:24:58.655Z",
-  "note": "T5 尺度探针基线：T3/T4 扩建前的现状实测。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
+  "generatedAt": "2026-11-11T17:57:31.507Z",
+  "note": "T5 尺度探针基线。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。stormveil 自 T7 起纳入（旧档注入+篝火旅行；直线口径，之字坡实走 132.5m≈21.4s 见 T7 探针）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
   "walkSpeedMs": 6.2,
   "scenes": {
     "cemetery": {
@@ -16,7 +16,7 @@
         "drawCallsMax": 59,
         "trianglesMedian": 9278,
         "trianglesMax": 9278,
-        "fpsApprox": 61
+        "fpsApprox": 60
       },
       "area": {
         "corridorLengthM": 8.4,
@@ -87,6 +87,49 @@
         ],
         "arenaRadius": 6.6,
         "corridorMinX": -13.6
+      }
+    },
+    "stormveil": {
+      "walk": {
+        "spawnToGateSeconds": 5.1,
+        "gateToCenterSeconds": 1.05,
+        "totalSeconds": 6.15,
+        "pathMeters": 38.1,
+        "finalErrorM": 0
+      },
+      "render": {
+        "drawCallsMedian": 121,
+        "drawCallsMax": 121,
+        "trianglesMedian": 16858,
+        "trianglesMax": 16858,
+        "fpsApprox": 64
+      },
+      "area": {
+        "corridorLengthM": 32.5,
+        "corridorWidthM": 2.9,
+        "corridorAreaM2": 94.3,
+        "arenaRadiusM": 11.1,
+        "arenaAreaM2": 387.1,
+        "totalWalkableM2": 481.3
+      },
+      "anchors": {
+        "spawn": [
+          -36.6,
+          0,
+          1.2
+        ],
+        "fogGate": [
+          -5,
+          0,
+          0
+        ],
+        "bossArena": [
+          1.5,
+          0,
+          0
+        ],
+        "arenaRadius": 12,
+        "corridorMinX": -37.5
       }
     }
   }
