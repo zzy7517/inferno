@@ -1,26 +1,22 @@
-/** M2 魂循环进度：存档（localStorage `inferno.progress.v1`）+ 6 Boss 进度线
- * 进度线 v1.1（design/m4-level-flow.md）：古达(墓地A) → 玻尔多(高墙B) → 玛尔基特(城垣E)
- *   → 葛瑞克(城垣E4·接肢教堂) → 深渊监视者们(墓地C·深处) → 教宗沙力万(高墙D·深处)
- * 解锁规则：击败玻尔多解锁城垣传送；玛尔基特胜开 E4；葛瑞克胜开墓地深处 C；监视者胜开高墙深处 D
- * 兼容：只加字段不改语义；defeated 按 id 存储，旧 4 Boss 档插入 margit/godrick 后天然续玩（城垣待探索）
+/** M2 魂循环进度：存档（localStorage `inferno.progress.v1`）+ 8 Boss 进度线
+ * 进度线 v1.2（design/m4-level-flow.md）：古达(墓地A) → 玻尔多(高墙B) → 玛尔基特(城垣E)
+ *   → 葛瑞克(城垣E4·接肢教堂) → 恶兆王蒙格特(城垣F·王座厅) → 深渊监视者们(墓地C·深处)
+ *   → 碎星拉塔恩(墓地D·碎星战场) → 教宗沙力万(高墙D·深处)
+ * 解锁规则：击败玻尔多解锁城垣传送；「挑战权」= 下一 Boss 驻区自动开门（deriveZones 按 BOSS_ORDER 推导）
+ * 兼容：只加字段不改语义；defeated 按 id 存储，旧 6 Boss 档续玩时蒙格特/拉塔恩自动就位（场景区未建时回退既有落位）
  */
 export type SceneId = "cemetery" | "highwall" | "stormveil";
 
 /** Boss 挑战顺序（跨场景总纲；雾门 Boss 由 bossForScene 按此推导） */
-export const BOSS_ORDER = ["gundyr", "vordt", "margit", "godrick", "watchers", "sulyvahn"] as const;
+export const BOSS_ORDER = ["gundyr", "vordt", "margit", "godrick", "morgott", "watchers", "radahn", "sulyvahn"] as const;
 export type BossId = (typeof BOSS_ORDER)[number];
 
 /** 各 Boss 驻守区域（场景:区域；T2 SceneAnchors v2 挂钩） */
 export const ZONE_OF: Record<BossId, string> = {
   gundyr: "cemetery:A", vordt: "highwall:B",
   margit: "stormveil:E", godrick: "stormveil:E4",
-  watchers: "cemetery:C", sulyvahn: "highwall:D",
-};
-
-/** 击败 X 后解锁 X 的下一 Boss 驻区（该区 Boss 变为可挑战） */
-const ZONE_UNLOCK_ON_DEFEAT: Partial<Record<BossId, string>> = {
-  vordt: "stormveil:E", margit: "stormveil:E4",
-  godrick: "cemetery:C", watchers: "highwall:D",
+  morgott: "stormveil:F", watchers: "cemetery:C",
+  radahn: "cemetery:D", sulyvahn: "highwall:D",
 };
 
 /** T6 捷径 id 总表（场景:起点区-终点区；progress.shortcuts 键，布点表见 game.ts SHORTCUT_DEFS） */
@@ -83,13 +79,14 @@ export function freshProgress(): Progress {
 
 /** 旧档迁移/击败结算共用的区域推导（幂等）：
  *  「到访」规则——击败过 X 则 X 的驻区必已开放（旧 v1.0 四 Boss 档续玩兼容）；
- *  「挑战权」规则——击败 X 则下一 Boss 驻区开门；
+ *  「挑战权」规则——击败 X 则下一 Boss 驻区开门（按 BOSS_ORDER 推导，v1.2 起取代静态表——8 Boss 线自动扩展）；
  *  「捷径」规则——击败 X 则 X 解锁的电梯/门开启（T6，旧档无 shortcuts 字段自动补开） */
 function deriveZones(p: Progress): void {
   for (const id of p.defeated) {
     if (!p.zoneUnlocks.includes(ZONE_OF[id])) p.zoneUnlocks.push(ZONE_OF[id]);
-    const next = ZONE_UNLOCK_ON_DEFEAT[id];
-    if (next && !p.zoneUnlocks.includes(next)) p.zoneUnlocks.push(next);
+    const idx = BOSS_ORDER.indexOf(id);
+    const nextZone = ZONE_OF[BOSS_ORDER[idx + 1]];
+    if (nextZone && !p.zoneUnlocks.includes(nextZone)) p.zoneUnlocks.push(nextZone);
     for (const sc of shortcutUnlockedOn(id)) {
       if (!p.shortcuts.includes(sc)) p.shortcuts.push(sc);
     }
@@ -135,7 +132,7 @@ export function onDefeat(p: Progress, id: BossId, arenas: Record<string, SceneId
   const next = BOSS_ORDER[idx + 1];
   if (next) {
     const arena = arenas[next];
-    if (!p.unlockedScenes.includes(arena)) p.unlockedScenes.push(arena);
+    if (arena && !p.unlockedScenes.includes(arena)) p.unlockedScenes.push(arena);   // 守卫：注册表未接线的新 Boss 不污染场景表
   }
 }
 
