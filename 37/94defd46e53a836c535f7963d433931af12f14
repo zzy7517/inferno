@@ -1,0 +1,27 @@
+docs/adr/0005-original-dark-fantasy-ip.md
+  s_4ee24ae318192e::t_33c58f65bb4f2a 2
+docs/ROADMAP.md
+  s_4ee24ae318192e::t_ae2fc292d1260c 18,20-21,28-29,34,46,48
+README.md
+  s_4ee24ae318192e::t_034bc76c88a699 3,15,18,40-41
+GLOSSARY.md
+  s_4ee24ae318192e::t_4ab5aa986c1101 3,7,9,11,13,15-17,19-21,23-37,40-41,44,48-49,59-61
+docs/adr/0009-ds3-fan-tribute.md
+  s_4ee24ae318192e::t_cb7c2622d01971 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "3794defd46e53a836c535f7963d433931af12f14",
+  "prompts": {},
+  "sessions": {
+    "s_4ee24ae318192e": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1ca12-bb59-73b4-937e-277fd4d673ea",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
