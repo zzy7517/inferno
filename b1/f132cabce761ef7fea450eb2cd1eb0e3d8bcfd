@@ -1,0 +1,42 @@
+web/src/scene-cemetery.ts
+  s_6adfea1a8382d2::t_983c13aee022e7 38
+  s_6adfea1a8382d2::t_d815bdd52eecbd 134-192
+  s_6adfea1a8382d2::t_f2eae7ae372367 853
+  s_6adfea1a8382d2::t_a01ad39d97d776 939-946
+  s_6adfea1a8382d2::t_f6dae7a03989ce 10
+  s_6adfea1a8382d2::t_7e159c3f61db7c 195
+  s_6adfea1a8382d2::t_65aaa0b008010a 947
+  s_6adfea1a8382d2::t_0c7df16c2cd746 661
+  s_6adfea1a8382d2::t_0fc94767c37985 711,714,719-720,722,724-737,743-755,757-783,791,794-799
+  s_6adfea1a8382d2::t_ab44aa4c5de611 738-741
+  s_6adfea1a8382d2::t_32a1b858374f60 375-379
+  s_6adfea1a8382d2::t_982051986369ff 604,607-610,612-624,627-633,638,640-660,662,665-673,676-679,681,684-704,706-708
+  s_6adfea1a8382d2::t_b3ef75ffd5dd16 852,854-877
+  s_6adfea1a8382d2::t_991d7e8f64692e 488
+  s_6adfea1a8382d2::t_c176b735c3df2f 8-9,11-15
+  s_6adfea1a8382d2::t_66af08afc387a2 334-344
+  s_6adfea1a8382d2::t_1ec6038d66ba3a 576-601
+  s_6adfea1a8382d2::t_2c8064c451ed09 839-840
+  s_6adfea1a8382d2::t_25ddd6b1034b91 636-637,639
+  s_6adfea1a8382d2::t_cd84beb25b3547 827-835
+web/scripts/cemetery-c-probe.mjs
+  s_6adfea1a8382d2::t_db9ed51b8c7ed8 191,195
+  s_6adfea1a8382d2::t_9123f36a82e4da 185-186,192
+  s_6adfea1a8382d2::t_8b5e020d992070 1-184,187-190,193-194,196-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b1f132cabce761ef7fea450eb2cd1eb0e3d8bcfd",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
