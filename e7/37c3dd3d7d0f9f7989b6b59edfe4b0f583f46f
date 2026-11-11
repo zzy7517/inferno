@@ -1,0 +1,53 @@
+web/scripts/highwall-art-probe.mjs
+  s_6adfea1a8382d2::t_7d07d1c7e5d1d8 1-31,33-44,46,48-49,51-54,59-119,123,126,155,157,190-211
+  s_6adfea1a8382d2::t_e0b710daf11494 165-166,180
+  s_6adfea1a8382d2::t_293e4b38c06ef3 47,50
+  s_6adfea1a8382d2::t_bc09e9526539d8 120-122,124-125,127-154,156
+  s_6adfea1a8382d2::t_efb39092097374 160-161,163,168
+  s_6adfea1a8382d2::t_fcd18f03529f55 32,45
+  s_6adfea1a8382d2::t_fe0b0c96e77c63 55-58
+  s_6adfea1a8382d2::t_82a0b6fb4019ad 158-159,162,164,167,169-179,181-189
+web/src/scene-highwall.ts
+  s_6adfea1a8382d2::t_0311d464f97207 1179
+  s_6adfea1a8382d2::t_bb08c2a261203c 255
+  s_6adfea1a8382d2::t_56fae01d895b3a 447-465
+  s_6adfea1a8382d2::t_01ca011b4da0f0 1160-1178,1180-1188,1190-1191
+  s_6adfea1a8382d2::t_840c69a8ebf5e2 1189
+  s_6adfea1a8382d2::t_f58ab885bcf94f 628-641
+  s_6adfea1a8382d2::t_6545912c777a9d 66
+  s_6adfea1a8382d2::t_d05c50bd102dc6 211
+  s_6adfea1a8382d2::t_9c850934f03a14 473
+  s_6adfea1a8382d2::t_afcc72f0e4a0ee 16-19
+  s_6adfea1a8382d2::t_371b9eca00b0da 887-900
+  s_6adfea1a8382d2::t_72fe73a5fdd176 378
+  s_6adfea1a8382d2::t_aeceba12940b9d 550-603
+  s_6adfea1a8382d2::t_e35a35dcebb943 1024-1027
+  s_6adfea1a8382d2::t_31e70833dc6270 621-625
+  s_6adfea1a8382d2::t_48e3f573d4d73d 247-248
+  s_6adfea1a8382d2::t_0e368d8e47fa6f 295-296,300
+  s_6adfea1a8382d2::t_18c819aee62934 58
+  s_6adfea1a8382d2::t_c42d58898d2614 267-268
+  s_6adfea1a8382d2::t_bd9875ef66c072 914-923
+  s_6adfea1a8382d2::t_1d9923d764bcaa 1081,1087-1092,1095
+  s_6adfea1a8382d2::t_b7b8db0b974e22 269,277-278
+  s_6adfea1a8382d2::t_724303bb476d14 667-765
+  s_6adfea1a8382d2::t_ad6443545bd9c8 941-949
+  s_6adfea1a8382d2::t_bc1314ed477f1c 972-978
+  s_6adfea1a8382d2::t_b7116c536e81ad 242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e737c3dd3d7d0f9f7989b6b59edfe4b0f583f46f",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
