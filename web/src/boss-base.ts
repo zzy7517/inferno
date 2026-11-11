@@ -43,6 +43,7 @@ export abstract class BossBase {
   protected readonly facing0: number; // 初始面向（reset 恢复用）
   protected cds: Record<string, number> = {};
   protected hitDone = false;
+  protected hitFired = 0;              // 多段判定已触发段数
   protected deathT = 0;
   // 变身演出时序（子类可按需覆盖）
   protected transformHitAt = 0.85;    // 震波回调时刻
@@ -162,7 +163,7 @@ export abstract class BossBase {
   reset(): void {
     this.state = "statue"; this.sub = "idle"; this.move = null; this.t = 0;
     this.hp = this.cfg.hp; this.phase = 1; this.poise = 0; this.yaw = this.facing0;
-    this.cds = {}; this.hitDone = false; this.deathT = 0;
+    this.cds = {}; this.hitDone = false; this.hitFired = 0; this.deathT = 0;
     this.resetVisuals();
     this.applyPose();
   }
@@ -239,7 +240,7 @@ export abstract class BossBase {
       // 选招
       const pick = this.pickMove(dist);
       if (pick) {
-        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false;
+        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0;
         this.cds[pick.name] = pick.cd;
         this.onMoveStart(pick, toPlayer, dist);
         AU.telegraph();
@@ -263,14 +264,17 @@ export abstract class BossBase {
 
     if (this.sub === "act") {
       this.movePose(m, "act", this.t, total);
-      if (!this.hitDone && this.t >= m.active * 0.4) {
-        // 命中判定：距离 + 夹角
-        const hitPoint = this.chestWorld();
+      // 多段判定：第 k 段在 active*0.4 + k*hitInterval 触发（hits=1 时与单段行为一致）
+      const hits = m.hits ?? 1;
+      const firstAt = m.active * 0.4;
+      const interval = m.hitInterval ?? 0.45;
+      while (this.hitFired < hits && this.t >= Math.min(firstAt + this.hitFired * interval, m.active)) {
+        this.hitFired++;
         if (dist <= m.range + 0.45 && angleWithin(this.yaw, dirYaw, m.arc / 2)) {
-          this.hitDone = true;
+          if (this.hitFired === 1) this.hitDone = true;   // 首段命中后关闭弹反窗
           if (!playerIframed) {
             const dir = toPlayer.clone().normalize();
-            this.host.onBossHit(m.dmg, dir, hitPoint, m);
+            this.host.onBossHit(m.dmg, dir, this.chestWorld(), m);
           }
         }
       }
@@ -291,7 +295,7 @@ export abstract class BossBase {
       // 连段：直戳后概率接二连戳
       const chain = m.chain ? this.moveByName(m.chain) : null;
       if (chain && (this.cds[chain.name] ?? 0) <= 0 && Math.random() < 0.4 && dist < chain.range) {
-        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false;
+        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0;
         this.cds[chain.name] = chain.cd;
       } else {
         this.sub = "idle"; this.move = null;

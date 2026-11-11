@@ -12,6 +12,10 @@ export interface MoveDef {
   phase2Only?: boolean;
   chain?: string;                            // 后续连段候选
   feel?: string;                             // 命中玩家的手感档案 key（FEEL）
+  hits?: number;                             // 多段判定段数（默认 1；监视者三连斩=3）
+  hitInterval?: number;                      // 段间隔 s（默认 0.45）
+  knockUp?: number;                          // 击飞初速 m/s（监视者上挑）
+  proj?: { speed: number; radius: number; life?: number };  // 投射物（沙力万暗月矢）
 }
 
 /** 手感档案（combat-feel.md 五层级）：一次命中的多通道反馈参数，调校台热调 */

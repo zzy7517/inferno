@@ -47,6 +47,8 @@ export class Player {
   private lmbDown = false;
   private rmbDown = false;
   private elapsed = 0;
+  private yVel = 0;          // 击飞垂直速度
+  private airborne = false;  // 空中（上挑）：锁输入，落地回 hurt
 
   constructor(private model: THREE.Group, frames: Record<string, Record<string, unknown>>, private host: PlayerHost) {
     this.root.add(model);
@@ -172,6 +174,11 @@ export class Player {
       this.host.onPlayerHurt(dmg, point, feelKey);
       if (this.state !== "riposte") this.enter("hurt");
       this.pos.addScaledVector(dir, FEEL[feelKey]?.knockback ?? 0.5);   // 击退
+      if (move?.knockUp) {                                               // 击飞（监视者上挑）
+        this.pos.y = 0.01;
+        this.airborne = true;
+        this.yVel = move.knockUp;
+      }
     }
     if (this.hp <= 0) { this.hp = 0; this.enter("dead"); this.host.onDeath(); }
   }
@@ -185,6 +192,7 @@ export class Player {
     this.pos.copy(pos); this.hp = P.hp; this.stamina = P.stamina;
     this.estus = P.estusMax; this.state = "idle"; this.t = 0;
     this.buffered = null; this.combo = 0; this.yaw = Math.PI / 2;
+    this.airborne = false; this.yVel = 0;
     this.play("idle", 0.1, true);
   }
 
@@ -192,6 +200,18 @@ export class Player {
   update(dt: number, camYaw: number): void {
     this.elapsed += dt;
     if (this.state === "dead") { this.mixer.update(dt); return; }
+    // 击飞空中：抛物线 + 落地硬直，锁一切输入
+    if (this.airborne) {
+      this.pos.y += this.yVel * dt;
+      this.yVel -= 18 * dt;
+      if (this.pos.y <= 0) {
+        this.pos.y = 0; this.airborne = false; this.yVel = 0;
+        this.enter("hurt");   // 落地硬直复用 hurt 0.4s
+      }
+      this.root.position.copy(this.pos);
+      this.mixer.update(dt);
+      return;
+    }
     if (this.buffered && this.elapsed - this.buffered.at > P.bufferWindow) this.buffered = null;
 
     // 精力回复

@@ -6,6 +6,7 @@ import { Vfx, buildBonfire, Bonfire, FogGate } from "./vfx";
 import { Boss } from "./boss";
 import { Player } from "./player";
 import { Tuning } from "./tune";
+import { Projectiles } from "./projectile";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
@@ -22,6 +23,7 @@ export class Game {
   private boss!: Boss;
   private player!: Player;
   private tune!: Tuning;
+  private projectiles!: Projectiles;
 
   private flow: Flow = "intro";
   private camYaw = CAM.yaw;
@@ -65,6 +67,7 @@ export class Game {
 
     this.buildWorld();
     this.vfx = new Vfx(this.scene);
+    this.projectiles = new Projectiles(this.scene);
 
     // 角色
     gltf.scene.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
@@ -296,6 +299,7 @@ export class Game {
   private restart(): void {
     this.player.reset(new THREE.Vector3(-12.2, 0, 1.4));
     this.boss.reset();
+    this.projectiles.clear();
     this.prevPx = -12.2;
     this.fog.solid = false;
     this.flow = "intro";
@@ -473,6 +477,11 @@ export class Game {
       this.player.update(dt, this.camYaw);
       this.clampWorld();
       this.vfx.update(dt);
+      // 投射物（沙力万矢）：命中走 applyHit → onPlayerHurt 手感档案扇出，可格挡
+      this.projectiles.update(dt, this.player.pos, this.player.isIframed, (def, point, dir) => {
+        void point;
+        this.player.applyHit(def.dmg, dir, null, def.feelKey);
+      });
       this.fog.update(this.elapsed);
       this.tune.updateViz();
 
