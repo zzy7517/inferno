@@ -42,7 +42,60 @@
       "total": 0.4
     },
     "death": {
-      "total": 1.0
+      "total": 0.8
+    },
+    "runAttack": {
+      "startup": 0.18,
+      "active": 0.12,
+      "recovery": 0.42,
+      "cancelFrom": 0.5,
+      "total": 0.72
+    },
+    "rollAttack": {
+      "startup": 0.14,
+      "active": 0.12,
+      "recovery": 0.34,
+      "cancelFrom": 0.55,
+      "total": 0.6
+    },
+    "backstep": {
+      "total": 0.45,
+      "iframes": [
+        0.08,
+        0.16
+      ],
+      "chainFrom": 0.18
+    },
+    "backstepAttack": {
+      "startup": 0.16,
+      "active": 0.12,
+      "recovery": 0.36,
+      "cancelFrom": 0.55,
+      "total": 0.64
+    },
+    "kick": {
+      "startup": 0.22,
+      "active": 0.1,
+      "recovery": 0.4,
+      "cancelFrom": 0.6,
+      "total": 0.72
+    },
+    "stance": {
+      "total": 0.6
+    },
+    "stancePoke": {
+      "startup": 0.2,
+      "active": 0.12,
+      "recovery": 0.48,
+      "cancelFrom": 0.5,
+      "total": 0.8
+    },
+    "stanceUp": {
+      "startup": 0.24,
+      "active": 0.14,
+      "recovery": 0.52,
+      "cancelFrom": 0.5,
+      "total": 0.9
     }
   }
 }

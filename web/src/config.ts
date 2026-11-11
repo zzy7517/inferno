@@ -33,9 +33,15 @@ export type SfxName = "hitStone" | "hitLight" | "hitHeavy" | "blockHit" | "parry
 export const P = {
   hp: 100, stamina: 100,
   walk: 3.4, sprint: 6.2, playerRadius: 0.45,
-  rollCost: 24, r1Cost: 16, r2Cost: 28, parryCost: 14,
-  r1Dmg: [12, 12, 18], r1Poise: [12, 12, 18],
+  // 精力表（DS3 直剑·长剑基准）：R1 22 / R2 32 / 翻滚 22 / 后撤 18 / 踢 15 / 战技 25
+  rollCost: 22, r1Cost: 22, r2Cost: 32, parryCost: 14,
+  backstepCost: 18, kickCost: 15, stanceCost: 25,
+  r1Dmg: [12, 12, 18], r1Poise: [12, 12, 18],       // R1 一段 = 100% 伤害基准
   r2DmgBase: 24, r2Poise: 30, riposteDmg: 95,
+  r2FullCharge: 0.55,                                 // R2 分级：蓄力≥0.55s 为满蓄
+  r2FullDmgMul: 1.35, r2FullPoiseMul: 2,              // 满蓄 +35% 伤害 / 破韧翻倍
+  backstepDist: 1.6,                                  // 后撤步位移 m
+  stanceHoldTime: 0.35,                               // F 长按阈值：超过进架势（轻点仍是弹反）
   blockChip: 0.15, blockDrainMul: 1.35,
   estusHeal: 0.45, estusMax: 3,
   staminaRegen: 30, regenDelay: 0.55, regenBlock: 8,
@@ -76,6 +82,31 @@ export const MOVES: Record<string, MoveDef> = {
   serpThrust: { name: "serpThrust", label: "沉淀突刺", startup: 0.70, active: 0.18, recovery: 0.90, dmg: 26, range: 8.0, arc: 0.7, lunge: 2.0, parryable: true, cd: 4.6, phase2Only: true, feel: "bHeavy" },
 };
 
+/** 玩家直剑招式（DS3 完全表·新派生系）：时序（startup/active/recovery/cancelFrom/total）在
+ *  character_frames.json 与 Blender 关键帧同源（ADR-0004「时序归代码」）；
+ *  这里放战斗数值——伤害（R1 一段 12 = 100% 基准）/ 削韧 / 手感 / 位移，全部可热调。
+ *  精力消耗统一走 P：踢=P.kickCost，其余出招=P.r1Cost。 */
+export interface PMoveDef {
+  label: string;            // 招名
+  clip: string;             // 动画 clip 名（帧数据登记处）
+  dmg: number;              // 伤害
+  poise: number;            // 削韧（对 Boss 韧性槽）
+  feel: string;             // 命中手感档案 key（FEEL）
+  lunge: number;            // 出招前冲位移 m（前摇+判定内前载衰减剖面）
+  range?: number;           // 判定距离 m（默认 3.0 同 R1）
+  isKick?: boolean;         // 踢击：对格挡中的敌人打崩姿态（enemy 系统经 hit 回调 opts.isKick 读取）
+  launcher?: boolean;       // 上挑：击飞小怪（Boss 免疫；enemy 系统经 opts.launcher 读取）
+}
+
+export const PMOVES: Record<string, PMoveDef> = {
+  runAttack:      { label: "跑攻·跳步直刺",   clip: "runAttack",      dmg: 13, poise: 16, feel: "kRun",  lunge: 1.8 },
+  rollAttack:     { label: "翻滚攻·起身横扫", clip: "rollAttack",     dmg: 13, poise: 14, feel: "kRoll", lunge: 0.4 },
+  backstepAttack: { label: "后撤攻·后撤直刺", clip: "backstepAttack", dmg: 13, poise: 14, feel: "kBack", lunge: 0.5 },
+  kick:           { label: "踢击·破盾",       clip: "kick",           dmg: 4,  poise: 0,  feel: "kKick", lunge: 0.35, range: 1.9, isKick: true },
+  stancePoke:     { label: "架势·盾冲突刺",   clip: "stancePoke",     dmg: 16, poise: 45, feel: "wPoke", lunge: 0.7 },
+  stanceUp:       { label: "架势·上挑",       clip: "stanceUp",       dmg: 18, poise: 30, feel: "wUp",   lunge: 0.3, launcher: true },
+};
+
 /** 手感档案初值：层级——普通命中 < 重击 < 削韧破绽 < 弹反 < 处决（数值基准 combat-feel.md 六通道表） */
 export const FEEL: Record<string, FeelDef & { label: string }> = {
   pR1a:    { label: "轻击·一段", hitstop: 0.06, shake: 0.15, sparks: 12, sparkSpeed: 4, knockback: 0, sfx: "hitStone" },
@@ -88,6 +119,13 @@ export const FEEL: Record<string, FeelDef & { label: string }> = {
   block:   { label: "格挡",     hitstop: 0.04, shake: 0.20, sparks: 8,  sparkSpeed: 3, knockback: 0.15, sfx: "blockHit" },
   parry:   { label: "弹反",     hitstop: 0.10, shake: 0.35, sparks: 30, sparkSpeed: 7, knockback: 0, sfx: "parry" },
   stagger: { label: "削韧破绽", hitstop: 0.12, shake: 0.50, sparks: 24, sparkSpeed: 6, knockback: 0, sfx: "parry" },
+  // DS3 直剑新招（k* = 派生/体术系，w* = 战技系）；数值基准同表（轻击 0.06 / 重击 0.11 上下浮动）
+  kRun:    { label: "跑攻命中",   hitstop: 0.07, shake: 0.24, sparks: 14, sparkSpeed: 5, knockback: 0.2, sfx: "hitStone" },
+  kRoll:   { label: "翻滚攻命中", hitstop: 0.07, shake: 0.22, sparks: 14, sparkSpeed: 5, knockback: 0.2, sfx: "hitStone" },
+  kBack:   { label: "后撤攻命中", hitstop: 0.07, shake: 0.22, sparks: 14, sparkSpeed: 5, knockback: 0.2, sfx: "hitStone" },
+  kKick:   { label: "踢击破盾",   hitstop: 0.10, shake: 0.32, sparks: 10, sparkSpeed: 4, knockback: 0.7, sfx: "blockHit" },
+  wPoke:   { label: "架势突刺",   hitstop: 0.12, shake: 0.45, sparks: 24, sparkSpeed: 6, knockback: 0.1, sfx: "hitHeavy" },
+  wUp:     { label: "架势上挑",   hitstop: 0.13, shake: 0.50, sparks: 28, sparkSpeed: 7, knockback: 0,   sfx: "hitHeavy" },
 };
 
 export const COLORS = {

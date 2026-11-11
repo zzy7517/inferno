@@ -1,14 +1,19 @@
-/** 玩家「不死人」：GLB 动画 + 战斗状态机（DS3 式精力制，ADR-0008） */
+/** 玩家「不死人」：GLB 动画 + 战斗状态机（DS3 式精力制，ADR-0008）
+ *  DS3 直剑完全表：R1 三连 / R2 蓄力分级 / 翻滚 / 后撤步 / 格挡 / 弹反 / 处决 / 原素瓶
+ *  + 跑攻 / 翻滚攻 / 后撤攻 / 踢击(破盾) / 战技架势(两段派生)。时序权威在帧数据 json（ADR-0004）。 */
 import * as THREE from "three";
-import { P, FEEL, MoveDef } from "./config";
+import { P, FEEL, PMOVES, PMoveDef, MoveDef } from "./config";
 import { AU } from "./audio";
 
-export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "block" | "parry" | "estus" | "hurt" | "guardbreak" | "riposte" | "dead";
+export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "backstep" | "moveAtk" | "stance" | "block" | "parry" | "estus" | "hurt" | "guardbreak" | "riposte" | "dead";
+
+/** 命中附加标志（enemy 系统读取）：isKick=踢击打崩格挡姿态；launcher=上挑击飞小怪（Boss 免疫） */
+export interface HitOpts { isKick?: boolean; launcher?: boolean }
 
 export interface PlayerHost {
-  hitBoss: (dmg: number, poise: number, feelKey: string, point: THREE.Vector3) => void;
-  /** 攻击判定帧的敌人扇面（每挥一次；M3 小怪系统，几何在 EnemyManager 内） */
-  hitEnemies?: (dmg: number, poise: number, feelKey: string) => void;
+  hitBoss: (dmg: number, poise: number, feelKey: string, point: THREE.Vector3, opts?: HitOpts) => void;
+  /** 攻击判定帧的敌人扇面（每挥一次；M3 小怪系统，几何在 EnemyManager 内；def 携带 isKick/launcher 供 T8 布点消费） */
+  hitEnemies?: (dmg: number, poise: number, feelKey: string, def?: PMoveDef) => void;
   onPlayerHurt: (dmg: number, point: THREE.Vector3, feelKey: string) => void;
   onParrySuccess: (point: THREE.Vector3) => void;
   onDeath: () => void;
@@ -40,7 +45,7 @@ export class Player {
 
   private charge = 0;
   private dodgeDir = new THREE.Vector3(0, 0, 1);
-  private buffered: { kind: "r1" | "roll" | "parry" | "estus"; at: number } | null = null;
+  private buffered: { kind: "r1" | "roll" | "parry" | "estus"; at: number; tapDur: number } | null = null;
   private spendAt = -9;
   private healApplied = false;
   private riposteApplied = false;
@@ -53,8 +58,17 @@ export class Player {
   private airborne = false;  // 空中（上挑）：锁输入，落地回 hurt
   private slowT = 0;         // 冰霜减速剩余时间
   private slowMul = 1;       // 冰霜减速倍率
+  // DS3 新招状态
+  private fHeld = false;     // F 按住（长按=战技架势，轻点=弹反）
+  private fDownAt = -9;
+  private curMove: PMoveDef | null = null;          // moveAtk 当前招式（PMOVES）
+  private curMoveKey = "";                          // 对应 PMOVES key（精力：kick 走 P.kickCost）
+  private moveMeta: ClipMeta = { startup: 0.2, active: 0.1, recovery: 0.4, cancelFrom: 0.55, total: 0.7, iframes: [0, 0], window: [0, 0], healAt: 0 };
+  private lungeDir = new THREE.Vector3(0, 0, 1);    // moveAtk 前冲方向
+  private backstepIframes: [number, number] = [0.08, 0.16];
+  private heavySpeed = 0.6;   // R2 播放速率（满蓄更沉）
 
-  constructor(private model: THREE.Group, frames: Record<string, Record<string, unknown>>, private host: PlayerHost) {
+  constructor(private model: THREE.Group, private frames: Record<string, Record<string, unknown>>, private host: PlayerHost) {
     this.root.add(model);
     model.rotation.y = Math.PI;   // M0 调好的朝向
     this.mixer = new THREE.AnimationMixer(model);
@@ -68,38 +82,54 @@ export class Player {
       window: parryWindow,
       healAt: estus.healAt,
     };
+    const bs = frames.backstep as { iframes?: [number, number] } | undefined;
+    if (bs?.iframes) this.backstepIframes = bs.iframes;
   }
 
-  bind(actions: Record<string, THREE.AnimationAction>, mixer?: THREE.AnimationMixer): void {
-    // actions 必须与其所属 mixer 同源（动画步进权在本类 update 内）；
-    // 若外部用独立 mixer 生成 actions（game.ts GLTF 装载路径），此处接管该实例，否则动画冻在帧 0
-    if (mixer) this.mixer = mixer;
-    this.actions = actions;
+  bind(actions: Record<string, THREE.AnimationAction>): void {
+    // 重绑到本实例 mixer：外部传入的 action 表可能建在别的 mixer 上（该 mixer 不被 update），
+    // 不重绑则 mixer.update 永不推进这些 action——动画冻结在单帧姿势
+    for (const [name, act] of Object.entries(actions)) {
+      this.actions[name] = this.mixer.clipAction(act.getClip());
+    }
     this.play("idle", 0, true);
   }
 
   // ---------------- 输入 ----------------
   onKey(code: string, down: boolean): void {
     if (down) this.keys.add(code); else this.keys.delete(code);
+    // F 双职能：轻点=弹反（松开即缓冲），长按 ≥P.stanceHoldTime=战技架势（update 里结算）
+    if (code === "KeyF") {
+      if (down) { this.fDownAt = this.elapsed; this.fHeld = true; }
+      else {
+        if (this.fHeld && this.elapsed - this.fDownAt < P.stanceHoldTime && this.state !== "dead") this.buffer("parry");
+        this.fHeld = false;
+      }
+    }
     if (!down || this.state === "dead") return;
     if (code === "Space") this.buffer("roll");
-    else if (code === "KeyF") this.buffer("parry");
     else if (code === "KeyR") this.buffer("estus");
   }
   onMouse(button: number, down: boolean): void {
     if (this.state === "dead") return;
+    // 战技架势派生（按下即发）：左键=盾冲突刺（高削韧）/ 右键=上挑（击飞小怪）
+    if (down && this.state === "stance" && this.canSpend(P.r1Cost)) {
+      if (button === 0) { this.faceBoss(this.host.bossPos(), 0.016, true); this.startMove("stancePoke"); return; }
+      if (button === 2) { this.rmbDown = true; this.faceBoss(this.host.bossPos(), 0.016, true); this.startMove("stanceUp"); return; }
+    }
     if (button === 0) {
       this.lmbDown = down;
       if (down) this.mouseDownAt = this.elapsed;
       else if (this.state === "heavyCharge") this.releaseHeavy();
-      else if (this.elapsed - this.mouseDownAt < 0.25) this.buffer("r1");
+      else if (this.state === "stance") { /* 架势中的点击已在按下时消费为派生 */ }
+      else if (this.elapsed - this.mouseDownAt < 0.25) this.buffer("r1", this.elapsed - this.mouseDownAt);
     } else if (button === 2) {
       this.rmbDown = down;
       if (!down) this.exitBlock();
     }
   }
-  private buffer(kind: "r1" | "roll" | "parry" | "estus"): void {
-    this.buffered = { kind, at: this.elapsed };
+  private buffer(kind: "r1" | "roll" | "parry" | "estus", tapDur = 0.25): void {
+    this.buffered = { kind, at: this.elapsed, tapDur };
   }
 
   // ---------------- 状态切换 ----------------
@@ -132,6 +162,9 @@ export class Player {
       case "heavyCharge": this.charge = 0; this.play("attack", 0.15); this.actions.attack.timeScale = 0.35; break;
       case "heavy": this.play("attack", 0.05); this.actions.attack.timeScale = 0.6; AU.swingHeavy(); break;
       case "roll": this.play("roll", 0.06); this.spend(P.rollCost); AU.whoosh(0.8); break;
+      case "backstep": this.play("backstep", 0.06); this.spend(P.backstepCost); AU.whoosh(0.9); break;
+      case "moveAtk": this.hitApplied = false; this.play(this.curMove?.clip ?? "attack", 0.08); AU.whoosh(this.curMoveKey === "kick" ? 1.5 : 1.1); break;
+      case "stance": this.play("stance", 0.1); this.spend(P.stanceCost); AU.whoosh(0.6); break;
       case "block": this.play("block_idle", 0.12, true); break;
       case "parry": this.play("parry", 0.04); this.spend(P.parryCost); AU.whoosh(1.4); break;
       case "estus": this.play("estus", 0.1); this.healApplied = false; this.estus--; break;
@@ -154,7 +187,37 @@ export class Player {
   private canSpend(v: number): boolean { return this.stamina >= v; }
 
   get isIframed(): boolean {
-    return this.state === "roll" && this.t >= this.meta.iframes[0] && this.t <= this.meta.iframes[1];
+    if (this.state === "roll") return this.t >= this.meta.iframes[0] && this.t <= this.meta.iframes[1];
+    if (this.state === "backstep") return this.t >= this.backstepIframes[0] && this.t <= this.backstepIframes[1];
+    return false;
+  }
+
+  /** moveAtk 通用出招：读 PMOVES 数值 + 帧数据 json 时序，前冲方向 = 当前朝向或指定方向 */
+  private startMove(key: string, dir?: THREE.Vector3): void {
+    const def = PMOVES[key];
+    if (!def) { this.enter("idle"); return; }
+    this.curMove = def;
+    this.curMoveKey = key;
+    this.spend(key === "kick" ? P.kickCost : P.r1Cost);
+    if (dir && dir.lengthSq() > 0.01) {
+      this.yaw = Math.atan2(dir.x, dir.z);
+      this.lungeDir.copy(dir).normalize();
+    } else {
+      this.lungeDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    }
+    const c = this.frames[def.clip] as Record<string, number> | undefined;
+    this.moveMeta = {
+      startup: c?.startup ?? 0.2, active: c?.active ?? 0.1, recovery: c?.recovery ?? 0.4,
+      cancelFrom: c?.cancelFrom ?? 0.55, total: c?.total ?? 0.7,
+      iframes: [0, 0], window: [0, 0], healAt: 0,
+    };
+    this.enter("moveAtk");
+  }
+
+  /** 帧数据 json 数值读取（缺 clip/缺键时给默认） */
+  private clipNum(clip: string, key: string, def: number): number {
+    const c = this.frames[clip] as Record<string, number> | undefined;
+    return typeof c?.[key] === "number" ? c[key] : def;
   }
 
   // ---------------- 外部事件 ----------------
@@ -207,6 +270,7 @@ export class Player {
     this.estus = P.estusMax; this.state = "idle"; this.t = 0;
     this.buffered = null; this.combo = 0; this.yaw = Math.PI / 2;
     this.airborne = false; this.yVel = 0;
+    this.fHeld = false; this.curMove = null; this.curMoveKey = ""; this.charge = 0;
     this.play("idle", 0.1, true);
   }
 
@@ -252,12 +316,32 @@ export class Player {
         if (this.lmbDown && this.elapsed - this.mouseDownAt > 0.22 && this.canSpend(P.r2Cost)) {
           this.enter("heavyCharge"); break;
         }
+        // 长按 F ≥0.35s → 战技架势（轻点在 onKey 松开时缓冲为弹反）
+        if (this.fHeld && this.elapsed - this.fDownAt >= P.stanceHoldTime && this.canSpend(P.stanceCost)) {
+          this.faceBoss(bossPos, dt, true); this.enter("stance"); break;
+        }
         if (this.rmbDown) { this.enter("block"); break; }
         const b = this.buffered;
         if (b) {
           this.buffered = null;
-          if (b.kind === "r1" && this.canSpend(P.r1Cost)) { this.spend(P.r1Cost); this.combo = 0; this.faceBoss(bossPos, dt, true); this.enter("attack"); break; }
-          if (b.kind === "roll" && this.canSpend(P.rollCost)) { this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
+          if (b.kind === "r1") {
+            const sprinting = moving && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"));
+            // 疾跑中 R1 → 跑攻（跳步直刺，朝移动方向）
+            if (sprinting && this.canSpend(P.r1Cost)) { this.startMove("runAttack", inputDir); break; }
+            // W 按住 + R1 轻点(<0.15s) → 踢击（破盾；对 Boss 仅微量伤害）
+            if (this.keys.has("KeyW") && b.tapDur < 0.15 && this.canSpend(P.kickCost)) {
+              this.faceBoss(bossPos, dt, true); this.startMove("kick"); break;
+            }
+            if (this.canSpend(P.r1Cost)) { this.spend(P.r1Cost); this.combo = 0; this.faceBoss(bossPos, dt, true); this.enter("attack"); break; }
+          }
+          if (b.kind === "roll") {
+            // 静止按空格 → 后撤步（1.6m 后跃，有无敌帧）；有方向输入 → 翻滚
+            if (!moving && this.canSpend(P.backstepCost)) {
+              this.dodgeDir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+              this.enter("backstep"); break;
+            }
+            if (moving && this.canSpend(P.rollCost)) { this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
+          }
           if (b.kind === "parry" && this.canSpend(P.parryCost)) { this.enter("parry"); break; }
           if (b.kind === "estus" && this.estus > 0 && this.hp < P.hp) { this.enter("estus"); break; }
         }
@@ -297,7 +381,8 @@ export class Player {
             this.spend(P.r1Cost); this.combo++; this.faceBoss(bossPos, dt, true); this.enter("attack"); break;
           }
         }
-        if (tt >= m.total / (this.actions.attack.timeScale || 1)) {
+        // -1e-3：clip 时长为浮点（0.89999997…），clampWhenFinished 后与 total 差亿分之一会导致永不收招（真机 rAF 必现）
+        if (tt >= m.total / (this.actions.attack.timeScale || 1) - 1e-3) {
           this.combo = 0; this.enter("idle");
         }
         this.t += dt;
@@ -310,12 +395,17 @@ export class Player {
       }
       case "heavy": {
         const tt = this.currentAction?.time ?? 0;
-        if (!this.hitApplied && tt >= (this.meta.startup + this.meta.active * 0.4) / 0.6) {
+        if (!this.hitApplied && tt >= (this.meta.startup + this.meta.active * 0.4) / this.heavySpeed) {
           this.hitApplied = true;
-          const mult = 1 + this.charge * 0.6;
-          this.tryHitBoss(P.r2DmgBase * mult, P.r2Poise, "pR2");
+          // R2 分级：蓄力 ≥P.r2FullCharge 满蓄（+35% 伤害 / 破韧翻倍），否则普通 R2
+          const full = this.charge >= P.r2FullCharge;
+          this.tryHitBoss(
+            P.r2DmgBase * (full ? P.r2FullDmgMul : 1),
+            P.r2Poise * (full ? P.r2FullPoiseMul : 1),
+            "pR2",
+          );
         }
-        if (tt >= this.meta.total / 0.6) this.enter("idle");
+        if (tt >= this.meta.total / this.heavySpeed - 1e-3) this.enter("idle");
         this.t += dt;
         break;
       }
@@ -324,7 +414,69 @@ export class Player {
         const speed = 9.5 * Math.pow(1 - this.t / T, 0.6) + 1.5;
         this.pos.addScaledVector(this.dodgeDir, speed * dt);
         this.yaw = Math.atan2(this.dodgeDir.x, this.dodgeDir.z);
+        // 翻滚攻：翻滚 60% 后缓冲的 R1 在此精确衔接（起身横扫）
+        if (this.buffered?.kind === "r1" && this.t >= T * 0.6 && this.canSpend(P.r1Cost)) {
+          this.buffered = null;
+          this.faceBoss(bossPos, dt, true);
+          this.startMove("rollAttack");
+          break;
+        }
         if (this.t >= T) this.enter("idle");
+        this.t += dt;
+        break;
+      }
+      case "backstep": {
+        const T = this.clipNum("backstep", "total", 0.45);
+        // 线性衰减剖面：∫v dt = P.backstepDist（1.6m 后跃，面朝不变）
+        const v0 = 2 * P.backstepDist / T;
+        this.pos.addScaledVector(this.dodgeDir, v0 * (1 - this.t / T) * dt);
+        // 后撤中 R1 → 后撤直刺（chainFrom 帧数据可调）
+        const chainAt = this.clipNum("backstep", "chainFrom", 0.18);
+        if (this.buffered?.kind === "r1" && this.t >= chainAt && this.canSpend(P.r1Cost)) {
+          this.buffered = null;
+          this.faceBoss(bossPos, dt, true);
+          this.startMove("backstepAttack");
+          break;
+        }
+        if (this.t >= T) this.enter("idle");
+        this.t += dt;
+        break;
+      }
+      case "moveAtk": {
+        const def = this.curMove;
+        if (!def) { this.enter("idle"); break; }
+        const m = this.moveMeta;
+        const tt = this.currentAction?.time ?? this.t;
+        // 前冲：前摇+判定内前载衰减剖面，总位移 = def.lunge
+        if (def.lunge > 0 && tt < m.startup + m.active) {
+          const span = m.startup + m.active;
+          this.pos.addScaledVector(this.lungeDir, (2 * def.lunge / span) * (1 - tt / span) * dt);
+        }
+        if (!this.hitApplied && tt >= m.startup + m.active * 0.4) {
+          this.hitApplied = true;
+          this.tryHitBoss(def.dmg, def.poise, def.feel, def);
+        }
+        // 后摇取消：翻滚（预输入缓冲一致）
+        const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
+        if (tt >= cancelAt && this.buffered?.kind === "roll" && this.canSpend(P.rollCost)) {
+          this.buffered = null;
+          this.setDodgeDir(inputDir, camYaw);
+          this.enter("roll");
+          break;
+        }
+        if (tt >= m.total - 1e-3) this.enter("idle");
+        this.t += dt;
+        break;
+      }
+      case "stance": {
+        // 战技架势 0.6s：左/右键派生在 onMouse 按下即发；可翻滚取消；被击中即破（applyHit → hurt）
+        if (this.buffered?.kind === "roll" && this.canSpend(P.rollCost)) {
+          this.buffered = null;
+          this.setDodgeDir(inputDir, camYaw);
+          this.enter("roll");
+          break;
+        }
+        if (this.t >= this.clipNum("stance", "total", 0.6)) this.enter("idle");
         this.t += dt;
         break;
       }
@@ -363,7 +515,13 @@ export class Player {
   }
 
   private hitApplied = false;
-  enterAttackFromHold(): void { this.spend(P.r2Cost); this.faceBoss(this.host.bossPos(), 0.016, true); this.enter("heavy"); this.hitApplied = false; }
+  enterAttackFromHold(): void {
+    this.spend(P.r2Cost); this.faceBoss(this.host.bossPos(), 0.016, true);
+    this.enter("heavy"); this.hitApplied = false;
+    // 满蓄更沉：播放稍慢，数值分级见 heavy 分支（+35% / 破韧 x2）
+    this.heavySpeed = this.charge >= P.r2FullCharge ? 0.5 : 0.62;
+    this.actions.attack.timeScale = this.heavySpeed;
+  }
   private releaseHeavy(): void { this.enterAttackFromHold(); }
 
   tryRiposte(): boolean {
@@ -378,15 +536,17 @@ export class Player {
     return false;
   }
 
-  private tryHitBoss(dmg: number, poise: number, feelKey: string): void {
-    this.host.hitEnemies?.(dmg, poise, feelKey);   // 小怪扇面与 Boss 判定同拍（每挥一次）
+  private tryHitBoss(dmg: number, poise: number, feelKey: string, def?: PMoveDef): void {
+    this.host.hitEnemies?.(dmg, poise, feelKey, def);   // 小怪扇面与 Boss 判定同拍（每挥一次）
     const bossPos = this.host.bossPos();
     const to = bossPos.clone().sub(this.pos); to.y = 0;
     const dYaw = Math.atan2(to.x, to.z);
     let diff = dYaw - this.yaw;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    if (to.length() < 2.8 + 0.2 && Math.abs(diff) < 1.1) {
-      this.host.hitBoss(dmg, poise, feelKey, bossPos.clone().setY(1.5));
+    const range = def?.range !== undefined ? def.range + 0.2 : 2.8 + 0.2;
+    if (to.length() < range && Math.abs(diff) < 1.1) {
+      const opts: HitOpts | undefined = def ? { isKick: def.isKick, launcher: def.launcher } : undefined;
+      this.host.hitBoss(dmg, poise, feelKey, bossPos.clone().setY(1.5), opts);
     }
   }
 

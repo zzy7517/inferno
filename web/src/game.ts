@@ -121,8 +121,8 @@ export class Game {
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
 
     this.player = new Player(gltf.scene, frames, {
-      hitBoss: (dmg, poise, feelKey, point) => this.hitBoss(dmg, poise, feelKey, point),
-      hitEnemies: (dmg, poise, feelKey) => { this.enemies.tryHit(this.player.pos, this.player.yaw, dmg, poise, feelKey); },
+      hitBoss: (dmg, poise, feelKey, point, opts) => { void opts; this.hitBoss(dmg, poise, feelKey, point); },
+      hitEnemies: (dmg, poise, feelKey, def) => { void def; this.enemies.tryHit(this.player.pos, this.player.yaw, dmg, poise, feelKey); },
       onPlayerHurt: (dmg, point, feelKey) => this.onPlayerHurt(dmg, point, feelKey),
       onParrySuccess: point => this.onParry(point),
       onDeath: () => this.onPlayerDeath(),
@@ -131,7 +131,7 @@ export class Game {
       bossPos: () => this.boss.root.position,
       shake: a => this.shake(a),
     });
-    this.player.bind(actions, mixer);
+    this.player.bind(actions);
     this.player.pos.copy(this.anchors.spawn);
     this.player.souls = this.progress.souls;     // 魂量随存档恢复
     this.scene.add(this.player.root);
