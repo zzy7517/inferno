@@ -23,6 +23,20 @@ const ZONE_UNLOCK_ON_DEFEAT: Partial<Record<BossId, string>> = {
   godrick: "cemetery:C", watchers: "highwall:D",
 };
 
+/** T6 捷径 id 总表（场景:起点区-终点区；progress.shortcuts 键，布点表见 game.ts SHORTCUT_DEFS） */
+export const SHORTCUT_IDS = ["cemetery:a3-a1", "highwall:d-b", "stormveil:e4-e1"] as const;
+
+/** 击败 X 后开启的捷径（其余 Boss 无捷径）；deriveZones 幂等并入 shortcuts（旧档自动补开） */
+const SHORTCUT_UNLOCK_ON_DEFEAT: Partial<Record<BossId, readonly string[]>> = {
+  gundyr: ["cemetery:a3-a1"],     // 古达胜 → 墓园电梯 A3→A1
+  watchers: ["highwall:d-b"],     // 监视者胜 → 月坛电梯 D→B
+  margit: ["stormveil:e4-e1"],    // 玛尔基特胜 → 教堂电梯 E4→E1
+};
+
+export function shortcutUnlockedOn(defeat: BossId): string[] {
+  return [...(SHORTCUT_UNLOCK_ON_DEFEAT[defeat] ?? [])];
+}
+
 export const SCENE_NAME: Record<SceneId, string> = {
   cemetery: "灰烬墓地",
   highwall: "洛斯里克的高墙",
@@ -69,12 +83,16 @@ export function freshProgress(): Progress {
 
 /** 旧档迁移/击败结算共用的区域推导（幂等）：
  *  「到访」规则——击败过 X 则 X 的驻区必已开放（旧 v1.0 四 Boss 档续玩兼容）；
- *  「挑战权」规则——击败 X 则下一 Boss 驻区开门 */
+ *  「挑战权」规则——击败 X 则下一 Boss 驻区开门；
+ *  「捷径」规则——击败 X 则 X 解锁的电梯/门开启（T6，旧档无 shortcuts 字段自动补开） */
 function deriveZones(p: Progress): void {
   for (const id of p.defeated) {
     if (!p.zoneUnlocks.includes(ZONE_OF[id])) p.zoneUnlocks.push(ZONE_OF[id]);
     const next = ZONE_UNLOCK_ON_DEFEAT[id];
     if (next && !p.zoneUnlocks.includes(next)) p.zoneUnlocks.push(next);
+    for (const sc of shortcutUnlockedOn(id)) {
+      if (!p.shortcuts.includes(sc)) p.shortcuts.push(sc);
+    }
   }
 }
 
