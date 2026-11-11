@@ -18,7 +18,7 @@ import { Margit, MARGIT_STATS } from "./boss-margit";
 import { Godrick, GODRICK_STATS } from "./boss-godrick";
 import { EnemyManager } from "./enemy";
 import { ENEMY_PRESETS } from "./enemies-config";
-import { BOSS_ORDER, SCENE_NAME, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene } from "./progress";
+import { BOSS_ORDER, SCENE_NAME, ZONE_OF, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene } from "./progress";
 import type { SceneId, BossId, Progress } from "./progress";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
@@ -220,7 +220,11 @@ export class Game {
     this.bossOverride = null;
     this.bossId = pick;
     this.bossEntry = BOSSES[pick];
-    this.boss = this.bossEntry.create(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
+    // 落位：优先取该 Boss 驻区(m4 zones v2)的 arena 圆心（城垣葛瑞克→E5 接肢教堂/高墙沙力万→D 月坛房），
+    // 场景未提供 zones 时回退 legacy bossArena；+1.8m 东偏保持既有雾门-石像间距惯例
+    const zone = this.anchors.zones?.find(z => z.kind === "arena" && z.id === ZONE_OF[pick as BossId]);
+    const bossPos = (zone?.center ?? this.anchors.bossArena).clone().add(new THREE.Vector3(1.8, 0, 0));
+    this.boss = this.bossEntry.create(this.scene, this.vfx, bossPos, {
       onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),
       onBossReveal: () => this.revealBoss(),
       onBossTransform: point => this.transformShock(point),
