@@ -104,11 +104,6 @@ export class Game {
 
     // 角色
     gltf.scene.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-    const actions: Record<string, THREE.AnimationAction> = {};
-    for (const clip of gltf.animations) actions[clip.name] = new THREE.AnimationMixer(gltf.scene).clipAction(clip);
-    // 用单一 mixer：重建
-    const mixer = new THREE.AnimationMixer(gltf.scene);
-    for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
 
     this.player = new Player(gltf.scene, frames, {
       hitBoss: (dmg, poise, feelKey, point) => this.hitBoss(dmg, poise, feelKey, point),
@@ -120,6 +115,10 @@ export class Game {
       bossPos: () => this.boss.root.position,
       shake: a => this.shake(a),
     });
+    // 动作必须挂在 Player 每帧 tick 的那个 mixer 上。另建 mixer 再 play()，骨骼不会动，
+    // 但攻击状态仍会锁移动——触控板点几下就像卡在原地。
+    const actions: Record<string, THREE.AnimationAction> = {};
+    for (const clip of gltf.animations) actions[clip.name] = this.player.mixer.clipAction(clip);
     this.player.bind(actions);
     this.player.pos.copy(this.anchors.spawn);
     this.player.souls = this.progress.souls;     // 魂量随存档恢复
@@ -240,6 +239,9 @@ export class Game {
       if (document.pointerLockElement !== canvas) this.manualT = CAM.manualGrace;   // 退出自由视角 → 宽限后恢复跟背
     });
     addEventListener("mousemove", e => {
+      // 按钮位已空但仍记着按下：触控板有时不送 mouseup
+      if ((e.buttons & 1) === 0) this.player.releaseButton(0);
+      if ((e.buttons & 2) === 0) this.player.releaseButton(2);
       if (document.pointerLockElement !== canvas || this.player.lockOn) return;    // 锁定时镜头交给取景逻辑
       this.camYaw -= e.movementX * 0.0024;
       this.camPitch = Math.max(0.04, Math.min(0.9, this.camPitch + e.movementY * 0.002));
@@ -249,8 +251,12 @@ export class Game {
       if (document.pointerLockElement !== canvas) return;    // 仅自由视角下缩放，避免触控板双指误触
       this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004));
     });
-    addEventListener("mousedown", e => { if (!this.menuOpen) this.player.onMouse(e.button, true); });
+    addEventListener("mousedown", e => {
+      if (this.menuOpen || e.target !== canvas) return;   // 点 HUD/调校台不挥刀
+      this.player.onMouse(e.button, true);
+    });
     addEventListener("mouseup", e => { if (!this.menuOpen) this.player.onMouse(e.button, false); });
+    addEventListener("blur", () => { this.player.releaseButton(0); this.player.releaseButton(2); });
     const inPanelInput = (e: KeyboardEvent): boolean => {
       const t = e.target as HTMLElement | null;
       return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
