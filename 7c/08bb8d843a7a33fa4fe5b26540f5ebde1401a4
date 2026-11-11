@@ -1,0 +1,65 @@
+web/src/game.ts
+  s_6adfea1a8382d2::t_070bcfe25e0ae1 257
+  s_6adfea1a8382d2::t_78e371fc54a252 40-41
+  s_6adfea1a8382d2::t_403e6303c598c1 473
+  s_6adfea1a8382d2::t_1dc3550f5c6b91 17-18
+  s_6adfea1a8382d2::t_eab15bfd019215 732
+  s_6adfea1a8382d2::t_8f0771cc28fe05 87
+  s_6adfea1a8382d2::t_a9f52cdea45d01 139-152
+  s_6adfea1a8382d2::t_ccf9f3b6a58770 575
+  s_6adfea1a8382d2::t_a4a09acc9e4911 19-20
+  s_6adfea1a8382d2::t_e753bf22edf7e7 125
+  s_6adfea1a8382d2::t_64f10ed2651672 203-217
+  s_6adfea1a8382d2::t_61e023204f2265 134
+  s_6adfea1a8382d2::t_ff2baf7ca2720e 16,27-29,43,187-191,438-440,514
+web/src/boss-margit.ts
+  s_6adfea1a8382d2::t_bf6a69b7f70259 1-845
+web/src/player.ts
+  s_6adfea1a8382d2::t_135e62e68cc516 10-11
+  s_6adfea1a8382d2::t_94687849e29158 73-76
+  s_6adfea1a8382d2::t_8142a0a0a0b789 382
+web/src/boss-godrick.ts
+  s_6adfea1a8382d2::t_bf6a69b7f70259 1-856
+web/src/enemies-config.ts
+  s_6adfea1a8382d2::t_e6d4f8bbaa47d2 1-105
+web/src/enemy.ts
+  s_6adfea1a8382d2::t_114f27b5f5d31d 1-815
+docs/design/enemies.md
+  s_a1f858852b2435::t_34d01c5c53f2aa 1-135
+web/src/progress.ts
+  s_0220b48c8227db::t_2237fde7d590e7 1-5,7,10,13-25,29,43-44,59-60,70-88,95-97,111,115,126-127,129-133
+web/src/scene-stormveil.ts
+  s_a1f858852b2435::t_8984b1ed876629 1-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "7c08bb8d843a7a33fa4fe5b26540f5ebde1401a4",
+  "prompts": {},
+  "sessions": {
+    "s_0220b48c8227db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a273125bef05aa59b",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_a1f858852b2435": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3c52b3691978ce88",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
