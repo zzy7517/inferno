@@ -7,6 +7,7 @@ import { Boss } from "./boss";
 import type { BossBase, BossHost } from "./boss-base";
 import { Vordt, VORDT_STATS } from "./boss-vordt";
 import { Watchers, WATCHERS_STATS } from "./boss-watchers";
+import { Sulyvahn, SULYVANN_STATS } from "./boss-sulyvahn";
 import { Player } from "./player";
 import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
@@ -24,9 +25,10 @@ interface BossEntry {
   create: (scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost) => BossBase;
 }
 const BOSSES: Record<string, BossEntry> = {
-  gundyr:   { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", create: (s, v, p, h) => new Boss(s, v, p, h) },
-  vordt:    { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", create: (s, v, p, h) => new Vordt(s, v, p, h) },
-  watchers: { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Watchers(s, v, p, h) },
+  gundyr:    { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", create: (s, v, p, h) => new Boss(s, v, p, h) },
+  vordt:     { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", create: (s, v, p, h) => new Vordt(s, v, p, h) },
+  watchers:  { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Watchers(s, v, p, h) },
+  sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
