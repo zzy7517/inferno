@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-12T02:10:00.000Z",
-  "note": "M4 全场景扩建后基线：cemetery=T3 后实测（~220×52m 长卷，A×6+C×2 八分区，spawn -140.5/C 区监视者房 c(57,0) r12）；highwall=T4 后实测（B/D 双区 278m 长廊+双 d24 Boss 房，封印门 x=18 D 区监视者胜后解锁）；stormveil=T7 后实测（之字坡+断翼露台+玛尔基特房+接肢教堂 E4 重叠 0.6m 衔接，直线口径，之字坡实走 132.5m≈21.4s）。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。",
+  "generatedAt": "2026-11-11T18:59:17.894Z",
+  "note": "T5 尺度探针基线。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。stormveil 自 T7 起纳入（旧档注入+篝火旅行；直线口径，之字坡实走 132.5m≈21.4s 见 T7 探针）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
   "walkSpeedMs": 6.2,
   "scenes": {
     "cemetery": {
@@ -16,7 +16,7 @@
         "drawCallsMax": 61,
         "trianglesMedian": 15950,
         "trianglesMax": 15950,
-        "fpsApprox": 61
+        "fpsApprox": 43
       },
       "area": {
         "corridorLengthM": 131.7,
@@ -59,7 +59,7 @@
         "drawCallsMax": 89,
         "trianglesMedian": 16412,
         "trianglesMax": 16412,
-        "fpsApprox": 58
+        "fpsApprox": 52
       },
       "area": {
         "corridorLengthM": 278,
@@ -91,18 +91,18 @@
     },
     "stormveil": {
       "walk": {
-        "spawnToGateSeconds": 5.1,
-        "gateToCenterSeconds": 1.05,
-        "totalSeconds": 6.15,
-        "pathMeters": 38.1,
+        "spawnToGateSeconds": 43.87,
+        "gateToCenterSeconds": 1.79,
+        "totalSeconds": 45.66,
+        "pathMeters": 283.1,
         "finalErrorM": 0
       },
       "render": {
-        "drawCallsMedian": 121,
-        "drawCallsMax": 121,
-        "trianglesMedian": 16858,
-        "trianglesMax": 16858,
-        "fpsApprox": 64
+        "drawCallsMedian": 196,
+        "drawCallsMax": 196,
+        "trianglesMedian": 20640,
+        "trianglesMax": 20640,
+        "fpsApprox": 10
       },
       "area": {
         "corridorLengthM": 32.5,
