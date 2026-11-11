@@ -4,6 +4,9 @@ import { COLORS, P, BOSS, CAM, FEEL, MoveDef } from "./config";
 import { AU, PAD } from "./audio";
 import { Vfx, buildBonfire, Bonfire, FogGate } from "./vfx";
 import { Boss } from "./boss";
+import type { BossBase, BossHost } from "./boss-base";
+import { Vordt, VORDT_STATS } from "./boss-vordt";
+import { Watchers, WATCHERS_STATS } from "./boss-watchers";
 import { Player } from "./player";
 import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
@@ -12,6 +15,19 @@ import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
 type SceneId = "cemetery" | "highwall";
+
+/** Boss 注册表：场景×Boss 组合与直选入口（M2 进度线：古达→玻尔多→监视者→沙力万） */
+interface BossEntry {
+  name: string;
+  radius: number;
+  arena: SceneId;
+  create: (scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost) => BossBase;
+}
+const BOSSES: Record<string, BossEntry> = {
+  gundyr:   { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", create: (s, v, p, h) => new Boss(s, v, p, h) },
+  vordt:    { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", create: (s, v, p, h) => new Vordt(s, v, p, h) },
+  watchers: { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Watchers(s, v, p, h) },
+};
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -22,7 +38,9 @@ export class Game {
   private vfx!: Vfx;
   private bonfire!: Bonfire;
   private fog!: FogGate;
-  private boss!: Boss;
+  private boss!: BossBase;
+  private bossEntry!: BossEntry;
+  private bossId = "gundyr";
   private player!: Player;
   private tune!: Tuning;
   private projectiles!: Projectiles;
@@ -97,7 +115,11 @@ export class Game {
     this.player.pos.copy(this.anchors.spawn);
     this.scene.add(this.player.root);
 
-    this.boss = new Boss(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
+    // Boss 选择：?boss= 直选（调试/M2 再战入口），否则按场景默认（高墙=玻尔多，墓地=古达）
+    const bossParam = new URLSearchParams(location.search).get("boss");
+    this.bossId = bossParam && BOSSES[bossParam] ? bossParam : (this.sceneId === "highwall" ? "vordt" : "gundyr");
+    this.bossEntry = BOSSES[this.bossId];
+    this.boss = this.bossEntry.create(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
       onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),
       onBossReveal: () => this.revealBoss(),
       onBossTransform: point => this.transformShock(point),
@@ -306,8 +328,9 @@ export class Game {
   private revealBoss(): void {
     $("bossbar").classList.add("on");
     // 只改标题 span，勿动 #bossName.textContent——会连带销毁 #bossPhase2（曾致每帧 null.style 崩循环）
-    $("bossTitle").textContent = BOSS.name;
-    this.showMsg(BOSS.name, 2.2, true);
+    $("bossTitle").textContent = this.bossEntry.name;
+    $("winBig").textContent = `${this.bossEntry.name} 已陨落`;
+    this.showMsg(this.bossEntry.name, 2.2, true);
     AU.roar();
     this.fightStart = this.elapsed;
     this.player.lockOn = true;   // 开战自动锁定（无鼠标方案）
@@ -382,7 +405,7 @@ export class Game {
     }
     // 玩家与 Boss 推挤
     const d = this.boss.root.position.clone().sub(p); d.y = 0;
-    const minD = BOSS.radius + P.playerRadius;
+    const minD = this.bossEntry.radius + P.playerRadius;
     if (this.boss.awake && d.length() < minD) p.sub(d.normalize().multiplyScalar(minD - d.length()));
     this.prevPx = p.x;
   }
@@ -442,9 +465,9 @@ export class Game {
     ($("stFl") as HTMLElement).style.width = `${Math.max(0, this.player.stamina / P.stamina * 100)}%`;
     $("estusN").textContent = String(this.player.estus);
     $("soulN").textContent = String(this.player.souls);
-    // Boss 条（白条延迟）
+    // Boss 条（白条延迟；比率按各 Boss 自己的血量上限）
     const lag = $("bossLag"), fill = $("bossFill");
-    const cur = this.boss.hp / BOSS.hp;
+    const cur = this.boss.hp / this.boss.maxHp;
     const lagV = parseFloat(lag.dataset.v ?? "1");
     const newLag = Math.max(cur, lagV - 0.004);
     lag.dataset.v = String(newLag);

@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import { P, BOSS, MOVES, FEEL, MoveDef, FeelDef, SfxName } from "./config";
 import { Player } from "./player";
-import { Boss } from "./boss";
+import type { BossBase } from "./boss-base";
 
 const STORE_KEY = "inferno.tune.v1";
 
@@ -72,7 +72,7 @@ export class DebugViz {
     for (const m of [this.shock, this.iframe, this.parry]) { m.visible = false; m.renderOrder = 5; scene.add(m); }
   }
 
-  update(player: Player, boss: Boss): void {
+  update(player: Player, boss: BossBase): void {
     // Boss 招式扇面：黄=前摇 telegraph，红=判定帧
     const m = boss.move;
     let shown = false;
@@ -142,7 +142,7 @@ export class Tuning {
   private slowBox!: HTMLInputElement;
   private hudTimer = 0;
 
-  constructor(scene: THREE.Scene, private player: Player, private boss: Boss) {
+  constructor(scene: THREE.Scene, private player: Player, private boss: BossBase) {
     this.viz = new DebugViz(scene);
     this.root.id = "tune";
     document.body.appendChild(this.root);
@@ -167,6 +167,10 @@ export class Tuning {
   }
 
   updateViz(): void { this.viz.update(this.player, this.boss); }
+
+  private get bossStats(): { hp: number; poiseMax: number; poiseDecay: number; staggerDur: number; staggerMul: number; parriedDur: number; phase2At: number; walkSpeed: number; turnRate: number } {
+    return this.boss.stats;
+  }
 
   // ---- DOM 构建 ----
   private render(): void {
@@ -346,15 +350,16 @@ export class Tuning {
   }
 
   private renderBossSection(): void {
-    const d = this.section("Boss 数值");
-    this.slider(d, "血量上限", () => BOSS.hp, x => { BOSS.hp = Math.round(x); }, 100, 2000, 10);
-    this.slider(d, "削韧上限", () => BOSS.poiseMax, x => { BOSS.poiseMax = x; }, 20, 300, 5);
-    this.slider(d, "削韧衰减/s", () => BOSS.poiseDecay, x => { BOSS.poiseDecay = x; }, 0, 40, 1);
-    this.slider(d, "破绽时长 s", () => BOSS.staggerDur, x => { BOSS.staggerDur = x; }, 0.5, 6, 0.1);
-    this.slider(d, "弹反跪地 s", () => BOSS.parriedDur, x => { BOSS.parriedDur = x; }, 0.5, 6, 0.1);
-    this.slider(d, "二阶段阈值", () => BOSS.phase2At, x => { BOSS.phase2At = x; }, 0.2, 0.9, 0.05);
-    this.slider(d, "移速", () => BOSS.walkSpeed, x => { BOSS.walkSpeed = x; }, 0.5, 6, 0.1);
-    this.slider(d, "转向速率", () => BOSS.turnRate, x => { BOSS.turnRate = x; }, 0.5, 10, 0.1);
+    const d = this.section("Boss 数值（当前 Boss）");
+    const B = this.bossStats;   // 活实例的数值表：原地改写即时生效（会话级，不进存档）
+    this.slider(d, "血量上限", () => B.hp, x => { B.hp = Math.round(x); }, 100, 2000, 10);
+    this.slider(d, "削韧上限", () => B.poiseMax, x => { B.poiseMax = x; }, 20, 300, 5);
+    this.slider(d, "削韧衰减/s", () => B.poiseDecay, x => { B.poiseDecay = x; }, 0, 40, 1);
+    this.slider(d, "破绽时长 s", () => B.staggerDur, x => { B.staggerDur = x; }, 0.5, 6, 0.1);
+    this.slider(d, "弹反跪地 s", () => B.parriedDur, x => { B.parriedDur = x; }, 0.5, 6, 0.1);
+    this.slider(d, "二阶段阈值", () => B.phase2At, x => { B.phase2At = x; }, 0.01, 0.9, 0.01);
+    this.slider(d, "移速", () => B.walkSpeed, x => { B.walkSpeed = x; }, 0.5, 8, 0.1);
+    this.slider(d, "转向速率", () => B.turnRate, x => { B.turnRate = x; }, 0.5, 10, 0.1);
   }
 
   private renderStoreSection(): void {
