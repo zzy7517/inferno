@@ -1,0 +1,28 @@
+web/src/enemies-config.ts
+  s_6adfea1a8382d2::t_5f5c82ea91b5fb 105-109
+web/scripts/t3-probe.mjs
+  s_6adfea1a8382d2::t_926bba55802626 1-201
+web/e2e/scale-baseline.json
+  s_6adfea1a8382d2::t_74656b01458350 2-3
+  s_6adfea1a8382d2::t_926bba55802626 8-11,15-19,22,24-27,31,36,41,45-46
+web/src/scene-cemetery.ts
+  s_6adfea1a8382d2::t_926bba55802626 1,3-4,6-15,20,22-23,28-30,34-35,110,140-156,158-164,176-177,181,185-188,190,192-195,197,203,212,214,217,225,227,235,241-249,255-265,273-280,283,285-289,291-316,318-319,322,326-327,330-331,334-335,338-339,342,345-375,378,380-395,397-459,461-612,615-617,619-621,627-629,634,643,645-646,657,670-674,681-689
+web/src/game.ts
+  s_6adfea1a8382d2::t_45ba580497c184 208,210,212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e26e149a3a49ee00dd59c81eacdf881e13387aff",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
