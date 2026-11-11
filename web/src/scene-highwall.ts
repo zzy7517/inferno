@@ -690,10 +690,21 @@ export function buildHighWall(scene: THREE.Scene): {
       const fl = flames[i];
       const s = 1 + Math.sin(animT * 11 + i * 2.1) * 0.18 + Math.sin(animT * 27 + i) * 0.08;
       fl.mesh.scale.set(1 + (s - 1) * 0.4, s, 1 + (s - 1) * 0.4);
+      fl.mesh.rotation.z = Math.sin(animT * 2.1 + fl.ph) * 0.09;        // 火苗侧摆
+      fl.mesh.rotation.x = Math.cos(animT * 1.7 + fl.ph * 0.8) * 0.07;  // 火苗前后俯仰
       fl.mat.opacity = 0.7 + 0.2 * Math.sin(animT * 13 + i * 1.7);
       fl.light.intensity = 6.2 + Math.sin(animT * 9.5 + i * 2.4) * 1.4 + Math.sin(animT * 23 + i) * 0.7;
     }
     coalMat.emissiveIntensity = 1.35 + Math.sin(animT * 7.3) * 0.3;
+    {                                                                   // 流云：wrap 循环漂移 + 边缘渐隐（进出不跳变）
+      const span = CLOUD_SPAN.max - CLOUD_SPAN.min;
+      for (const c of clouds) {
+        const x = c.x0 + (((animT * c.sp) % span) + span) % span + CLOUD_SPAN.min;
+        const k = Math.min(1, Math.max(0, Math.min((x - CLOUD_SPAN.min) / CLOUD_SPAN.fade, (CLOUD_SPAN.max - x) / CLOUD_SPAN.fade)));
+        c.mesh.position.x = x;
+        c.mat.opacity = c.o * k * k;
+      }
+    }
     winFarMat.opacity = 0.72 + Math.sin(animT * 0.8) * 0.14 + Math.sin(animT * 2.3) * 0.08;
     winTownMat.opacity = 0.66 + Math.sin(animT * 1.1 + 2) * 0.15 + Math.sin(animT * 3.1) * 0.07;
     starMat.opacity = 0.72 + Math.sin(animT * 0.5) * 0.12 + Math.sin(animT * 1.3) * 0.06;

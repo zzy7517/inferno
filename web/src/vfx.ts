@@ -79,19 +79,29 @@ export class Vfx {
   }
 
   private static arcGeo(wide: boolean): THREE.BufferGeometry {
-    const g = new THREE.RingGeometry(0.5, 1, 20, 1, Math.PI / 2 - (wide ? 1.4 : 0.7), wide ? 2.8 : 1.4);
+    const t0 = Math.PI / 2 - (wide ? 1.4 : 0.7), tl = wide ? 2.8 : 1.4;
+    const g = new THREE.RingGeometry(0.5, 1, 24, 1, t0, tl).toNonIndexed();
+    const p = g.attributes.position as THREE.BufferAttribute;
+    const arr = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      const t = Math.min(1, Math.max(0, ((Math.atan2(p.getY(i), p.getX(i)) - t0 + Math.PI * 4) % (Math.PI * 2)) / tl));
+      const k = Math.sin(Math.PI * t);                     // 弧中亮、两端淡出的辉迹
+      arr[i * 3] = k; arr[i * 3 + 1] = k * 0.94; arr[i * 3 + 2] = k * 0.82;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
     g.rotateX(-Math.PI / 2);
     return g;
   }
 
-  /** 刀光弧：沿 yaw 方向的水平扇形 */
+  /** 刀光弧：沿 yaw 方向的水平扇形（辉迹渐变 + 挥出时轻微扩张） */
   slash(pos: THREE.Vector3, yaw: number, radius: number, wide: boolean, color = 0xffd9a0): void {
     const geo = Vfx.arcGeo(wide);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const mat = new THREE.MeshBasicMaterial({ color, vertexColors: true, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(pos);
     mesh.rotation.y = yaw + Math.PI;
     mesh.scale.setScalar(radius);
+    mesh.userData.target = radius;
     this.scene.add(mesh);
     this.arcs.push({ mesh, life: 0.14, tl: 0.14 });
   }
@@ -129,14 +139,22 @@ export class Vfx {
         a.life -= dt;
         const k = Math.max(0, a.life / a.tl);
         const mat = a.mesh.material as THREE.MeshBasicMaterial;
-        mat.opacity = k * (arr === this.arcs ? 0.65 : 0.8);
-        if (arr === this.rings) {
-          const target = a.mesh.userData.target as number ?? 1;
+        const target = a.mesh.userData.target as number ?? 1;
+        if (arr === this.arcs) {
+          a.mesh.scale.setScalar(target * (0.9 + 0.14 * (1 - k)));  // 挥出时轻微扩张
+          mat.opacity = 0.65 * Math.pow(k, 0.6);                   // 前段亮、尾段利落淡出
+        } else {
+          mat.opacity = k * 0.8;
           const s = target * (1 - k * k);              // 扩散
-          a.mesh.scale.setScalar(Math.max(0.05, arr === this.rings && a.tl > 1 ? target : s));
+          a.mesh.scale.setScalar(Math.max(0.05, a.tl > 1 ? target : s));
           if (a.tl > 1) a.mesh.scale.setScalar(target); // 火痕只淡不扩
         }
-        if (a.life <= 0) { this.scene.remove(a.mesh); arr.splice(i, 1); }
+        if (a.life <= 0) {
+          this.scene.remove(a.mesh);
+          a.mesh.geometry.dispose();                   // 每件新建：到期必须释放 GPU 资源
+          (a.mesh.material as THREE.Material).dispose();
+          arr.splice(i, 1);
+        }
       }
     }
   }
