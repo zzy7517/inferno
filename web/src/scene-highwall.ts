@@ -13,6 +13,10 @@
  *
  * 视觉对标 DS3 高墙：夜空穹顶渐变 + 冷月与光晕 + 两层远山/城堡剪影(窗火闪烁) +
  *   主城墙/雉堞/双塔/破拱门 + 残旗(顶点摆动) + 石板路/断柱/枯树/瓦砾 + 脚下深渊与雾海中的下层城区。
+ * 走廊美术深加工（B/D 长廊视觉密度）：~34m 节奏节点（壁龛烛龛/坍塌断梁/悬挑哨位/箭缝月光轮换）+
+ *   纵向双层墙（粗石基座+檐线+上段城齿剪影）+ 四处地标认路锚（-200 断桥拱影 / -120 绞刑架鸟群 /
+ *   -60 城门楼过洞 / -21 龙骨翼残像）+ D 月坛前导（幽蓝箭缝/月尘缓升/封印符文环）+
+ *   氛围（远雷双闪、雾色沿 x 暖→冷渐变）；新增 emissive 一批 + 月尘一档 dc。
  * 预算：纯几何 + 顶点色（paint 统一上色），静态几何按 5 个空间分块 merge 合批（frustum 剔剪），
  *   场景本体 ≤45 draw call；火光 PointLight ≤5（挂火×2 + 火盆×1 + 月坛烛台×2）；
  *   不加载任何外部资源（光晕/雾片贴图为运行时 Canvas 生成）。
@@ -51,7 +55,7 @@ export interface SceneZone {
 const PAL = {
   stoneHi: 0x474c54, stone: COLORS.stone, stoneMid: 0x34383f, stoneDark: COLORS.stoneDark,
   stoneDeep: 0x232529, mortar: 0x191b20, dark: 0x0a0b0e, cliff: 0x1e2127,
-  pathA: COLORS.groundPath, pathB: 0x2c2825, pathC: 0x31302c,
+  pathA: COLORS.groundPath, pathB: 0x33302c, pathC: 0x383733,
   abyss: 0x101218, roofA: 0x1a1d24, roofB: 0x15171d,
   skyTop: 0x07090f, skyHorizon: 0x1a2130, skyUnder: 0x0c0e13,
   ridgeFar: 0x151b27, ridgeNear: 0x0f141d,
@@ -59,6 +63,7 @@ const PAL = {
   flagGold: 0x635438, flagGoldB: 0x453a28,
   wood: 0x2c2620, metal: 0x4e535b, bone: 0x4a4436, ash: 0x17140f, goldDim: 0x6b5c3f,
   moonPale: 0x39404e, moonDeep: 0x1a2030, sealIndigo: 0x2b3350,
+  moonGlow: 0x8fa6c8, sealBlue: 0x5a7fb4, rune: 0x9db9e8, bird: 0x0b0d11,
 };
 
 // ---------------- 布局常数（m4 §3.2；与 zones/锚点同源） ----------------
@@ -203,7 +208,7 @@ interface FlameRef {
   base: number; ph: number; orig: Float32Array; centers: [number, number, number][]; vpc: number;
 }
 interface MistRef { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; bx: number; bz: number; dx: number; dz: number; ph: number; spx: number; spz: number; o: number }
-interface CloudRef { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x0: number; sp: number; o: number }
+interface CloudRef { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x0: number; sp: number; o: number; base: THREE.Color }
 
 // ================================================================
 export function buildHighWall(scene: THREE.Scene): {
@@ -234,18 +239,20 @@ export function buildHighWall(scene: THREE.Scene): {
     ],
   };
 
-  // 天空与雾（dispose 时还原）
+  // 天空与雾（dispose 时还原）；雾色/密度沿 x 渐变（篝火暖 → 远处冷蓝，update 驱动）
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new THREE.Color(COLORS.bg);
   scene.fog = new THREE.FogExp2(COLORS.fog, 0.036);
+  const fogWarm = new THREE.Color(COLORS.fog).lerp(new THREE.Color(0x302820), 0.5);
+  const fogCold = new THREE.Color(COLORS.fog).lerp(new THREE.Color(0x1a263e), 0.6);
 
   const mats: THREE.Material[] = [];
   const track = <T extends THREE.Material>(m: T): T => { mats.push(m); return m; };
 
   // ---------------- 灯光：冷月光主灯（带阴影，窗口随相机）+ 半天环境光 ----------------
   const MOON_OFF = new THREE.Vector3(23.7, 15.5, -24.3);    // 原 (21.7,15.5,-24.3)−target(-2,0,0)：方向保持
-  const moonLight = new THREE.DirectionalLight(COLORS.moon, 1.7);
+  const moonLight = new THREE.DirectionalLight(COLORS.moon, 1.85);
   moonLight.position.copy(MOON_OFF);
   moonLight.castShadow = true;
   moonLight.shadow.mapSize.set(2048, 2048);
@@ -257,7 +264,9 @@ export function buildHighWall(scene: THREE.Scene): {
   root.add(moonTarget);
   moonLight.target = moonTarget;
   root.add(moonLight);
-  root.add(new THREE.HemisphereLight(0x2a3242, 0x141110, 0.55));
+  const HEMI_BASE = 0.72;                                 // 与墓地 0.68/城垣 0.85 同族的夜天光（走廊可读性）
+  const hemiLight = new THREE.HemisphereLight(0x2a3242, 0x141110, HEMI_BASE);
+  root.add(hemiLight);                                     // 远雷闪时整组瞬提（update）
 
   // ---------------- 天穹组（celestial）：随相机平移的"无限远"背景 ----------------
   // 368m 跨度下静态 r96 天球会穿出 far=120：把夜穹/星野/冷月/流云编组，
@@ -265,6 +274,8 @@ export function buildHighWall(scene: THREE.Scene): {
   const celestial = new THREE.Group();
   celestial.name = "celestial";
   root.add(celestial);
+  let camX = B_CORR.minX;                                  // 相机 x（天穹随行回调记录；雾色沿 x 渐变用）
+  let skyMat!: THREE.MeshBasicMaterial;                    // 天幕材质（远雷闪时整体提亮）
 
   // ---------------- 天幕：大球内壁竖向渐变（下暗上更暗、地平线微亮） ----------------
   {
@@ -281,10 +292,12 @@ export function buildHighWall(scene: THREE.Scene): {
       colArr[i * 3] = c.r; colArr[i * 3 + 1] = c.g; colArr[i * 3 + 2] = c.b;
     }
     geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
-    const sky = new THREE.Mesh(geo, track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+    skyMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+    const sky = new THREE.Mesh(geo, skyMat);
     sky.renderOrder = -10;
     sky.frustumCulled = false;
     sky.onBeforeRender = (_r, _s, cam) => {
+      camX = cam.position.x;
       celestial.position.set(cam.position.x, 0, cam.position.z);
       celestial.updateMatrixWorld(true);
       moonLight.position.set(cam.position.x + MOON_OFF.x, MOON_OFF.y, cam.position.z + MOON_OFF.z);
@@ -362,7 +375,7 @@ export function buildHighWall(scene: THREE.Scene): {
       mesh.lookAt(0, 3, 0);                                   // 正对玩家区，横亘天穹
       mesh.renderOrder = -6;                                  // 月亮盘(-8)之后、实体(0)之前画：云遮月
       celestial.add(mesh);
-      clouds.push({ mesh, mat, x0: d.x, sp: d.sp, o: d.o });
+      clouds.push({ mesh, mat, x0: d.x, sp: d.sp, o: d.o, base: new THREE.Color(d.c) });
     }
   }
 
@@ -431,6 +444,25 @@ export function buildHighWall(scene: THREE.Scene): {
     addWinFar(cx + 3, cy + 4, cz + 1.55, 0.7);
     addWinFar(cx + 5.2, cy + 3.2, cz + 1.55, 0.6);
   }
+  // 巨型断桥拱影（~x=-200 北望地标）：残断引桥跨雾海——长廊中段的远景认路锚（DS3 高墙跨桥意象）
+  {
+    const bz = -40, tone = 0x141a24, deck = 0x171e29;
+    for (const px of [-236, -166]) {                     // 两座桥墩扎进雾海
+      farGeoms.push(boxG(3.4, 16, 3.0, px, -8, bz, tone, { jitter: 0.08 }));
+      farGeoms.push(boxG(4.6, 1.2, 4.2, px, -1.4, bz, tone, { jitter: 0.08 }));
+    }
+    const R = 34, yc = 7.5;                              // 主拱（中段塌缺）
+    for (let k = 0; k <= 20; k++) {
+      const a = 0.24 + (Math.PI - 0.48) * (k / 20);
+      if (a > 1.15 && a < 1.95) continue;                // 塌缺口
+      farGeoms.push(boxG(2.2, 1.5, 2.4, -201 + Math.cos(a) * R, yc + Math.sin(a) * R * 0.62, bz, tone,
+        { rz: Math.atan2(0.62 * Math.cos(a), -Math.sin(a)), jitter: 0.1 }));
+    }
+    farGeoms.push(boxG(20, 1.1, 2.6, -222, 15.2, bz, deck, { ry: 0.03, jitter: 0.06 }));        // 西段残桥面
+    farGeoms.push(boxG(14, 1.1, 2.6, -172, 14.6, bz, deck, { ry: -0.05, rz: 0.04, jitter: 0.06 })); // 东段桥面（坠斜）
+    for (const wx of [-228, -216, -208, -180, -174]) farGeoms.push(boxG(1.2, 1.5, 1.4, wx, 16.2, bz, tone)); // 桥栏残垛
+    farGeoms.push(boxG(2.0, 3.2, 2.0, -186, 16.5, bz, tone, { rz: 0.5 }));                     // 塌口垂石
+  }
   const farMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, fog: false }));
   root.add(batch(farGeoms, farMat, "none"));
 
@@ -438,6 +470,7 @@ export function buildHighWall(scene: THREE.Scene): {
   const stoneMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
   const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffa14e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })); // 火焰材质模板（clone 出独立闪烁相位）
   const coalGeoms: THREE.BufferGeometry[] = [];
+  const glowGeoms: THREE.BufferGeometry[] = [];          // 静态自发光批：箭缝月光/塔窗烛光/哨位火光/D 幽蓝/封印符文
   const flames: FlameRef[] = [];
 
   /** 火焰组 + 炭芯 + 火光：同组火位并入单 mesh（顶点级闪烁），每位挂一盏灯 */
@@ -514,6 +547,60 @@ export function buildHighWall(scene: THREE.Scene): {
     }
   };
 
+  // —— 走廊节奏节点（30-40m 一个，四型轮换）：壁龛烛龛 / 坍塌段 / 悬挑哨位 / 箭缝开窗 ——
+  // 壁龛：实体墙上做「影盒」——暗背板贴墙 + 凸出龛柱/龛楣围出凹感 + 烛芯（入余烬批呼吸，0 额外灯）
+  const nodeNiche = (G: THREE.BufferGeometry[], x: number, side: number): void => {
+    G.push(boxG(1.24, 1.9, 0.08, x, 1.45, side * 2.41, PAL.dark, { jitter: 0.06 }));     // 龛底暗背板
+    G.push(boxG(0.2, 1.8, 0.3, x - 0.78, 1.5, side * 2.45, PAL.stoneMid, { jitter: 0.1 }));   // 龛柱 ×2
+    G.push(boxG(0.2, 1.8, 0.3, x + 0.78, 1.5, side * 2.45, PAL.stoneMid, { jitter: 0.1 }));
+    G.push(boxG(1.82, 0.22, 0.3, x, 2.48, side * 2.46, PAL.stoneMid));                 // 龛楣
+    G.push(boxG(1.9, 0.5, 0.24, x, 0.5, side * 2.44, PAL.stoneDeep, { jitter: 0.12 })); // 龛下哑座
+    G.push(boxG(0.09, 0.3, 0.09, x - 0.3, 0.88, side * 2.46, PAL.bone, { rz: 0.08 })); // 烛台杆
+    G.push(cylG(0.09, 0.11, 0.07, 8, x - 0.3, 1.06, side * 2.46, PAL.bone));           // 烛座
+    coalGeoms.push(dodG(0.075, x - 0.3, 1.16, side * 2.46, 0x000000));                 // 烛芯（余烬呼吸）
+    if (rnd() < 0.6) G.push(boxG(0.16, 0.12, 0.12, x + 0.34, 0.82, side * 2.44, PAL.bone, { ry: rnd() * 3 })); // 龛内骷髅
+    rubble(G, x + rr(-1.2, 1.2), side * 1.95, 0.4, 4);
+  };
+  // 坍塌段：碎石堆 + 坠地断梁 + 墙头悬垂塌石 + 越过头顶的斜穿断梁
+  const nodeCollapse = (G: THREE.BufferGeometry[], x: number, side: number): void => {
+    rubble(G, x, side * 2.0, 0.85, 9);
+    G.push(dodG(0.48, x + 0.3, 0.32, side * 2.05, PAL.stoneMid, { rx: rnd() * 3, ry: rnd() * 3 }));
+    G.push(boxG(5.2, 0.26, 0.24, x - 0.2, 0.4, side * 1.95, PAL.wood, { ry: 0.42, rz: 0.05, jitter: 0.12 }));     // 坠地断梁
+    G.push(boxG(5.6, 0.22, 0.22, x + 0.4, 2.95, 0, PAL.wood, { rx: side * 0.12, ry: rr(-0.15, 0.15), jitter: 0.1 })); // 斜穿走廊的断梁（越过头顶）
+    G.push(boxG(1.9, 0.22, 0.2, x + side * 0.8, side === 1 ? 2.9 : 3.3, side * 2.72, PAL.wood, { rz: side * 0.55, ry: 0.3 })); // 墙头残段
+    G.push(boxG(0.75, 0.65, 0.5, x - 1.6, side === 1 ? 2.75 : 3.85, side * 2.62, PAL.stoneDeep, { rz: 0.35, jitter: 0.15 })); // 悬垂塌石
+  };
+  // 悬挑哨位：北墙外凸平台（牛腿支撑）+ 火盆（纯 emissive，不占 PointLight）+ 器械剪影
+  const nodeSentry = (G: THREE.BufferGeometry[], x: number): void => {
+    G.push(boxG(2.4, 0.2, 1.5, x, 3.66, -3.85, PAL.stoneMid, { jitter: 0.09 }));        // 悬挑平台板
+    G.push(boxG(0.22, 0.95, 0.22, x - 0.9, 3.22, -4.35, PAL.stoneDeep, { rx: 0.7 }));  // 牛腿斜撑 ×2
+    G.push(boxG(0.22, 0.95, 0.22, x + 0.9, 3.22, -4.35, PAL.stoneDeep, { rx: 0.7 }));
+    G.push(boxG(2.4, 0.44, 0.16, x, 4.0, -4.55, PAL.stone, { jitter: 0.1 }));          // 外缘矮墙
+    for (let i = -1; i <= 1; i++) G.push(boxG(0.42, 0.42, 0.18, x + i * 0.85, 4.42, -4.55, PAL.stone, { jitter: 0.12 }));
+    const fx = x + 0.5, fz = -3.7;                                                      // 火盆
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      G.push(cylG(0.028, 0.038, 0.8, 5, fx + Math.cos(a) * 0.16, 4.16, fz + Math.sin(a) * 0.16, PAL.metal, { ry: -a, rz: 0.2 }));
+    }
+    G.push(cylG(0.24, 0.13, 0.18, 8, fx, 4.54, fz, PAL.metal));
+    coalGeoms.push(dodG(0.12, fx, 4.64, fz, 0x000000));
+    glowGeoms.push(boxG(0.34, 0.36, 0.34, fx, 4.74, fz, 0xff9c4d));                     // 火光晕（静态暖橙）
+    G.push(cylG(0.024, 0.032, 2.0, 5, x - 0.75, 4.76, -4.1, PAL.wood, { rz: 0.24 }));  // 靠墙长矛
+    G.push(boxG(0.06, 0.38, 0.06, x - 0.52, 5.7, -3.9, COLORS.steel, { rz: 0.24 }));
+    G.push(cylG(0.27, 0.27, 0.05, 10, x + 1.0, 3.98, -4.2, PAL.flagChar, { rx: Math.PI / 2, ry: 0.4 })); // 倚墙圆盾
+  };
+  // 箭缝开窗：磨光石框夹窄缝，冷月光从缝里透出（月侧=北）+ 直/横棂石
+  const nodeSlit = (G: THREE.BufferGeometry[], x: number): void => {
+    G.push(boxG(0.34, 1.7, 0.18, x - 0.3, 2.3, -2.36, PAL.stoneMid, { jitter: 0.09 })); // 缝框 ×2
+    G.push(boxG(0.34, 1.7, 0.18, x + 0.3, 2.3, -2.36, PAL.stoneMid, { jitter: 0.09 }));
+    G.push(boxG(1.0, 0.3, 0.18, x, 3.16, -2.36, PAL.stoneMid));                        // 顶楣
+    G.push(boxG(1.0, 0.3, 0.18, x, 1.44, -2.36, PAL.stoneMid));                        // 底台
+    glowGeoms.push(boxG(0.17, 1.0, 0.05, x, 2.3, -2.43, PAL.moonGlow));               // 缝内天光（冷月）
+    G.push(boxG(0.1, 0.5, 0.1, x, 2.3, -2.41, PAL.stoneDeep));                         // 直棂
+    G.push(boxG(0.42, 0.09, 0.09, x, 2.3, -2.41, PAL.stoneDeep));                      // 横棂
+  };
+  let nodeSeq = 0;                                        // 节点序号（类型/朝向轮换；布局确定性）
+
   B_CHUNKS.forEach(([x0, x1], ci) => {
     const G: THREE.BufferGeometry[] = [];
     const L = x1 - x0, cx = (x0 + x1) / 2;
@@ -531,10 +618,27 @@ export function buildHighWall(scene: THREE.Scene): {
       if (rnd() < 0.3) continue;
       G.push(boxG(0.52, 0.5 + rnd() * 0.22, 0.45, x, urban ? 3.05 : 2.75, 2.92, PAL.stone, { jitter: 0.12 }));
     }
-    // —— 北墙箭缝 + 外侧扶壁 ——
-    for (let x = x0 + 1.2; x <= x1 - 1; x += 3.1) G.push(boxG(0.14, 0.6, 0.1, x, 2.15, -2.44, PAL.mortar));
+    // —— 北墙箭缝 + 外侧扶壁（每三条之一透月光：墙体作为夜城垛读得出来）——
+    for (let x = x0 + 1.2, sk = 0; x <= x1 - 1; x += 3.1, sk++) {
+      G.push(boxG(0.14, 0.6, 0.1, x, 2.15, -2.44, PAL.mortar));
+      if (sk % 3 === 1) glowGeoms.push(boxG(0.13, 0.52, 0.06, x, 2.15, -2.41, PAL.moonGlow));
+    }
     for (let x = x0 + 1.5; x <= x1 - 1.2; x += 6.4) G.push(boxG(0.6, 4.4, 0.95, x, 1.6, -3.22, PAL.stoneDeep, { jitter: 0.08 }));
     for (let x = x0 + 3.1; x <= x1 - 2.5; x += 9.7) G.push(boxG(0.6, 3.4, 0.95, x, 1.3, 3.22, PAL.stoneDeep, { jitter: 0.08 }));
+    // —— 纵向层次：下段粗石基座 + 檐线分界 + 北墙后上段城齿剪影（雉堞缺口处露夜空）——
+    G.push(boxG(L, 0.85, 0.72, cx, 0.42, -2.78, PAL.stoneDeep, { jitter: 0.14 }));       // 北墙粗石基座
+    G.push(boxG(L, 0.16, 0.62, cx, 2.2, -2.7, PAL.stoneMid));                            // 檐线（上下段分界）
+    G.push(boxG(L, 0.6, 0.68, cx, 0.3, 2.76, PAL.stoneDeep, { jitter: 0.14 }));          // 南侧矮基座（不挡深渊景）
+    for (let i = 0; i < 2; i++) {
+      const bw = rr(5, 11), bh = rr(2.2, 4.6), bx = rr(x0 + 4 + bw / 2, x1 - 4 - bw / 2);
+      G.push(boxG(bw, bh, 0.5, bx, 3.6 + bh / 2, -3.3, pick([PAL.stoneDeep, 0x1c2027]), { jitter: 0.1 }));  // 后排上层墙影
+      for (let tx = bx - bw / 2 + 0.55; tx <= bx + bw / 2 - 0.4; tx += 1.1)
+        if (rnd() < 0.7) G.push(boxG(0.55, 0.5 + rnd() * 0.4, 0.42, tx, 3.6 + bh + 0.3, -3.3, PAL.stoneDark, { jitter: 0.14 })); // 上段城齿
+    }
+    for (let i = 0; i < 3; i++) {                                                        // 北墙顶局部抬升（天际线参差）
+      const bw = rr(3, 7), bh = rr(0.5, 1.5);
+      G.push(boxG(bw, bh, 0.55, rr(x0 + 3 + bw / 2, x1 - 3 - bw / 2), 3.6 + bh / 2, -2.7, PAL.stoneDark, { jitter: 0.1 }));
+    }
     // —— B1 城下街区：北墙外的城郭楼影（下探至崖体扎根深渊）——
     if (urban) {
       for (let i = 0; i < 4; i++) {
@@ -560,6 +664,105 @@ export function buildHighWall(scene: THREE.Scene): {
     column(G, rr(x0 + 2, x1 - 2), pick([-2.6, 2.6]), rr(0.8, 1.5));
     deadTree(G, rr(x0 + 2, x1 - 2), pick([-2.75, 2.75]), rr(0.8, 1.2), rr(-0.15, 0.15));
     rubble(G, rr(x0 + 2, x1 - 2), rr(-1.2, 1.2), 0.5, 7);
+    // —— 节奏节点：~34m 一个（壁龛/坍塌/悬挑哨位/箭缝轮换；让位破拱与城门楼）——
+    for (let nx = x0 + 16; nx <= x1 - 12; nx += 34) {
+      if (Math.abs(nx - ax) < 8 || Math.abs(nx + 60) < 10) continue;
+      const kind = nodeSeq % 4, side = nodeSeq % 2 === 0 ? -1 : 1;
+      nodeSeq++;
+      if (kind === 0) nodeNiche(G, nx, side);
+      else if (kind === 1) nodeCollapse(G, nx, side);
+      else if (kind === 2) nodeSentry(G, nx);
+      else nodeSlit(G, nx);
+    }
+    // —— 地标 ②：绞刑架 + 鸟群剪影（~x=-120，南侧崖畔；静态）——
+    if (ci === 2) {
+      const gx = -120;
+      for (const s of [-1, 1]) G.push(boxG(0.24, 3.6, 0.24, gx + s * 1.5, 1.8, 4.3, PAL.wood, { rz: s * 0.03, jitter: 0.12 }));
+      G.push(boxG(4.0, 0.22, 0.22, gx, 3.66, 4.3, PAL.wood, { rz: 0.02 }));
+      G.push(boxG(0.16, 1.6, 0.16, gx - 1.1, 2.95, 4.3, PAL.wood, { rz: -0.75 }));      // 斜撑
+      G.push(boxG(1.0, 0.3, 0.7, gx - 1.5, 0.15, 4.3, PAL.stoneDeep, { jitter: 0.12 })); // 架基 ×2
+      G.push(boxG(1.0, 0.3, 0.7, gx + 1.5, 0.15, 4.3, PAL.stoneDeep, { jitter: 0.12 }));
+      const cage = (cx2: number, cy2: number, cz2: number): void => {                    // 铁链绞笼
+        G.push(cylG(0.015, 0.015, 0.7, 4, cx2, cy2 + 0.55, cz2, PAL.metal));
+        for (const s2 of [-1, 1]) {
+          G.push(boxG(0.02, 0.75, 0.02, cx2 + s2 * 0.22, cy2, cz2 + 0.22, PAL.metal));
+          G.push(boxG(0.02, 0.75, 0.02, cx2 + s2 * 0.22, cy2, cz2 - 0.22, PAL.metal));
+        }
+        G.push(boxG(0.5, 0.03, 0.5, cx2, cy2 + 0.4, cz2, PAL.metal));
+        G.push(boxG(0.5, 0.03, 0.5, cx2, cy2 - 0.4, cz2, PAL.metal));
+        G.push(boxG(0.3, 0.5, 0.24, cx2, cy2 - 0.08, cz2, PAL.flagCharB, { rx: 0.2 }));  // 笼中蜷尸
+      };
+      cage(gx - 0.9, 2.75, 4.3);
+      cage(gx + 0.6, 2.9, 4.15);
+      G.push(boxG(0.16, 0.16, 1.6, gx - 0.1, 3.62, 3.6, PAL.wood));                      // 探出矮墙的悬臂
+      G.push(cylG(0.015, 0.015, 0.6, 4, gx - 0.1, 3.3, 3.15, PAL.metal));               // 吊链
+      G.push(boxG(0.3, 0.8, 0.28, gx - 0.1, 2.7, 3.15, PAL.flagCharB, { rx: 0.14, rz: -0.05, jitter: 0.1 })); // 蜷缩尸囊
+      G.push(boxG(0.09, 0.42, 0.09, gx - 0.12, 2.1, 3.12, PAL.bone, { rx: 0.25 }));     // 垂腿骨
+      const crow = (bx2: number, bz2: number, a2: number): void => {                     // 栖梁乌鸦剪影 ×4
+        G.push(boxG(0.22, 0.12, 0.1, bx2, 3.86, bz2, PAL.bird, { ry: a2 }));
+        G.push(boxG(0.09, 0.08, 0.08, bx2 + Math.sin(a2) * 0.13, 3.94, bz2 + Math.cos(a2) * 0.13, PAL.bird, { ry: a2 }));
+        G.push(boxG(0.3, 0.03, 0.16, bx2, 3.9, bz2, PAL.bird, { ry: a2 + 0.3 }));
+      };
+      crow(gx - 1.2, 4.3, 0.4); crow(gx - 0.3, 4.42, 2.6); crow(gx + 0.7, 4.25, 3.8); crow(gx + 1.35, 4.38, 1.2);
+      const gull = (bx2: number, by2: number, bz2: number, a2: number): void => {        // 盘旋群鸟剪影（V 字双翅）
+        G.push(boxG(0.16, 0.035, 0.05, bx2, by2, bz2, PAL.bird, { ry: a2 }));
+        G.push(boxG(0.6, 0.03, 0.12, bx2, by2 + 0.03, bz2, PAL.bird, { ry: a2, rz: 0.4 }));
+        G.push(boxG(0.6, 0.03, 0.12, bx2, by2 + 0.03, bz2, PAL.bird, { ry: a2 + Math.PI / 2, rz: 0.4 }));
+      };
+      gull(gx - 6.5, 6.2, 2.5, 0.7); gull(gx - 3.0, 7.4, 4.8, 2.1); gull(gx + 1.8, 6.8, 1.2, 4.0); gull(gx + 5.2, 8.1, 6.0, 1.4);
+    }
+    // —— 地标 ③：城门楼过洞（~x=-60）：双塔夹峙 + 过洞拱 + 门楼体量（长廊的视觉压缩点）——
+    if (ci === 3) {
+      const gx = -60;
+      for (const s of [-1, 1]) {
+        G.push(cylG(1.75, 1.95, 8.5, 14, gx, 4.25, s * 4.75, PAL.stoneDark, { jitter: 0.07 }));
+        G.push(cylG(1.98, 1.98, 0.45, 14, gx, 8.7, s * 4.75, PAL.stoneMid));
+        if (s < 0) {                                                                     // 北塔完好锥顶 + 塔窗残烛
+          G.push(coneG(2.3, 2.8, 12, gx, 10.3, s * 4.75, PAL.stoneDeep));
+          glowGeoms.push(boxG(0.18, 0.6, 0.12, gx - 1.85, 6.0, s * 4.75, 0x5a4a33));
+          glowGeoms.push(boxG(0.14, 0.45, 0.12, gx - 1.8, 7.2, s * 4.4, 0x4a3e2e));
+        } else {                                                                         // 南塔断顶残垛
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 + 0.4;
+            G.push(boxG(0.55, 0.5 + rnd() * 0.5, 0.5, gx + Math.cos(a) * 1.5, 8.95, s * 4.75 + Math.sin(a) * 1.5, PAL.stone, { ry: a, jitter: 0.15 }));
+          }
+          G.push(boxG(1.5, 0.3, 1.5, gx, 9.2, s * 4.75, PAL.stoneMid, { rz: 0.2, ry: 0.5 }));
+        }
+        G.push(boxG(0.9, 6.5, 2.6, gx, 3.25, s * 3.55, PAL.stoneDeep, { jitter: 0.09 })); // 塔-走廊接墙
+      }
+      const R = 2.9, yc = 4.1;                                                           // 过洞拱券（跨走廊）
+      for (let k = 0; k <= 14; k++) {
+        const a = 0.1 + (Math.PI - 0.2) * (k / 14);
+        G.push(boxG(0.8, 0.6, 0.58, gx, yc + Math.sin(a) * R, Math.cos(a) * R, PAL.stone, { rx: Math.PI / 2 - a, jitter: 0.08 }));
+      }
+      G.push(boxG(1.5, 2.4, 6.6, gx, 6.4, 0, PAL.stoneDark, { jitter: 0.08 }));          // 拱上墙体
+      G.push(boxG(1.7, 0.5, 7.0, gx, 7.8, 0, PAL.stoneMid));                             // 门楼压顶
+      for (let x = gx - 3; x <= gx + 3; x += 1.2) if (rnd() < 0.8)                        // 门楼城齿
+        G.push(boxG(0.6, 0.55 + rnd() * 0.3, 0.45, x, 8.3, rnd() < 0.5 ? -3.3 : 3.3, PAL.stone, { jitter: 0.12 }));
+      G.push(boxG(0.9, 0.24, 0.14, gx, 5.2, -3.28, PAL.goldDim));                         // 拱心石徽记（暗金残纹）
+      G.push(boxG(0.5, 0.16, 0.1, gx, 5.0, -3.26, PAL.goldDim, { ry: 0.3 }));
+      rubble(G, gx + 2.2, 1.85, 0.5, 5); rubble(G, gx - 2.4, -1.9, 0.5, 5);
+    }
+    // —— 地标 ④：龙骨翼残像（~x=-21，玻尔多房前致敬）：贴北墙的骨翼扇骨 + 蜷卧头骨 ——
+    if (ci === 4) {
+      const dx = -21, sparX = dx - 2.6, sparY = 2.6;
+      G.push(cylG(0.1, 0.16, 6.4, 7, sparX, sparY, -2.28, PAL.bone, { rz: 0.62, jitter: 0.12 })); // 主翼骨（斜上）
+      for (let i = 0; i < 6; i++) {
+        const t = i / 5;
+        const bx = sparX + Math.sin(0.62) * 6.4 * (0.18 + t * 0.62);
+        const by = sparY + Math.cos(0.62) * 6.4 * (0.18 + t * 0.62) * 0.9;
+        const ribL = 2.6 - t * 1.4, ribA = 1.35 - t * 0.85;
+        G.push(cylG(0.03, 0.06, ribL, 5, bx, by, -2.3, PAL.bone, { rz: ribA, ry: rr(-0.15, 0.15), jitter: 0.15 }));
+        G.push(dodG(0.07, bx + Math.cos(ribA) * ribL * 0.5, by + Math.sin(ribA) * ribL * 0.5, -2.3, PAL.bone, { ry: rnd() * 3 })); // 指节骨
+      }
+      G.push(boxG(0.04, 2.2, 0.6, dx + 1.2, 3.3, -2.3, 0x2a2620, { rz: 1.1 }));          // 翼膜残影（暗革色薄板）
+      G.push(boxG(0.04, 1.7, 0.5, dx + 0.2, 2.7, -2.28, 0x2a2620, { rz: 1.3 }));
+      G.push(boxG(1.15, 0.62, 0.7, dx - 1.7, 0.5, -2.5, PAL.bone, { ry: 0.5, jitter: 0.1 })); // 头骨
+      G.push(boxG(0.6, 0.4, 0.44, dx - 1.1, 0.45, -2.28, PAL.bone, { ry: 0.5 }));        // 吻部
+      G.push(boxG(0.18, 0.2, 0.2, dx - 1.35, 0.62, -2.2, PAL.dark, { ry: 0.5 }));        // 眼窝暗洞
+      G.push(coneG(0.09, 0.5, 5, dx - 2.2, 0.95, -2.62, PAL.bone, { rz: 0.8, ry: 0.5 })); // 断角
+      rubble(G, dx - 1.0, -1.9, 0.6, 6);
+    }
     // —— B2 末段（第 5 块）：挂墙火盆拱门 + 雾门收头门墩 + 门楼残垛 ——
     if (ci === 4) {
       for (const s of [-1, 1]) {
@@ -681,6 +884,20 @@ export function buildHighWall(scene: THREE.Scene): {
   // ================================================================
   // D1 教宗月坛（x 18→63）：下沉月纹廊 + 封印门（监视者胜后开）
   // ================================================================
+  // 月尘（D 区专属）：悬浮冷蓝微粒，逆重力缓升——月坛前导的仪式空气感
+  const DUST_N = 64;
+  const dustPos = new Float32Array(DUST_N * 3);
+  const dustVy = new Float32Array(DUST_N);
+  const dustPh = new Float32Array(DUST_N);
+  for (let i = 0; i < DUST_N; i++) {
+    dustPos[i * 3] = rr(D_CORR.minX + 0.5, D_CORR.maxX + 0.5);
+    dustPos[i * 3 + 1] = rr(0.15, 4.8);
+    dustPos[i * 3 + 2] = rr(-2.1, 2.1);
+    dustVy[i] = rr(0.06, 0.2);
+    dustPh[i] = rnd() * Math.PI * 2;
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
   {
     const G: THREE.BufferGeometry[] = [];
     const x0 = D_CORR.minX, x1 = D_CORR.maxX, L = x1 - x0, cx = (x0 + x1) / 2;
@@ -693,6 +910,16 @@ export function buildHighWall(scene: THREE.Scene): {
     for (let x = x0 + 2; x <= x1 - 2; x += 6) {
       for (const s of [-1, 1]) G.push(boxG(0.55, 3.9, 0.4, x, 1.95, s * 2.56, PAL.stoneMid, { jitter: 0.08 }));  // 壁柱
       G.push(boxG(0.42, 0.36, 5.9, x, 4.32, 0, PAL.stoneMid, { jitter: 0.06 }));                                 // 横拱肋
+    }
+    // —— 冷蓝化：壁柱间幽蓝箭缝（月色经文感；纯 emissive 不占灯）——
+    for (let x = x0 + 5; x <= x1 - 4; x += 8) {
+      for (const s of [-1, 1]) {
+        G.push(boxG(0.34, 1.7, 0.18, x, 2.55, s * 2.34, PAL.stoneMid, { jitter: 0.08 }));   // 缝框 ×2 + 楣/台
+        G.push(boxG(1.0, 0.3, 0.18, x, 3.46, s * 2.34, PAL.stoneMid));
+        G.push(boxG(1.0, 0.3, 0.18, x, 1.64, s * 2.34, PAL.stoneMid));
+        glowGeoms.push(boxG(0.16, 1.0, 0.05, x, 2.55, s * 2.4, PAL.sealBlue));              // 缝内幽蓝月光
+        G.push(boxG(0.09, 0.48, 0.09, x, 2.55, s * 2.38, PAL.stoneDeep));                   // 直棂
+      }
     }
     // —— 地面：暗色板 + 月纹中线 + 双月徽 ——
     G.push(boxG(L, 0.2, 5.2, cx, -0.12, 0, PAL.mortar));
@@ -711,6 +938,15 @@ export function buildHighWall(scene: THREE.Scene): {
     G.push(boxG(0.8, 0.55, 5.6, x0, 4.75, 0, PAL.stone));
     for (const s of [-1, 1]) G.push(boxG(0.22, 3.8, 0.3, x0 + 0.15, 1.9, s * 2.1, PAL.goldDim));
     G.push(boxG(0.22, 0.3, 4.3, x0 + 0.15, 3.95, 0, PAL.goldDim));
+    // —— 封印仪式强化：符文光环（emissive 环 + 八枚符刻）+ 门侧幽蓝烛芯 + 门槛月石 ——
+    glowGeoms.push(paint(new THREE.RingGeometry(2.45, 2.62, 44).rotateY(Math.PI / 2).translate(x0 + 0.55, 2.3, 0), PAL.rune));
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      glowGeoms.push(boxG(0.1, 0.34, 0.1, x0 + 0.5, 2.3 + Math.sin(a) * 2.53, Math.cos(a) * 2.53, i % 2 ? PAL.rune : 0xbdd3f0));
+    }
+    glowGeoms.push(boxG(0.06, 0.5, 0.06, x0 + 0.55, 1.05, 2.02, PAL.sealBlue));           // 门侧烛芯 ×2
+    glowGeoms.push(boxG(0.06, 0.5, 0.06, x0 + 0.55, 1.05, -2.02, PAL.sealBlue));
+    G.push(boxG(1.4, 0.03, 4.2, x0 + 0.7, 0.045, 0, PAL.moonPale));                       // 门槛月石带
     // —— 月坛烛台 ×2（火光强调色，PointLight 预算内新增 2 盏；火焰共享一个合批 mesh）——
     for (const [tx, tz] of [[30, -1.98], [50, 1.98]] as const) {
       for (let k = 0; k < 3; k++) {
@@ -733,6 +969,13 @@ export function buildHighWall(scene: THREE.Scene): {
     );
     veil.renderOrder = 4;
     root.add(veil);
+    // 月尘微粒（D 区）：Points + 位置数组直写，缓升循环（update 驱动）
+    const dust = new THREE.Points(dustGeo, track(new THREE.PointsMaterial({
+      size: 0.075, map: softDiscTexture(), color: 0xaebfe0, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })));
+    dust.frustumCulled = false;
+    root.add(dust);
   }
 
   // ================================================================
@@ -777,6 +1020,10 @@ export function buildHighWall(scene: THREE.Scene): {
     G.push(cylG(13.4, 16.2, 14, 28, cx, -7, 0, PAL.cliff, { jitter: 0.12 }));
     root.add(batch(G, stoneMat, "both"));
   }
+
+  // 静态自发光批（箭缝月光/塔窗烛光/哨位火光/D 幽蓝/封印符文；fog 衰减 + 整批呼吸）
+  const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92 }));
+  root.add(batch(glowGeoms, glowMat, "none"));
 
   // 炭芯合批（emissive 呼吸）
   const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.4, roughness: 1, flatShading: true }));
@@ -831,20 +1078,21 @@ export function buildHighWall(scene: THREE.Scene): {
     root.add(new THREE.Points(g, winMat));
   }
 
-  // ---------------- 地面雾片（Canvas 柔光贴图，漂移 + 呼吸；沿长廊布 5 片） ----------------
+  // ---------------- 地面雾片（Canvas 柔光贴图，漂移 + 呼吸；沿长廊布 6 片，暖→冷渐变） ----------------
   const mists: MistRef[] = [];
   {
     const tex = softDiscTexture();
     const plane = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
     const defs = [
-      { x: -276, y: 0.28, z: 0.4, s: 5.0, o: 0.06 },
-      { x: -250, y: 0.22, z: -0.6, s: 4.0, o: 0.05 },
-      { x: -198, y: 0.22, z: -0.7, s: 4.2, o: 0.05 },
-      { x: -88, y: 0.24, z: 0.6, s: 4.5, o: 0.05 },
-      { x: -20, y: 0.3, z: 0.6, s: 3.8, o: 0.055 },
+      { x: -276, y: 0.28, z: 0.4, s: 5.0, o: 0.06, c: 0x2a241c },   // 篝火暖雾
+      { x: -250, y: 0.22, z: -0.6, s: 4.0, o: 0.05, c: 0x28241e },
+      { x: -198, y: 0.22, z: -0.7, s: 4.2, o: 0.05, c: 0x232b3a },
+      { x: -88, y: 0.24, z: 0.6, s: 4.5, o: 0.05, c: 0x212a3b },
+      { x: -20, y: 0.3, z: 0.6, s: 3.8, o: 0.055, c: 0x1f2839 },
+      { x: 40, y: 0.26, z: 0, s: 4.6, o: 0.05, c: 0x1d2a44 },      // D 月坛冷雾
     ];
     for (const d of defs) {
-      const mat = track(new THREE.MeshBasicMaterial({ map: tex, color: 0x232b3a, transparent: true, opacity: d.o, depthWrite: false }));
+      const mat = track(new THREE.MeshBasicMaterial({ map: tex, color: d.c, transparent: true, opacity: d.o, depthWrite: false }));
       const mesh = new THREE.Mesh(plane, mat);
       mesh.position.set(d.x, d.y, d.z);
       mesh.scale.setScalar(d.s);
@@ -908,6 +1156,38 @@ export function buildHighWall(scene: THREE.Scene): {
       m.mesh.position.z = m.bz + Math.cos(animT * m.spz + m.ph * 1.7) * m.dz;
       m.mesh.rotation.z += 0.0004;
       m.mat.opacity = m.o + Math.sin(animT * 0.21 + m.ph) * 0.028;
+    }
+    // D 月尘：缓升 + 侧摆（触顶回卷到地面；逆重力的仪式感）
+    if (dt > 0) {
+      for (let i = 0; i < DUST_N; i++) {
+        const j = i * 3;
+        dustPos[j + 1] += dustVy[i] * dt;
+        dustPos[j] += Math.sin(animT * 0.4 + dustPh[i]) * 0.14 * dt;
+        dustPos[j + 2] += Math.cos(animT * 0.33 + dustPh[i] * 1.3) * 0.1 * dt;
+        if (dustPos[j + 1] > 5) {
+          dustPos[j] = rr(D_CORR.minX + 0.5, D_CORR.maxX + 0.5);
+          dustPos[j + 1] = 0.15;
+          dustPos[j + 2] = rr(-2.1, 2.1);
+        }
+      }
+      (dustGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    }
+    // 雾色/密度沿 x 渐变：篝火暖 → 月坛冷（camX 由天穹随行回调逐帧记录）
+    {
+      const fk = Math.min(1, Math.max(0, (camX - B_CORR.minX) / 320));
+      (scene.fog as THREE.FogExp2).color.copy(fogWarm).lerp(fogCold, fk);
+      (scene.fog as THREE.FogExp2).density = 0.026 + 0.014 * fk;   // 首段雾更透（走廊可读），东段渐浓
+    }
+    // 自发光批呼吸（箭缝月光/封印符文的月之脉动）
+    glowMat.opacity = 0.86 + Math.sin(animT * 2.2) * 0.1;
+    // 远雷闪：~11.3s 周期双闪——天穹提亮 + 流云增亮 + 半天光瞬提（远处风暴的静默闪电）
+    {
+      const strobe = (u: number): number => (u > 0 && u < 0.12 ? 1 - u / 0.12 : 0);
+      const lp = animT % 11.3;
+      const lf = strobe(lp) + 0.65 * strobe(lp - 0.26);
+      skyMat.color.setScalar(1 + 0.55 * lf);
+      hemiLight.intensity = HEMI_BASE + 1.6 * lf;
+      for (const c of clouds) c.mat.color.copy(c.base).multiplyScalar(1 + 0.7 * lf);
     }
   };
 
