@@ -84,27 +84,54 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   },
 };
 
-/** 场景布怪预设（game 接线 / 关卡脚本用；spawn 也接受裸 kind 字符串） */
+/** 场景布怪预设（T8：位置入数据表，zone 闸门按 progress.zoneUnlocks 过滤；spawn 也接受裸 kind 字符串） */
 export interface EnemySpawnSpec {
   kind: EnemyKind;
-  facing?: number;   // 初始朝向 rad（yaw=atan2(x,z)，同角色约定）
-  patrol?: number;   // 覆盖巡逻半径（默认取数值表）
+  at?: [number, number];   // [x, z] 世界坐标（y 恒 0）；缺省由调用方给
+  facing?: number;         // 初始朝向 rad（yaw=atan2(x,z)，同角色约定）
+  patrol?: number;         // 覆盖巡逻半径（默认取数值表）
+  zone?: string;           // 闸门：zoneUnlocks 含此区才刷（如 "cemetery:C"）
 }
 
-/** 各场景推荐布点（示例集；关卡流程由主线程接线时取用/扩展） */
+/**
+ * 各场景布点（m4 §3 分区详设；走廊每 25-40m 一遭遇，深处区随解锁追加）
+ * 口径：x 前进轴、玩家自西(−x)向东来 → 默认朝东 facing=π/2；部分背对玩家（背刺诱饵，DS3 惯例）
+ */
 export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
+  // 墓地 A 区：A2 墓园径 活尸×5 + 侍从×1（设计表）；C 区：法兰暗廊 活尸×2（葛瑞克胜后）
   cemetery: [
-    { kind: "hollow", facing: Math.PI / 2 },
-    { kind: "hollow", facing: Math.PI / 2 },
+    { kind: "hollow", at: [-126, 1.2], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-116, -1.4], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-95, 3.5], facing: -Math.PI / 2 },   // 袋形墓苑 I，背对来路
+    { kind: "hollow", at: [-70, 1.0], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-45, 2.0], facing: Math.PI / 2 },    // 袋形墓苑 II
+    { kind: "squire", at: [-22, -1.2], facing: Math.PI / 2 },   // 雾门前径侍从
+    { kind: "hollow", at: [20, 0.9], facing: -Math.PI / 2, zone: "cemetery:C" },
+    { kind: "hollow", at: [34, -1.1], facing: -Math.PI / 2, zone: "cemetery:C" },
   ],
+  // 高墙 B 区 278m 长廊：三簇遭遇 + 雾门前三连（既有）；D 区月坛前导（监视者胜后）
   highwall: [
-    { kind: "squire", facing: -Math.PI / 2 },
-    { kind: "crow", facing: -Math.PI / 2 },
-    { kind: "hollow", facing: -Math.PI / 2 },
+    { kind: "hollow", at: [-262, 0.8], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-244, -1.0], facing: Math.PI / 2 },
+    { kind: "crow", at: [-205, 2.0], facing: Math.PI / 2 },
+    { kind: "squire", at: [-165, -0.8], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-128, 1.1], facing: Math.PI / 2 },
+    { kind: "crow", at: [-90, -2.0], facing: Math.PI / 2 },
+    { kind: "squire", at: [-55, 0.6], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-30, -1.1], facing: Math.PI / 2 },
+    { kind: "squire", at: [-8.5, 0.4], facing: -Math.PI / 2 },
+    { kind: "crow", at: [-10.2, 2.2], facing: -Math.PI / 2 },
+    { kind: "hollow", at: [-6.6, -1.2], facing: -Math.PI / 2 },
+    { kind: "squire", at: [28, 0.8], facing: -Math.PI / 2, zone: "highwall:D" },
+    { kind: "squire", at: [44, -0.9], facing: -Math.PI / 2, zone: "highwall:D" },
+    { kind: "hollow", at: [55, 1.0], facing: -Math.PI / 2, zone: "highwall:D" },
   ],
+  // 城垣 E 区：之字坡活尸×2 + 乌鸦×1 + 雾门侍从；E4 接肢教堂暗廊（玛尔基特胜后）
   stormveil: [
-    { kind: "hollow", facing: Math.PI / 2 },
-    { kind: "hollow", facing: Math.PI / 2 },
-    { kind: "squire", facing: -Math.PI / 2 },
+    { kind: "hollow", at: [-31, 4.0], facing: Math.PI / 2 },
+    { kind: "hollow", at: [-24, -3.5], facing: Math.PI / 2 },
+    { kind: "crow", at: [-17, -2.0], facing: Math.PI / 2 },
+    { kind: "squire", at: [-11, 1.5], facing: -Math.PI / 2 },
+    { kind: "hollow", at: [17, -1.0], facing: -Math.PI / 2, zone: "stormveil:E4" },
   ],
 };

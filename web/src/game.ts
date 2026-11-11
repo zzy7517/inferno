@@ -203,18 +203,14 @@ export class Game {
 
   // ---------------- Boss 生命周期（M2：进度线选人 / 旅行销毁重建） ----------------
   /** 按场景预设布怪（旅行/篝火休息/构造时重刷；T8 将迁入关卡表） */
+  /** 按场景预设表布怪（T8：位置入 ENEMY_PRESETS 数据表；zone 字段按进度闸门过滤，未解锁深区别刷） */
   private spawnEnemies(): void {
     this.enemies.clear();
     const specs = ENEMY_PRESETS[this.sceneId];
     if (!specs?.length) return;
-    // T8 前的硬编码布点表：坐标对齐 m4 扩建后地图（墓地 A2 墓园径/袋形墓苑、城垣之字坡）
-    const spots: Record<string, THREE.Vector3[]> = {
-      cemetery: [new THREE.Vector3(-45.0, 0, 1.9), new THREE.Vector3(-18.5, 0, -1.2)],
-      highwall: [new THREE.Vector3(-8.5, 0, 0.4), new THREE.Vector3(-10.2, 0, 2.2), new THREE.Vector3(-6.6, 0, -1.2)],
-      stormveil: [new THREE.Vector3(-30.0, 0, 4.0), new THREE.Vector3(-16.0, 0, -2.0), new THREE.Vector3(-11.0, 0, 1.5)],
-    };
-    for (const [i, p] of (spots[this.sceneId] ?? []).entries()) {
-      if (i < specs.length) this.enemies.spawn(specs[i], p);
+    for (const p of specs) {
+      if (p.zone && !this.progress.zoneUnlocks.includes(p.zone)) continue;
+      this.enemies.spawn(p, new THREE.Vector3(p.at?.[0] ?? 0, 0, p.at?.[1] ?? 0));
     }
   }
 
