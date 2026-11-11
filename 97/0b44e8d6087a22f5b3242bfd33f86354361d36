@@ -1,0 +1,29 @@
+docs/adr/0006-art-style-dark-fantasy.md
+  s_4ee24ae318192e::t_438343a885429a 1-11
+docs/adr/0005-original-dark-fantasy-ip.md
+  s_4ee24ae318192e::t_6c13f94e1b9399 1-11
+GLOSSARY.md
+  s_4ee24ae318192e::t_8ed8758c9d7a7b 3-5
+README.md
+  s_4ee24ae318192e::t_e7a5412a648543 3,5,15-17,22,39-40
+docs/ROADMAP.md
+  s_4ee24ae318192e::t_1aa2085f469bc5 5-6,46-51
+docs/adr/0007-v1-scope-singleplayer-desktop.md
+  s_4ee24ae318192e::t_dde1ecfa98faea 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "970b44e8d6087a22f5b3242bfd33f86354361d36",
+  "prompts": {},
+  "sessions": {
+    "s_4ee24ae318192e": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1ca12-bb59-73b4-937e-277fd4d673ea",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
