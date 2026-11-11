@@ -1,0 +1,21 @@
+README.md
+  s_6adfea1a8382d2::t_6199ba0bf0fe01 43-45
+docs/design/m2-soul-loop.md
+  s_6adfea1a8382d2::t_7ca1a02de41483 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "3a323fccaff67b4417d15fad5e8c1a42e9333b3f",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
