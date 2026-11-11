@@ -1,0 +1,26 @@
+docs/design/combat-feel.md
+  s_4ee24ae318192e::t_c66cf0305596ab 19,26
+docs/adr/0008-combat-stamina-sword-shield.md
+  s_4ee24ae318192e::t_ef754e37d8aa66 1-11
+GLOSSARY.md
+  s_4ee24ae318192e::t_8375f262ff4962 5,49-59
+  s_4ee24ae318192e::t_890ab7d5582b1f 60
+docs/ROADMAP.md
+  s_4ee24ae318192e::t_79a78ef361d7df 46,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d661b30c07c8f96cb5ff12f05cf8ece39246712d",
+  "prompts": {},
+  "sessions": {
+    "s_4ee24ae318192e": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1ca12-bb59-73b4-937e-277fd4d673ea",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
