@@ -111,6 +111,8 @@ export abstract class BossBase {
   }
   /** reset 时恢复外观（网格可见性/材质/初始姿态），基类随后调用 applyPose */
   protected resetVisuals(): void { }
+  /** 致死拦截：返回 true 则本次不死亡（深渊监视者一阶段"复活"改用 transform 状态演出） */
+  protected onLethal(): boolean { return false; }
 
   // ---------------- 公共 API ----------------
   pull(): void {
@@ -134,7 +136,10 @@ export abstract class BossBase {
     if (this.state === "statue" || this.state === "dead") return { died: false, staggered: false };
     const mult = this.state === "stagger" || this.state === "parried" ? this.cfg.staggerMul : 1;
     this.hp = Math.max(0, this.hp - dmg * mult);
-    if (this.hp <= 0) { this.die(); return { died: true, staggered: false }; }   // 致死优先于阶段转换
+    if (this.hp <= 0) {
+      if (this.onLethal()) return { died: false, staggered: false };   // 子类拦截致死（监视者复活演出）
+      this.die(); return { died: true, staggered: false };             // 致死优先于阶段转换
+    }
     if (this.phase === 1 && this.hp <= this.cfg.hp * this.cfg.phase2At && this.state !== "transform") {
       this.state = "transform"; this.t = 0; this.sub = "idle";
       AU.transform();
