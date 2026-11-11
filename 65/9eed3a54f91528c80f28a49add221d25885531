@@ -1,0 +1,25 @@
+web/scripts/t3-probe.mjs
+  s_6adfea1a8382d2::t_c031c965a511c4 164,178
+  s_6adfea1a8382d2::t_4fd87cc9da4dcd 67,69,72-73,76,82-84
+docs/design/m4-level-flow.md
+  s_6adfea1a8382d2::t_6cb754f9b4083b 148,154
+  s_6adfea1a8382d2::t_39e921c5f22173 155
+web/src/game.ts
+  s_6adfea1a8382d2::t_e31f10bcbc1fd0 108-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "659eed3a54f91528c80f28a49add221d25885531",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
