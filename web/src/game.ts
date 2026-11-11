@@ -588,7 +588,25 @@ export class Game {
       if (this.prevPx > gateX) p.x = Math.max(p.x, gateX + 0.4);
       else p.x = Math.min(p.x, gateX - 0.4);
     }
-    if (p.x < gateX) {
+    if (this.anchors.zones?.length) {
+      // v2 逐区钳制：西→东找当前区；未解锁区在衔接处成单向墙
+      const zs = this.anchors.zones;
+      let zi = 0;
+      for (let i = 0; i < zs.length; i++) if (p.x >= zs[i].minX) zi = i;
+      const zone = zs[zi];
+      const unlocked = this.progress.zoneUnlocks.includes(zone.id);
+      if (!unlocked && zi > 0) p.x = Math.min(p.x, zs[zi - 1].maxX - 0.4);   // 推回上一区东界
+      if (zone.kind === "corridor") {
+        const half = zone.half ?? 1.45;
+        p.z = Math.max(-half, Math.min(half, p.z));
+        p.x = Math.max(zone.minX, Math.min(zone.maxX, p.x));
+      } else if (zone.center && zone.r) {
+        const cx = p.x - zone.center.x, cz = p.z - zone.center.z;
+        const maxR = zone.r - 0.9;
+        const r = Math.hypot(cx, cz);
+        if (r > maxR) { const k = maxR / r; p.x = zone.center.x + cx * k; p.z = zone.center.z + cz * k; }
+      }
+    } else if (p.x < gateX) {
       p.x = Math.max(p.x, this.anchors.corridorMinX);
       p.z = Math.max(-1.45, Math.min(1.45, p.z));
     } else {

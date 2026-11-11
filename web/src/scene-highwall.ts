@@ -18,6 +18,20 @@ export interface SceneAnchors {
   bossArena: THREE.Vector3;
   arenaRadius: number;
   corridorMinX: number;
+  /** v2（m4 T2）：分区布局。缺省时按 legacy 单走廊+单竞技场钳制（上方六字段）。
+   *  zones 西→东有序；zone.id 与 progress.ZONE_OF 对齐（"cemetery:A" 等），
+   *  未解锁区域在衔接 x 处形成单向墙（clampWorld），T6 捷径/门可视化在此基础上扩展。 */
+  zones?: SceneZone[];
+}
+
+export interface SceneZone {
+  id: string;                       // "cemetery:A" / "stormveil:E4" …（progress.zoneUnlocks 键）
+  kind: "corridor" | "arena";
+  minX: number;                     // x 区间（西界）
+  maxX: number;                     // x 区间（东界=与下一区衔接门）
+  half?: number;                    // corridor：z 半宽（默认 1.45）
+  center?: THREE.Vector3;           // arena：圆心（y=0）
+  r?: number;                       // arena：半径（钳制用 r-0.9）
 }
 
 /** 派生色板：石色系中间阶（ADR-0006 纪律）+ 夜空冷灰蓝（压低饱和度）；强调色仅 ember/gold 系 */
