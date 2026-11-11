@@ -211,6 +211,9 @@ export function buildCemetery(scene: THREE.Scene): {
   // C1.minX = 门B-0.4：未解锁推回值(上一区 maxX-0.4) 恰落在本带 minX 上，墙稳定在 A 东界-0.4。
   const GATE_X = -10, A3C = -1.5, A3R = 12, DOOR_B = A3C + (A3R - 0.9);   // 门 B = 9.6（A 区东界）
   const C2C = 57, C2R = 12, C2_W = C2C - (C2R - 0.9);                     // C2 西鼻 = 45.9
+  const D2C = 94, D2R = 14, D2_W = D2C - (D2R - 0.9);                     // D2 西鼻 = 80.9（碎星战场 d28）
+  // C2 东界统一用「可走鼻」c+r-0.9（与 A3 同约定）：衔接带 minX = 上区可走鼻-0.4，越带零跳变、锁定墙恰落本带 minX
+  const C2_E = C2C + (C2R - 0.9);                                         // C2 东鼻 = 68.1
   const HALF = 2.75, WALL_Z = 3.25;                                       // 钳制半宽 / 墙心 z
   const zones: SceneZone[] = [
     { id: "cemetery:A", kind: "corridor", minX: -142, maxX: -101, half: HALF },                                  // A1 台地 + A2 西径
@@ -220,7 +223,9 @@ export function buildCemetery(scene: THREE.Scene): {
     { id: "cemetery:A", kind: "corridor", minX: -39, maxX: GATE_X, half: HALF },                                 // A2 东径 → 雾门
     { id: "cemetery:A", kind: "arena", minX: GATE_X, maxX: DOOR_B, center: new THREE.Vector3(A3C, 0, 0), r: A3R },// A3 古达房 d24
     { id: "cemetery:C", kind: "corridor", minX: DOOR_B - 0.4, maxX: C2_W, half: HALF },                          // C1 法兰哨路 36.3m
-    { id: "cemetery:C", kind: "arena", minX: C2_W, maxX: C2C + C2R, center: new THREE.Vector3(C2C, 0, 0), r: C2R }, // C2 监视者房 d24
+    { id: "cemetery:C", kind: "arena", minX: C2_W, maxX: C2_E, center: new THREE.Vector3(C2C, 0, 0), r: C2R },   // C2 监视者房 d24
+    { id: "cemetery:D", kind: "corridor", minX: C2_E - 0.4, maxX: D2_W, half: HALF },                            // D1 碎星径 13.2m（监视者胜后）
+    { id: "cemetery:D", kind: "arena", minX: D2_W, maxX: D2C + D2R, center: new THREE.Vector3(D2C, 0, 0), r: D2R }, // D2 碎星战场 d28（拉塔恩）
   ];
   const anchors: SceneAnchors = {
     spawn: new THREE.Vector3(-140.5, 0, 1.4),            // A1 台地西端（来路悬崖封死）
@@ -364,6 +369,7 @@ export function buildCemetery(scene: THREE.Scene): {
   const structW: THREE.BufferGeometry[] = [];   // 西段：A1 台地 + A2 西径 + 墓苑 I + A2 中径
   const structE: THREE.BufferGeometry[] = [];   // 东段：墓苑 II + A2 东径 + 雾门 + A3 古达房 + 门 B
   const structC: THREE.BufferGeometry[] = [];   // C 区：法兰哨路 + 监视者厅
+  const structD: THREE.BufferGeometry[] = [];   // D 区：碎星径 + 碎星战场（拉塔恩）
   const floorW: THREE.BufferGeometry[] = [];
   const floorE: THREE.BufferGeometry[] = [];
 
@@ -371,6 +377,7 @@ export function buildCemetery(scene: THREE.Scene): {
   const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffa14e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
   const coalGeoms: THREE.BufferGeometry[] = [];         // 余烬炭芯（emissive 呼吸，A 区火盆/烛芯）
   const blueGeoms: THREE.BufferGeometry[] = [];         // 法兰冷蓝光芯（C 区灯笼/烛台/门 B 幽光，emissive 呼吸代灯）
+  const purpleGeoms: THREE.BufferGeometry[] = [];       // 重力紫光裂（D 区陨石裂纹/紫徽，emissive 呼吸代灯）
   const flames: FlameRef[] = [];
   const glowLights: { light: THREE.PointLight; ph: number; base: number }[] = [];  // 小光源（烛龛/幽蓝门槛/王座），仅光强呼吸
   const haloGeoms: THREE.BufferGeometry[] = [];          // 冷蓝光晕片（灯龛/门槛/烛台，additive 合一批随 blue 批呼吸）
@@ -838,17 +845,76 @@ export function buildCemetery(scene: THREE.Scene): {
     E.push(paint(new THREE.RingGeometry(9.0, 9.4, 44).rotateX(-Math.PI / 2).translate(C2C, 0.014, 0), 0x1d2129, 0.06));
     for (const [px, pz] of [[14, 1.9], [22, -2.0], [30, 1.8], [38, -1.9], [44, 1.2], [C2C - 6, -5.5], [C2C + 2, 6.2], [C2C + 7.5, -3.0]] as const)
       E.push(paint(new THREE.CircleGeometry(rr(0.55, 1.1), 14).rotateX(-Math.PI / 2).translate(px, 0.021, pz), 0x1b222b, 0.1));   // 病沼湿痕（冷青暗斑）
+    // —— D 区地板：碎星径荒灰石板（焦红渐入）+ D2 战场场地/陨坑焦痕/重力紫徽环 ——
+    {
+      let i = 0;
+      for (let x = C2_E + 0.2; x < D2_W - 0.2; x += 1.15) {
+        const d = Math.min(1, Math.max(0, (x - C2_E) / (D2_W - C2_E)));
+        E.push(boxG(1.06, 0.07, 5.9, x + 0.53, 0.004 + (i % 2) * 0.004, rr(-0.02, 0.02), mix(0x282226, 0x1e1a1c, d), { jitter: 0.07 }));
+        i++;
+      }
+      E.push(paint(new THREE.CircleGeometry(14.2, 52).rotateX(-Math.PI / 2).translate(D2C, 0.001, 0), 0x1b181c, 0.05));      // D2 战场场地（荒灰近黑）
+      E.push(paint(new THREE.RingGeometry(4.2, 4.8, 48).rotateX(-Math.PI / 2).translate(D2C, 0.012, 0), 0x2e2440, 0.08));    // 重力紫徽环（拉塔恩纹）
+      E.push(paint(new THREE.RingGeometry(10.6, 11.2, 48).rotateX(-Math.PI / 2).translate(D2C, 0.014, 0), 0x231d28, 0.07));
+      for (const [cx2, cz2, cr] of [[D2C - 6.5, -5.0, 2.2], [D2C + 5.5, 4.5, 1.7], [D2C + 2.0, -8.0, 1.2], [D2C - 3.0, 8.0, 0.9]] as const) {   // 陨坑焦痕 ×4
+        E.push(paint(new THREE.CircleGeometry(cr, 20).rotateX(-Math.PI / 2).translate(cx2, 0.02, cz2), 0x121014, 0.16));
+        E.push(paint(new THREE.RingGeometry(cr, cr + 0.35, 20).rotateX(-Math.PI / 2).translate(cx2, 0.022, cz2), 0x241d20, 0.12));
+      }
+    }
   }
 
+  // —— D 区石构（碎星战场：C2 东口塌方 → 荒径 → d28 战场；剑冢+陨石+断柱，重力紫 shard 走独立 emissive 批） ——
+  {
+    const D = structD;
+    // D1 荒径墙体（碎星径：残墙更矮更破——被「星坠」砸过的痕迹）
+    wallRun(D, C2_E + 0.2, D2_W - 0.3, 1.7, 2.4);
+    // C2 东口塌方过渡：豁口巨石 + 探出的断梁
+    D.push(dodG(1.6, C2_E + 0.2, 0.8, -1.6, PAL.stoneDeep, { ry: 0.5 }));
+    D.push(dodG(1.1, C2_E + 0.7, 0.5, 1.9, PAL.stoneDeep, { ry: 1.8 }));
+    D.push(boxG(3.4, 0.4, 0.5, C2_E + 1.4, 2.6, -1.2, PAL.stoneMid, { rz: 0.18, ry: 0.3, jitter: 0.1 }));   // 探出断梁
+    rubble(D, C2_E + 2.0, 0.2, 0.6, 6);
+    // D2 环缘残墙（r≈14.1，西口让位 ±28°，随机残缺——比监视者房更残破）
+    for (let i = 0; i < 18; i++) {
+      const a = Math.PI + (Math.PI * 2 * i) / 18;
+      const mouth = Math.cos(a % (Math.PI * 2)) < -0.883;   // 西口 ±28°
+      if (mouth || rnd() < 0.22) continue;
+      const r = rr(13.9, 14.8);
+      D.push(boxG(3.6, rr(1.2, 3.0), 0.5, D2C + Math.cos(a) * r, rr(0.6, 1.5), Math.sin(a) * r, PAL.stoneDark, { ry: -a + Math.PI / 2, jitter: 0.12 }));
+    }
+    // 陨石半埋 ×3（紫纹巨砾——「星坠」的实体证词；裂纹走 purpleGeoms 重力微光）
+    for (const [mx, mz, ms] of [[D2C - 6.5, -5.0, 1.05], [D2C + 5.5, 4.5, 0.85], [D2C + 2.0, -8.0, 0.6]] as const) {
+      D.push(dodG(ms, mx, ms * 0.45, mz, 0x241f2a, { ry: rnd() * 3, rx: rnd() * 0.4 }));
+      for (let k = 0; k < 3; k++)
+        purpleGeoms.push(dodG(ms * 0.16, mx + rr(-ms * 0.5, ms * 0.5), ms * 0.4 + rr(-0.1, 0.2), mz + rr(-ms * 0.5, ms * 0.5), 0x1a1424, { ry: rnd() * 3, rz: rnd() * 3 }));
+    }
+    // 剑冢插地 ×12（碎星祭的献剑——战场遍地）
+    for (let i = 0; i < 12; i++) {
+      const a = rnd() * Math.PI * 2, r = rr(4.5, 11.5);
+      D.push(boxG(0.06, rr(0.8, 1.25), 0.024, D2C + Math.cos(a) * r, 0.45, Math.sin(a) * r, PAL.steel, { ry: rnd() * 3, rz: rr(-0.35, 0.35) }));
+      if (rnd() < 0.4) D.push(boxG(0.16, 0.05, 0.05, D2C + Math.cos(a) * r, 0.62, Math.sin(a) * r, PAL.steel, { ry: rnd() * 3 }));   // 护手残段
+    }
+    // 断柱环 ×5（战前廊柱的残段——高低参差）
+    for (const a of [0.4, 1.7, 2.9, 4.2, 5.4])
+      D.push(cylG(0.34, 0.4, rr(0.8, 2.6), 7, D2C + Math.cos(a) * rr(8.5, 10.5), 0.5, Math.sin(a) * rr(8.5, 10.5), PAL.stoneDeep, { jitter: 0.1 }));
+    // 坠骑残骸（碎星祭的战马与骑士——远景剪影，东北角）
+    D.push(boxG(1.6, 0.55, 0.5, D2C + 7.5, 0.3, -8.5, 0x26222a, { ry: -0.8, jitter: 0.12 }));
+    D.push(boxG(0.5, 0.9, 0.35, D2C + 8.3, 0.45, -8.2, 0x26222a, { ry: -0.5, rz: 0.3 }));
+    // 路缘碎石
+    for (const [rx2, rz2] of [[72, -2.6], [76, 2.7], [79, -2.5]] as const) rubble(D, rx2, rz2, 0.4, 3);
+  }
   root.add(batch(structW, stoneMat, "both"));
   root.add(batch(structE, stoneMat, "both"));
   root.add(batch(structC, stoneMat, "both"));
+  root.add(batch(structD, stoneMat, "both"));
   root.add(batch(floorW, stoneMat, "receive"));
   root.add(batch(floorE, stoneMat, "receive"));
   const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.4, roughness: 1, flatShading: true }));
   root.add(batch(coalGeoms, coalMat, "none"));
   const blueMat = track(new THREE.MeshStandardMaterial({ color: 0x0d1420, emissive: 0x4a6f94, emissiveIntensity: 1.5, roughness: 1, flatShading: true }));
   root.add(batch(blueGeoms, blueMat, "none"));
+  // 重力紫光裂批（D 区碎星战场：陨石裂纹微光——拉塔恩的重力紫，破例强调色同玻尔多冰蓝条款）
+  const purpleMat = track(new THREE.MeshStandardMaterial({ color: 0x120e18, emissive: 0x8a6fd1, emissiveIntensity: 1.1, roughness: 1, flatShading: true }));
+  root.add(batch(purpleGeoms, purpleMat, "none"));
   // 冷蓝光晕批（灯龛/门 B 门槛/烛台；additive 合一批，随 blue 批同相位呼吸——同一盏灯的芯与晕）
   const haloMat = track(new THREE.MeshBasicMaterial({ map: softDiscTexture(), color: 0x6f92b8, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthWrite: false }));
   {
@@ -936,6 +1002,7 @@ export function buildCemetery(scene: THREE.Scene): {
     }
     coalMat.emissiveIntensity = 1.3 + Math.sin(animT * 7.3) * 0.3;          // 炭芯呼吸（A 区余烬）
     blueMat.emissiveIntensity = 1.35 + Math.sin(animT * 4.1 + 1.7) * 0.35;  // 幽蓝呼吸（C 区冷灯，异相位）
+    purpleMat.emissiveIntensity = 0.95 + Math.sin(animT * 2.6 + 0.9) * 0.3; // 重力紫呼吸（D 区陨裂，缓相位）
     for (const gl of glowLights)                                            // 烛龛/幽蓝点光：按基准强度呼吸（无火苗件）
       gl.light.intensity = gl.base * (1 + Math.sin(animT * 8.3 + gl.ph) * 0.18 + Math.sin(animT * 21 + gl.ph * 2) * 0.09);
     for (const m of mists) {                                                 // 病沼薄雾：绕基点缓移（低/高层各自漂）

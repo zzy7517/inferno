@@ -108,6 +108,9 @@ export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
     { kind: "squire", at: [-22, -1.2], facing: Math.PI / 2 },   // 雾门前径侍从
     { kind: "hollow", at: [20, 0.9], facing: -Math.PI / 2, zone: "cemetery:C" },
     { kind: "hollow", at: [34, -1.1], facing: -Math.PI / 2, zone: "cemetery:C" },
+    // D 区碎星径（监视者胜后）：1 活尸 + 1 乌鸦——荒径上的残兵
+    { kind: "hollow", at: [73, 0.9], facing: -Math.PI / 2, zone: "cemetery:D" },
+    { kind: "crow", at: [78, -1.6], facing: Math.PI / 2, zone: "cemetery:D" },
   ],
   // 高墙 B 区 278m 长廊：三簇遭遇 + 雾门前三连（既有）；D 区月坛前导（监视者胜后）
   highwall: [

@@ -48,13 +48,16 @@ async function main() {
   });
   console.log("zones:", JSON.stringify(zones));
   const ids = new Set(zones.map(z => z.id));
-  check("① zones 存在且 A/C 两区", zones.length >= 2 && ids.has("cemetery:A") && ids.has("cemetery:C") && ids.size === 2,
+  check("① zones 存在且 A/C/D 三区", zones.length >= 2 && ids.has("cemetery:A") && ids.has("cemetery:C") && ids.has("cemetery:D") && ids.size === 3,
     `${zones.length} zones, ids=[${[...ids].join(",")}]`);
   const ordered = zones.every((z, i) => i === 0 || zones[i - 1].minX <= z.minX);
   check("① zones 西→东有序", ordered, `minX 序列=[${zones.map(z => z.minX).join(",")}]`);
   const cArena = zones.find(z => z.id === "cemetery:C" && z.kind === "arena");
   check("① C 区监视者竞技场中心/半径入 zones", !!cArena && cArena.r === 12,
     cArena ? `center=(${cArena.cx},${cArena.cz}) r=${cArena.r}` : "missing");
+  const dArena = zones.find(z => z.id === "cemetery:D" && z.kind === "arena");
+  check("① D 区碎星战场中心/半径入 zones", !!dArena && dArena.cx === 94 && dArena.r === 14,
+    dArena ? `center=(${dArena.cx},${dArena.cz}) r=${dArena.r}` : "missing");
   const legacy = await page.evaluate(() => {
     const a = window.__game.anchors;
     return { spawn: [a.spawn.x, a.spawn.y, a.spawn.z], fogGateX: a.fogGate.x, bossArena: [a.bossArena.x, a.bossArena.z], arenaRadius: a.arenaRadius, corridorMinX: a.corridorMinX };
@@ -99,11 +102,10 @@ async function main() {
     // 走廊 z 钳制
     g.prevPx = cX; g.player.pos.set(cX, 0, 9); g.clampWorld();
     out.corridorZ = g.player.pos.z;
-    // C2 Boss 房径向钳制（圆外 0.2m 推回）
-    const c2x = 57, c2r = 12;
-    const bx = c2x + c2r - 0.2;
-    g.prevPx = bx; g.player.pos.set(bx, 0, 0); g.clampWorld();
-    out.arenaEdgeX = g.player.pos.x;
+    // C2 Boss 房径向钳制（斜向圆外推回；正东 68.8 处已属 D1 带——被 D 锁定墙接管是正确行为）
+    const c2x = 57;
+    g.prevPx = 67.5; g.player.pos.set(67.5, 0, 5); g.clampWorld();
+    out.arenaEdgeR = Math.hypot(g.player.pos.x - c2x, g.player.pos.z);
     // C2 圆心可站立
     g.prevPx = c2x; g.player.pos.set(c2x, 0, 0.5); g.clampWorld();
     out.arenaCenterX = g.player.pos.x;
@@ -113,7 +115,7 @@ async function main() {
   check("② C 未解锁被推回 A 东界-0.4", Math.abs(clampProbe.lockedX - (aEast - 0.4)) < 0.05, `lockedX=${clampProbe.lockedX.toFixed(3)} 期望=${(aEast - 0.4).toFixed(3)}`);
   check("② 解锁后 C 走廊可进入", Math.abs(clampProbe.unlockedCorridorX - 30) < 0.05, `x=${clampProbe.unlockedCorridorX}`);
   check("② C 走廊 z 钳制 ±2.75", Math.abs(clampProbe.corridorZ - 2.75) < 0.01, `z=${clampProbe.corridorZ}`);
-  check("② C2 竞技场径向钳制 r-0.9", Math.abs(clampProbe.arenaEdgeX - (57 + 12 - 0.9)) < 0.05, `edgeX=${clampProbe.arenaEdgeX.toFixed(3)} 期望=${(57 + 12 - 0.9).toFixed(3)}`);
+  check("② C2 竞技场径向钳制 r-0.9", Math.abs(clampProbe.arenaEdgeR - (12 - 0.9)) < 0.05, `r=${clampProbe.arenaEdgeR?.toFixed(3)} 期望=${(12 - 0.9).toFixed(3)}`);
   check("② C2 圆心可站立", Math.abs(clampProbe.arenaCenterX - 57) < 0.05, `x=${clampProbe.arenaCenterX}`);
 
   // ---------------- ③ A 区步程 spawn→雾门 ----------------
