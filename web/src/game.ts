@@ -220,8 +220,12 @@ export class Game {
     this.bossId = pick;
     this.bossEntry = BOSSES[pick];
     // 落位：优先取该 Boss 驻区(m4 zones v2)的 arena 圆心（城垣葛瑞克→E5 接肢教堂/高墙沙力万→D 月坛房），
-    // 场景未提供 zones 时回退 legacy bossArena；+1.8m 东偏保持既有雾门-石像间距惯例
-    const zone = this.anchors.zones?.find(z => z.kind === "arena" && z.id === ZONE_OF[pick as BossId]);
+    // 场景未提供 zones 时回退 legacy bossArena；同区多 arena 时取圆心最贴近 legacy bossArena 者
+    // （墓地 cemetery:A 含两座 arena——袋形墓苑 I 在前，find() 首中会错置古达）；+1.8m 东偏保持既有雾门-石像间距惯例
+    const candidates = (this.anchors.zones ?? []).filter(z => z.kind === "arena" && z.id === ZONE_OF[pick as BossId]);
+    const zone = candidates.length
+      ? candidates.reduce((best, z) => (z.center!.distanceTo(this.anchors.bossArena) < best.center!.distanceTo(this.anchors.bossArena) ? z : best))
+      : undefined;
     const bossPos = (zone?.center ?? this.anchors.bossArena).clone().add(new THREE.Vector3(1.8, 0, 0));
     this.boss = this.bossEntry.create(this.scene, this.vfx, bossPos, {
       onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),

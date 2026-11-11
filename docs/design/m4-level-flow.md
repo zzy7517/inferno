@@ -157,15 +157,17 @@
 
 | 票 | 内容 | 主要文件 | 预估行数 | 依赖 | 并行性 |
 |---|---|---|---|---|---|
-| T1 | 进度线 v1.1：6 Boss 顺序 + `zoneUnlocks`/`shortcuts` 字段 + 旧档迁移 | progress.ts、game.ts（BOSSES 挂 stub） | +90 | 无 | ✅ 与法环 Boss 开发并行（registry stub，不碰其文件） |
-| T2 | SceneAnchors v2（zones 数组、多雾门、走廊宽度参数）+ clampWorld 逐区钳制 | scene-highwall.ts（接口）、game.ts | +170 | 无 | ✅ |
-| T3 | 墓地扩建灰盒 80×60（A/C 布局，美术后置） | scene-cemetery.ts | +280 | T2 | ✅ 与 T4 双 subagent（各占一文件） |
-| T4 | 高墙扩建灰盒 80×60（B/D 布局） | scene-highwall.ts | +300 | T2 | ✅ 同上 |
-| T5 | 尺度探针：Playwright 入 devDeps（M2 时未固化），计时/DC/顶点采样 + 基线 JSON | web/e2e/scale.spec.ts、package.json | +150 | 无（先打现状基线） | ✅ |
-| T6 | 捷径系统：电梯/单向门 + progress.shortcuts 持久化 + E 交互 | 新 mechanic.ts、game.ts | +180 | T1、T2 | — |
-| T7 | 城垣场景（灰盒→美术） | 新 scene-stormveil.ts | +900 | T2、法环 Boss 可跑 | — |
-| T8 | 小怪布点接入：zones[].spawns 数据表 + 激活半径 | game.ts、mob-*.ts（并行侧） | +150 | T2、小怪系统合入 | — |
-| T9 | 传送演出：黑场 0.6 s 渐隐 + 区域题字卡 | game.ts、index.html | +60 | 无 | ✅ 随时可做 |
+| T1 ✅ | 进度线 v1.1：6 Boss 顺序 + `zoneUnlocks`/`shortcuts` 字段 + 旧档迁移 | progress.ts、game.ts（BOSSES 挂 stub） | +90 | 无 | ✅ 与法环 Boss 开发并行（registry stub，不碰其文件） |
+| T2 ✅ | SceneAnchors v2（zones 数组、多雾门、走廊宽度参数）+ clampWorld 逐区钳制 | scene-highwall.ts（接口）、game.ts | +170 | 无 | ✅ |
+| T3 ✅ | 墓地扩建（A/C 八分区长卷 ~220×52m，步程 21s；裁决步程优先于 80×60 包围盒） | scene-cemetery.ts | +570 | T2 | ✅ 与 T4 双 subagent（各占一文件） |
+| T4 ✅ | 高墙扩建（B/D 双区 278m 长廊 + 双 d24 Boss 房，步程 43.9s） | scene-highwall.ts | +300 | T2 | ✅ 同上 |
+| T5 ✅ | 尺度探针：Playwright 入 devDeps + 基线 JSON（三场景全刷新） | web/e2e/scale.spec.ts、package.json | +150 | 无 | ✅ |
+| T6 🚧 | 捷径系统：电梯/单向门 + progress.shortcuts 持久化 + E 交互 | 新 mechanic.ts、game.ts | +180 | T1、T2 | 代理进行中 |
+| T7 ✅ | 城垣场景（之字坡/断翼露台/玛尔基特房/接肢教堂 E4 全量美术） | 新 scene-stormveil.ts | +1100 | T2、法环 Boss 可跑 | — |
+| T8 ✅ | 小怪布点接入：ENEMY_PRESETS 位置入表 + zone 闸门（墓地 6-8/高墙 11-14/城垣 4-5） | enemies-config.ts、game.ts | +150 | T2、小怪系统合入 | 激活半径经评估免做（≤14 敌向量运算可忽略） |
+| T9 ✅ | 传送演出：黑场 0.34 s 渐隐 + 区域题字卡 | game.ts、index.html | +60 | 无 | ✅ |
+
+**已落成票外成果**：DS3 直剑战斗全套（6 新招 + R2 蓄力分级 + 17 clip + 精力表）、玛尔基特/葛瑞克真 Boss（法环搬运）、zone 感知 Boss 落位（spawnBoss 按 ZONE_OF 找 arena 区圆心）、首入场景读 lastBonfire（跨会话重生点修复）、DC 预算校准（整机 130，见 4.2）。
 
 **第一批 = T1–T5，立即可开**：T1/T2/T5 三线同时（互不碰文件）；T2 合入后 T3/T4 开双 subagent 并行。T3/T4 仅依赖 T2 的接口约定，可先写布局数据。
 
