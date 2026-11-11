@@ -55,7 +55,7 @@ class Sector {
 }
 
 export class DebugViz {
-  on = false;
+  on = true;
   showBoss = true; showPlayer = true; showIframes = true; showParry = true;
   private bossTel: Sector; private bossAct: Sector; private player: Sector;
   private shock: THREE.Mesh;

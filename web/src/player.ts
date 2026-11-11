@@ -3,11 +3,6 @@ import * as THREE from "three";
 import { P, FEEL, MoveDef } from "./config";
 import { AU } from "./audio";
 
-/** 点按与蓄力的分界。
- * 触控板开启 tap-and-drag 时，一次点按会把左键按住约 300ms 再松开（libinput 默认）。
- * 门槛若落在这段合成按住里，每次点按都会进 0.35 倍速蓄力，连点几次角色就停在原地。 */
-const HEAVY_HOLD = 0.45;
-
 export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "block" | "parry" | "estus" | "hurt" | "guardbreak" | "riposte" | "dead";
 
 export interface PlayerHost {
@@ -89,21 +84,15 @@ export class Player {
   onMouse(button: number, down: boolean): void {
     if (this.state === "dead") return;
     if (button === 0) {
-      if (down) { this.lmbDown = true; this.mouseDownAt = this.elapsed; return; }
-      if (!this.lmbDown) return;
-      this.lmbDown = false;
-      if (this.state === "heavyCharge") this.releaseHeavy();
-      else if (this.elapsed - this.mouseDownAt < HEAVY_HOLD) this.buffer("r1");
+      this.lmbDown = down;
+      if (down) this.mouseDownAt = this.elapsed;
+      else if (this.state === "heavyCharge") this.releaseHeavy();
+      else if (this.elapsed - this.mouseDownAt < 0.25) this.buffer("r1");
     } else if (button === 2) {
-      if (down) { this.rmbDown = true; return; }
-      if (!this.rmbDown) return;
-      this.rmbDown = false;
-      this.exitBlock();
+      this.rmbDown = down;
+      if (!down) this.exitBlock();
     }
   }
-
-  /** 失焦，或移动事件里按钮位已经松开：补一次 mouseup，避免触控板丢掉 mouseup 后左键一直按住 */
-  releaseButton(button: 0 | 2): void { this.onMouse(button, false); }
   private buffer(kind: "r1" | "roll" | "parry" | "estus"): void {
     this.buffered = { kind, at: this.elapsed };
   }
@@ -255,7 +244,7 @@ export class Player {
     switch (this.state) {
       case "idle": {
         // 按住左键 → R2 蓄力
-        if (this.lmbDown && this.elapsed - this.mouseDownAt >= HEAVY_HOLD && this.canSpend(P.r2Cost)) {
+        if (this.lmbDown && this.elapsed - this.mouseDownAt > 0.22 && this.canSpend(P.r2Cost)) {
           this.enter("heavyCharge"); break;
         }
         if (this.rmbDown) { this.enter("block"); break; }
