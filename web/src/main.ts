@@ -8,7 +8,10 @@ async function boot(): Promise<void> {
     fetch("assets/character_frames.json").then(r => r.json()),
   ]);
   AU.init();
-  new Game(gltf, frames.clips as Record<string, Record<string, unknown>>).start();
+  const game = new Game(gltf, frames.clips as Record<string, Record<string, unknown>>);
+  game.start();
+  // 自动化测试/调试钩子（调校台的程序化入口）
+  (window as unknown as Record<string, unknown>).__game = game;
 }
 
 boot().catch(err => {

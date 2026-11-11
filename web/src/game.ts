@@ -1,10 +1,11 @@
-/** Game：世界 + onHit 总线（ADR-0004）+ Demo 流程（m1-demo.md）+ 镜头 + HUD */
+/** Game：世界 + onHit 总线（ADR-0004）+ Demo 流程（m1-demo.md）+ 镜头 + HUD + 调校台 */
 import * as THREE from "three";
-import { COLORS, P, BOSS, CAM, MoveDef } from "./config";
-import { AU } from "./audio";
+import { COLORS, P, BOSS, CAM, FEEL, MoveDef } from "./config";
+import { AU, PAD } from "./audio";
 import { Vfx, buildBonfire, Bonfire, FogGate } from "./vfx";
 import { Boss } from "./boss";
 import { Player } from "./player";
+import { Tuning } from "./tune";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
@@ -20,6 +21,7 @@ export class Game {
   private fog!: FogGate;
   private boss!: Boss;
   private player!: Player;
+  private tune!: Tuning;
 
   private flow: Flow = "intro";
   private camYaw = CAM.yaw;
@@ -30,7 +32,6 @@ export class Game {
   private shakeAmp = 0;
   private hitstop = 0;
   private slowT = 0; private slowScale = 1;
-  private slowDebug = false;
   private elapsed = 0;
   private fightStart = 0;
   private deathDelay = 0;
@@ -74,8 +75,8 @@ export class Game {
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
 
     this.player = new Player(gltf.scene, frames, {
-      hitBoss: (dmg, poise, heavy, point) => this.hitBoss(dmg, poise, heavy, point),
-      onPlayerHurt: (dmg, point) => this.onPlayerHurt(dmg, point),
+      hitBoss: (dmg, poise, feelKey, point) => this.hitBoss(dmg, poise, feelKey, point),
+      onPlayerHurt: (dmg, point, feelKey) => this.onPlayerHurt(dmg, point, feelKey),
       onParrySuccess: point => this.onParry(point),
       onDeath: () => this.onPlayerDeath(),
       bossParryableActive: () => this.boss["sub"] === "act" && this.boss.move?.parryable === true && this.boss.t < (this.boss.move?.active ?? 0) * 0.7,
@@ -94,6 +95,9 @@ export class Game {
       onBossDeath: () => this.onBossDeath(),
       shake: a => this.shake(a),
     });
+
+    // 调校台（` 键开关）：帧数据热调 / 判定可视化 / 逐帧 / 存档
+    this.tune = new Tuning(this.scene, this.player, this.boss);
 
     this.bindInput();
     this.camera.position.set(-16, 3, 4);
@@ -159,8 +163,13 @@ export class Game {
     });
     addEventListener("mousedown", e => this.player.onMouse(e.button, true));
     addEventListener("mouseup", e => this.player.onMouse(e.button, false));
+    const inPanelInput = (e: KeyboardEvent): boolean => {
+      const t = e.target as HTMLElement | null;
+      return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+    };
     addEventListener("keydown", e => {
-      if (e.code === "Space") e.preventDefault();
+      if (e.code === "Space" && !inPanelInput(e)) e.preventDefault();
+      if (inPanelInput(e)) return;   // 面板输入中不触发游戏按键
       this.player.onKey(e.code, true);
       if (e.code === "KeyV" && !e.repeat) {                       // 自由视角开关（鼠标用户）
         if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -168,8 +177,11 @@ export class Game {
       }
       else if (e.code === "KeyQ") this.player.lockOn = !this.player.lockOn;
       else if (e.code === "KeyE") this.interact();
-      else if (e.code === "KeyT") { this.slowDebug = !this.slowDebug; }
+      else if (e.code === "KeyT") this.tune.toggleSlow();         // 慢动作（速度在调校台调）
       else if (e.code === "KeyM") AU.toggleMute();
+      else if (e.code === "Backquote") { e.preventDefault(); this.tune.toggle(); }
+      else if (e.code === "KeyP") { this.tune.paused = !this.tune.paused; }
+      else if (e.code === "ArrowRight" && this.tune.paused) { this.tune.steps = Math.min(600, this.tune.steps + 1); }
       else if (e.code === "KeyR" && (this.flow === "dead" || this.flow === "victory")) this.restart();
     });
     addEventListener("keyup", e => this.player.onKey(e.code, false));
@@ -180,33 +192,54 @@ export class Game {
     });
   }
 
-  // ---------------- onHit 总线 ----------------
+  // ---------------- onHit 总线（六通道同帧扇出，参数来自手感档案 FEEL） ----------------
   private hitstopFor(ms: number): void { this.hitstop = Math.max(this.hitstop, ms / 1000); }
   private shake(amp: number): void { this.shakeAmp = Math.max(this.shakeAmp, amp); }
   private slowmo(scale: number, dur: number): void { this.slowScale = scale; this.slowT = dur; }
+  /** 通过名字调 AU 方法：必须以 AU.xxx() 形式调用保持 this 绑定（直接取方法引用会丢 this） */
+  private sfx(name: string): void {
+    const fn = (AU as unknown as Record<string, (() => void) | undefined>)[name];
+    if (fn) fn.call(AU);
+  }
 
-  private hitBoss(dmg: number, poise: number, heavy: boolean, point: THREE.Vector3): void {
+  /** 玩家命中 Boss：时间/动画/特效/音效/镜头/手柄六通道同帧 */
+  private hitBoss(dmg: number, poise: number, feelKey: string, point: THREE.Vector3): void {
+    const f = FEEL[feelKey] ?? FEEL.pR1a;
     const r = this.boss.takeHit(dmg, poise);
-    this.vfx.sparks.burst(point, heavy ? 26 : 12, heavy ? 6 : 4, 0.35);
-    this.hitstopFor(heavy ? 0.11 : 0.06);
-    this.shake(heavy ? 0.4 : 0.15);
-    heavy ? AU.hitHeavy() : AU.hitStone();
-    if (r.staggered) { this.showMsg("破 绽", 1.2, true); AU.parry(); this.slowmo(0.4, 0.4); }
-    if (r.died) { this.slowmo(0.3, 1.1); this.shake(0.8); }
+    this.vfx.sparks.burst(point, f.sparks, f.sparkSpeed, 0.35);
+    this.hitstopFor(f.hitstop);
+    this.shake(f.shake);
+    this.sfx(FEEL[feelKey]?.sfx ?? "hitStone");
+    PAD.rumble(f.shake * 0.5, f.shake, 90 + f.hitstop * 600);
+    if (feelKey === "pRip") this.slowmo(0.35, 0.5);               // 处决：顿帧+慢动作（combat-feel 最高层级）
+    if (r.staggered) {
+      const fs = FEEL.stagger;
+      this.showMsg("破 绽", 1.2, true);
+      this.vfx.sparks.burst(this.boss.chestWorld(), fs.sparks, fs.sparkSpeed, 0.5);
+      this.hitstopFor(fs.hitstop);
+      this.shake(fs.shake);
+      AU.parry();
+      PAD.rumble(0.4, 0.9, 260);
+      this.slowmo(0.4, 0.4);
+    }
+    if (r.died) { this.slowmo(0.3, 1.1); this.shake(0.8); PAD.rumble(0.7, 1, 500); }
   }
 
   private onBossHitPlayer(dmg: number, dir: THREE.Vector3, point: THREE.Vector3, move: MoveDef): void {
+    // 六通道反馈统一在 onPlayerHurt 内按手感档案扇出（applyHit 会回传 feelKey）
+    void point;
     this.player.applyHit(dmg, dir, move);
-    this.vfx.sparks.burst(point, 14, 5, 0.4, 0.6);
-    this.shake(0.5);
-    this.hitstopFor(0.05);
-    this.flash("rgba(155,59,50,0.55)");
-    AU.hitStone();
   }
 
-  private onPlayerHurt(dmg: number, point: THREE.Vector3): void {
+  private onPlayerHurt(dmg: number, point: THREE.Vector3, feelKey: string): void {
     this.stats.hitsTaken++;
-    this.flash("rgba(155,59,50,0.4)");
+    const f = FEEL[feelKey] ?? FEEL.bLight;
+    this.flash(feelKey === "block" ? "rgba(155,59,50,0.25)" : "rgba(155,59,50,0.5)");
+    this.vfx.sparks.burst(point, f.sparks, f.sparkSpeed, 0.4, 0.6);
+    this.shake(f.shake);
+    this.hitstopFor(f.hitstop);
+    if (feelKey !== "block") this.sfx(FEEL[feelKey]?.sfx ?? "hitStone");               // 格挡音在 player.applyHit 播过
+    PAD.rumble(f.shake * 0.6, f.shake * 0.9 + 0.1, 110 + f.hitstop * 700);
     this.vfx.dust.burst(point, 6, 2, 0.5);
     void dmg;
   }
@@ -214,11 +247,14 @@ export class Game {
   private onParry(point: THREE.Vector3): void {
     if (this.boss.tryParried()) {
       this.stats.parries++;
+      const f = FEEL.parry;
       AU.parry();
-      this.vfx.sparks.burst(point, 30, 7, 0.5);
+      this.vfx.sparks.burst(point, f.sparks, f.sparkSpeed, 0.5);
       this.slowmo(0.35, 0.45);
-      this.hitstopFor(0.1);
+      this.hitstopFor(f.hitstop);
+      this.shake(f.shake);
       this.flash("rgba(230,195,122,0.35)");
+      PAD.rumble(0.8, 0.6, 200);
       this.showMsg("弹 反", 1, true);
     }
   }
@@ -226,7 +262,7 @@ export class Game {
   private transformShock(point: THREE.Vector3): void {
     const d = this.player.pos.distanceTo(this.boss.root.position);
     if (d < 5 && !this.player.isIframed) {
-      this.player.applyHit(20, this.player.pos.clone().sub(this.boss.root.position).setY(0).normalize(), null);
+      this.player.applyHit(20, this.player.pos.clone().sub(this.boss.root.position).setY(0).normalize(), null, "bHeavy");
     }
     this.vfx.embers.burst(point.clone().setY(1.5), 40, 6, 1.2);
     this.shake(0.8);
@@ -420,11 +456,16 @@ export class Game {
       const rdt = Math.min(0.05, (now - last) / 1000);
       last = now;
       this.elapsed += rdt;
+      this.tune.frameTick(rdt);
 
+      // 时间控制：调校台暂停/逐帧 > 顿帧 > 慢动作 > 调校台慢放
       let dt = rdt;
-      if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
+      if (this.tune.paused) {
+        if (this.tune.steps > 0) { this.tune.steps--; dt = (1 / 60) * (this.tune.slowOn ? this.tune.timeScale : 1); }
+        else dt = 0;
+      } else if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
       else if (this.slowT > 0) { this.slowT -= rdt; dt *= this.slowScale; }
-      else if (this.slowDebug) dt *= 0.25;
+      else if (this.tune.slowOn) dt *= this.tune.timeScale;
 
       // 战斗更新
       if (this.flow === "fight") this.boss.update(dt, this.player.pos, this.player.isIframed);
@@ -433,6 +474,7 @@ export class Game {
       this.clampWorld();
       this.vfx.update(dt);
       this.fog.update(this.elapsed);
+      this.tune.updateViz();
 
       // 篝火粒子
       this.bonfire.light.intensity = 9 + Math.sin(this.elapsed * 13) * 1.6 + Math.sin(this.elapsed * 31) * 0.8;

@@ -82,4 +82,30 @@ class AudioSys {
   bonfireRest(): void { this.tone(520, 515, 1.2, "sine", 0.2); this.noise(0.6, 1400, 0.08, "highpass"); }
 }
 
+/** 手柄双马达震动（combat-feel.md 六通道之"输入"）：无手柄时安全空转 */
+class PadSys {
+  private pad: Gamepad | null = null;
+
+  private poll(): Gamepad | null {
+    if (!navigator.getGamepads) return null;
+    const pads = navigator.getGamepads();
+    this.pad = pads && pads.length ? pads[0] : null;
+    return this.pad;
+  }
+
+  /** weak/strong 0–1，dur ms。命中层级：轻击弱震、重击/受击强震（combat-feel.md） */
+  rumble(weak: number, strong: number, dur = 120): void {
+    const pad = this.poll();
+    const act = (pad as (Gamepad & { vibrationActuator?: { playEffect: (t: string, o: object) => Promise<unknown> } }) | null)?.vibrationActuator;
+    if (!act) return;
+    void act.playEffect("dual-rumble", {
+      startDelay: 0,
+      duration: dur,
+      weakMagnitude: Math.max(0, Math.min(1, weak)),
+      strongMagnitude: Math.max(0, Math.min(1, strong)),
+    }).catch(() => { /* 用户切走页面等 */ });
+  }
+}
+
 export const AU = new AudioSys();
+export const PAD = new PadSys();

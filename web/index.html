@@ -55,6 +55,27 @@
     #title { position: fixed; right: 18px; bottom: 14px; z-index: 10; font-size: 13px; letter-spacing: 2px; color: #5d6470; }
     #title b { color: var(--gold); font-weight: 600; }
 
+    /* ---- 调校台（` 开关） ---- */
+    #tune { position: fixed; top: 12px; right: 12px; width: 308px; max-height: calc(100vh - 24px); overflow-y: auto;
+      background: rgba(9, 11, 15, 0.94); border: 1px solid #2c313a; z-index: 50; display: none;
+      font: 11px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #9aa3b2; padding: 10px 12px 14px; }
+    #tune.on { display: block; }
+    #tune h3 { font-size: 13px; letter-spacing: 4px; color: var(--gold); font-weight: 600; margin-bottom: 4px; }
+    #tune hr { border: none; border-top: 1px solid #23272e; margin: 8px 0; }
+    #tune details { margin-bottom: 2px; }
+    #tune summary { cursor: pointer; color: #c9cdd4; letter-spacing: 2px; padding: 5px 0; user-select: none; }
+    #tune summary:hover { color: var(--gold); }
+    #tune .trow { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    #tune .trow label { flex: 0 0 84px; white-space: nowrap; overflow: hidden; }
+    #tune input[type="range"] { flex: 1; height: 3px; accent-color: #b8814a; cursor: ew-resize; }
+    #tune .tval { flex: 0 0 52px; text-align: right; }
+    #tune .tnum { width: 50px; background: #12151b; color: #c9cdd4; border: 1px solid #2c313a; padding: 1px 3px; font: inherit; }
+    #tune select { background: #12151b; color: #c9cdd4; border: 1px solid #2c313a; padding: 2px 4px; font: inherit; flex: 1; }
+    #tune .tbtn { background: #1a1e26; border: 1px solid #2c313a; color: #a8aeb8; padding: 3px 10px;
+      font: inherit; cursor: pointer; margin-right: 4px; }
+    #tune .tbtn:hover { border-color: var(--gold); color: var(--gold); }
+    #tune input[type="checkbox"] { accent-color: #b8814a; }
+
     /* ---- 覆盖层 ---- */
     .overlay { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center;
       background: radial-gradient(ellipse at center, rgba(5,6,9,0.55) 0%, rgba(3,4,6,0.92) 100%);
@@ -94,7 +115,8 @@
     <kbd>W A S D</kbd>移动 <kbd>Shift</kbd>疾跑 <kbd>空格</kbd>翻滚(无敌帧)<br/>
     <kbd>左键</kbd>轻击·按住蓄力重击 <kbd>右键</kbd>格挡 <kbd>F</kbd>弹反<br/>
     <kbd>E</kbd>交互/处决 <kbd>Q</kbd>锁定 <kbd>R</kbd>原素瓶 <kbd>M</kbd>静音<br/>
-    视角默认全自动（跟背/开战锁定）；鼠标用户按 <kbd>V</kbd> 自由视角·滚轮缩放，<kbd>Esc</kbd> 退出
+    视角默认全自动（跟背/开战锁定）；鼠标用户按 <kbd>V</kbd> 自由视角·滚轮缩放，<kbd>Esc</kbd> 退出<br/>
+    调校台 <kbd>`</kbd>（帧数据热调/判定可视化）· <kbd>T</kbd>慢动作 <kbd>P</kbd>暂停 <kbd>→</kbd>逐帧
   </div>
   <div id="title"><b>黑暗之魂3</b> · M1 垂直切片</div>
 

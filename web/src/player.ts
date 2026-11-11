@@ -1,13 +1,13 @@
 /** 玩家「不死人」：GLB 动画 + 战斗状态机（DS3 式精力制，ADR-0008） */
 import * as THREE from "three";
-import { P, MoveDef } from "./config";
+import { P, FEEL, MoveDef } from "./config";
 import { AU } from "./audio";
 
 export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "block" | "parry" | "estus" | "hurt" | "guardbreak" | "riposte" | "dead";
 
 export interface PlayerHost {
-  hitBoss: (dmg: number, poise: number, heavy: boolean, point: THREE.Vector3) => void;
-  onPlayerHurt: (dmg: number, point: THREE.Vector3) => void;
+  hitBoss: (dmg: number, poise: number, feelKey: string, point: THREE.Vector3) => void;
+  onPlayerHurt: (dmg: number, point: THREE.Vector3, feelKey: string) => void;
   onParrySuccess: (point: THREE.Vector3) => void;
   onDeath: () => void;
   bossParryableActive: () => boolean;
@@ -149,7 +149,9 @@ export class Player {
   }
 
   // ---------------- 外部事件 ----------------
-  applyHit(dmg: number, dir: THREE.Vector3, move: MoveDef | null): void {
+  /** 外部事件。feelKey：命中的手感档案（FEEL key），knockback 由档案给出 */
+  applyHit(dmg: number, dir: THREE.Vector3, move: MoveDef | null, feelOverride?: string): void {
+    const feelKey = feelOverride ?? move?.feel ?? "bLight";
     if (this.state === "dead" || this.isIframed) return;
     const point = this.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
     if (this.state === "block" && !move?.grab) {
@@ -158,18 +160,18 @@ export class Player {
         this.stamina -= drain; this.spendAt = this.elapsed;
         this.hp -= dmg * P.blockChip;
         AU.blockHit();
-        this.host.onPlayerHurt(dmg * P.blockChip, point);
+        this.host.onPlayerHurt(dmg * P.blockChip, point, "block");
       } else {
         this.stamina = 0;
         this.enter("guardbreak");   // 破防
         this.hp -= dmg;
-        this.host.onPlayerHurt(dmg, point);
+        this.host.onPlayerHurt(dmg, point, feelKey);
       }
     } else {
       this.hp -= dmg;
-      this.host.onPlayerHurt(dmg, point);
+      this.host.onPlayerHurt(dmg, point, feelKey);
       if (this.state !== "riposte") this.enter("hurt");
-      this.pos.addScaledVector(dir, 0.5);   // 击退
+      this.pos.addScaledVector(dir, FEEL[feelKey]?.knockback ?? 0.5);   // 击退
     }
     if (this.hp <= 0) { this.hp = 0; this.enter("dead"); this.host.onDeath(); }
   }
@@ -248,7 +250,7 @@ export class Player {
         // 判定中段命中
         if (!this.hitApplied && tt >= m.startup + m.active * 0.4) {
           this.hitApplied = true;
-          this.tryHitBoss(P.r1Dmg[this.combo] ?? 12, P.r1Poise[this.combo] ?? 12, false);
+          this.tryHitBoss(P.r1Dmg[this.combo] ?? 12, P.r1Poise[this.combo] ?? 12, ["pR1a", "pR1b", "pR1c"][this.combo] ?? "pR1a");
         }
         // 后摇 55% 后可翻滚取消 / 接下一刀
         const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
@@ -275,7 +277,7 @@ export class Player {
         if (!this.hitApplied && tt >= (this.meta.startup + this.meta.active * 0.4) / 0.6) {
           this.hitApplied = true;
           const mult = 1 + this.charge * 0.6;
-          this.tryHitBoss(P.r2DmgBase * mult, P.r2Poise, true);
+          this.tryHitBoss(P.r2DmgBase * mult, P.r2Poise, "pR2");
         }
         if (tt >= this.meta.total / 0.6) this.enter("idle");
         this.t += dt;
@@ -312,9 +314,7 @@ export class Player {
       case "riposte": {
         if (!this.riposteApplied && this.t >= 0.4) {
           this.riposteApplied = true;
-          this.tryHitBoss(P.riposteDmg, 0, true);
-          AU.riposte();
-          this.host.shake(0.7);
+          this.tryHitBoss(P.riposteDmg, 0, "pRip");   // 六通道反馈（顿帧/震屏/音画）走 FEEL.pRip
         }
         if (this.t >= 1.0) this.enter("idle");
         this.t += dt; break;
@@ -342,14 +342,14 @@ export class Player {
     return false;
   }
 
-  private tryHitBoss(dmg: number, poise: number, heavy: boolean): void {
+  private tryHitBoss(dmg: number, poise: number, feelKey: string): void {
     const bossPos = this.host.bossPos();
     const to = bossPos.clone().sub(this.pos); to.y = 0;
     const dYaw = Math.atan2(to.x, to.z);
     let diff = dYaw - this.yaw;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     if (to.length() < 2.8 + 0.2 && Math.abs(diff) < 1.1) {
-      this.host.hitBoss(dmg, poise, heavy, bossPos.clone().setY(1.5));
+      this.host.hitBoss(dmg, poise, feelKey, bossPos.clone().setY(1.5));
     }
   }
 
