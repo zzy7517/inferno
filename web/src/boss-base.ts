@@ -180,6 +180,24 @@ export abstract class BossBase {
     this.applyPose();
   }
 
+  /** 场景切换/再战换人时销毁：释放几何材质并摘树；子类挂在 scene 的额外对象覆写 extraDispose */
+  dispose(): void {
+    this.root.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry?.dispose();
+        const ms = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mt of ms) mt?.dispose();
+      }
+    });
+    this.root.removeFromParent();
+    this.extraDispose();
+  }
+
+  /** dispose 扩展点（如沙力万投影分身挂在 scene 直下） */
+  protected extraDispose(): void { }
+
+
   private die(): void {
     this.state = "dead"; this.t = 0; this.deathT = 0;
     this.host.onBossDeath();

@@ -550,6 +550,11 @@ export class Sulyvahn extends BossBase {
     this.lerpPose(STANCE, STATUE, 1);
   }
 
+  /** 投影分身挂在 scene 直下（不随 root），dispose 时需单独摘除 */
+  protected override extraDispose(): void {
+    this.ghostRoot.removeFromParent();
+  }
+
   // ---------------- 投影分身（简化版：纯视觉威慑，不造成伤害） ----------------
   /** 亮相：站位取本体面向的左后 ~2m，姿态先与本体对齐（后续 updateGhost 每帧驱动） */
   private spawnGhost(): void {

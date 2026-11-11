@@ -207,3 +207,44 @@ export class FogGate {
     this.group.visible = o > 0.03 || this.solid;
   }
 }
+
+/** 血渍（掉魂点）：倒插残剑 + 幽绿光柱 + 呼吸光（M2 死亡掉魂/拾回） */
+export interface SoulSign {
+  group: THREE.Group;
+  update: (t: number) => void;
+  dispose: () => void;
+}
+
+export function buildSoulSign(scene: THREE.Scene, pos: THREE.Vector3): SoulSign {
+  const g = new THREE.Group();
+  g.position.set(pos.x, 0, pos.z);
+  // 倒插的残剑
+  const swordMat = new THREE.MeshStandardMaterial({ color: 0x39423a, roughness: 0.6, metalness: 0.3 });
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.62, 0.014), swordMat);
+  blade.position.y = 0.42; blade.rotation.z = 0.18;
+  g.add(blade);
+  const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.05), swordMat);
+  hilt.position.y = 0.72; hilt.rotation.z = 0.18;
+  g.add(hilt);
+  // 幽绿光柱（多层同心）
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.26, 1.7, 12, 1, true), glowMat);
+  glow.position.y = 0.85;
+  g.add(glow);
+  const light = new THREE.PointLight(0x6fdc8c, 2.4, 4.5, 2);
+  light.position.y = 0.85;
+  g.add(light);
+  scene.add(g);
+  return {
+    group: g,
+    update: (t: number): void => {
+      light.intensity = 2.4 + Math.sin(t * 5.2) * 0.8;
+      glowMat.opacity = 0.14 + Math.sin(t * 5.2) * 0.05;
+    },
+    dispose: (): void => {
+      scene.remove(g);
+      blade.geometry.dispose(); hilt.geometry.dispose(); glow.geometry.dispose();
+      swordMat.dispose(); glowMat.dispose();
+    },
+  };
+}

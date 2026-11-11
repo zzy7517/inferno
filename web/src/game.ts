@@ -1,8 +1,8 @@
 /** Game：世界 + onHit 总线（ADR-0004）+ Demo 流程（m1-demo.md）+ 镜头 + HUD + 调校台 */
 import * as THREE from "three";
-import { COLORS, P, BOSS, CAM, FEEL, MoveDef } from "./config";
+import { P, BOSS, CAM, FEEL, MoveDef } from "./config";
 import { AU, PAD } from "./audio";
-import { Vfx, buildBonfire, Bonfire, FogGate } from "./vfx";
+import { Vfx, buildBonfire, buildSoulSign, Bonfire, FogGate, SoulSign } from "./vfx";
 import { Boss } from "./boss";
 import type { BossBase, BossHost } from "./boss-base";
 import { Vordt, VORDT_STATS } from "./boss-vordt";
@@ -12,24 +12,29 @@ import { Player } from "./player";
 import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
 import { buildHighWall, SceneAnchors } from "./scene-highwall";
+import { buildCemetery } from "./scene-cemetery";
+import { BOSS_ORDER, SCENE_NAME, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene } from "./progress";
+import type { SceneId, BossId, Progress } from "./progress";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
-type SceneId = "cemetery" | "highwall";
 
 /** Boss 注册表：场景×Boss 组合与直选入口（M2 进度线：古达→玻尔多→监视者→沙力万） */
 interface BossEntry {
   name: string;
   radius: number;
   arena: SceneId;
+  souls: number;                 // 击败魂奖励
   create: (scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost) => BossBase;
 }
 const BOSSES: Record<string, BossEntry> = {
-  gundyr:    { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", create: (s, v, p, h) => new Boss(s, v, p, h) },
-  vordt:     { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", create: (s, v, p, h) => new Vordt(s, v, p, h) },
-  watchers:  { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Watchers(s, v, p, h) },
-  sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "cemetery", create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
+  gundyr:    { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", souls: 3000, create: (s, v, p, h) => new Boss(s, v, p, h) },
+  vordt:     { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", souls: 4000, create: (s, v, p, h) => new Vordt(s, v, p, h) },
+  watchers:  { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", souls: 6000, create: (s, v, p, h) => new Watchers(s, v, p, h) },
+  sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "cemetery", souls: 9000, create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
 };
+/** Boss→场景映射（进度线推导用） */
+const ARENAS: Record<string, SceneId> = Object.fromEntries(Object.entries(BOSSES).map(([k, v]) => [k, v.arena]));
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -65,7 +70,22 @@ export class Game {
 
   private stats = { hitsTaken: 0, parries: 0, ripostes: 0, deaths: 0 };
 
+  // M2 魂循环状态
+  private progress!: Progress;                 // localStorage 存档（构造时 ?fresh=1 可清档）
+  private bloodstain: SoulSign | null = null;  // 场上血渍（掉魂点）
+  private sceneDispose: (() => void) | null = null;
+  private bossOverride: string | null = null;  // 再战直选（一次性，spawnBoss 消费）
+  private tryN = 0;                            // 当前 Boss 累计挑战次数
+  private menuOpen = false;
+  private menuIdx = 0;
+  private menuItems: { label: string; off?: boolean; act: () => void }[] = [];
+
   constructor(gltf: GLTF, frames: Record<string, Record<string, unknown>>) {
+    // 存档：?fresh=1 清档重开（调试/重玩）
+    const params = new URLSearchParams(location.search);
+    if (params.get("fresh")) clearProgress();
+    this.progress = loadProgress();
+
     // 渲染器
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -75,21 +95,8 @@ export class Game {
     this.renderer.toneMappingExposure = 1.15;
     document.body.prepend(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(COLORS.bg);
-    this.scene.fog = new THREE.FogExp2(COLORS.fog, 0.042);
-
-    // 场景注册表：?scene=highwall 切洛斯里克的高墙（M2 篝火旅行后改为站内切换）
-    this.sceneId = new URLSearchParams(location.search).get("scene") === "highwall" ? "highwall" : "cemetery";
-    if (this.sceneId === "cemetery") {
-      // 灰烬墓地灯光（高墙场景自带月光/环境光/雾/天幕）
-      const moon = new THREE.DirectionalLight(COLORS.moon, 2.0);
-      moon.position.set(6, 9, 4);
-      moon.castShadow = true;
-      moon.shadow.mapSize.set(2048, 2048);
-      Object.assign(moon.shadow.camera, { left: -16, right: 16, top: 12, bottom: -8 });
-      this.scene.add(moon);
-      this.scene.add(new THREE.HemisphereLight(0x2c3548, 0x141210, 0.55));
-    }
+    // 场景注册表：?scene=highwall 切洛斯里克的高墙（篝火旅行后站内切换，URL 仅作首入调试）
+    this.sceneId = params.get("scene") === "highwall" ? "highwall" : "cemetery";
 
     this.setupScene();
     this.vfx = new Vfx(this.scene);
@@ -115,23 +122,21 @@ export class Game {
     });
     this.player.bind(actions);
     this.player.pos.copy(this.anchors.spawn);
+    this.player.souls = this.progress.souls;     // 魂量随存档恢复
     this.scene.add(this.player.root);
 
-    // Boss 选择：?boss= 直选（调试/M2 再战入口），否则按场景默认（高墙=玻尔多，墓地=古达）
-    const bossParam = new URLSearchParams(location.search).get("boss");
-    this.bossId = bossParam && BOSSES[bossParam] ? bossParam : (this.sceneId === "highwall" ? "vordt" : "gundyr");
-    this.bossEntry = BOSSES[this.bossId];
-    this.boss = this.bossEntry.create(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
-      onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),
-      onBossReveal: () => this.revealBoss(),
-      onBossTransform: point => this.transformShock(point),
-      onBossDeath: () => this.onBossDeath(),
-      shake: a => this.shake(a),
-      fireProjectile: (pos, yaw, def) => this.projectiles.spawn(pos, yaw, def),
-    });
+    // Boss 选择：?boss= 直选（调试/再战入口，一次性），否则按进度线推导本场雾门 Boss
+    const bossParam = params.get("boss");
+    if (bossParam && BOSSES[bossParam]) this.bossOverride = bossParam;
+    this.spawnBoss();
 
     // 调校台（` 键开关）：帧数据热调 / 判定可视化 / 逐帧 / 存档
     this.tune = new Tuning(this.scene, this.player, this.boss);
+
+    // 存档血渍恢复（只建本场景的；他乡的在旅行时建）
+    if (this.progress.bloodstain && this.progress.bloodstain.scene === this.sceneId) {
+      this.bloodstain = buildSoulSign(this.scene, new THREE.Vector3(this.progress.bloodstain.x, 0, this.progress.bloodstain.z));
+    }
 
     this.bindInput();
     this.camera.position.set(-16, 3, 4);
@@ -146,58 +151,83 @@ export class Game {
   private sceneUpdate: ((t: number, dt: number) => void) | null = null;
 
   private setupScene(): void {
+    this.sceneDispose?.();
+    this.sceneDispose = null;
+    this.sceneUpdate = null;
     if (this.sceneId === "highwall") {
       const hw = buildHighWall(this.scene);
       this.anchors = hw.anchors;
       this.sceneUpdate = hw.update;
+      this.sceneDispose = hw.dispose;
     } else {
-      this.buildCemetery();
-      this.anchors = {
-        spawn: new THREE.Vector3(-12.2, 0, 1.4),
-        bonfire: new THREE.Vector3(-12.2, 0, 0),
-        fogGate: new THREE.Vector3(-5.0, 0, 0),
-        bossArena: new THREE.Vector3(0.6, 0, 0),
-        arenaRadius: 6.6,
-        corridorMinX: -13.4,
-      };
+      const cm = buildCemetery(this.scene);
+      this.anchors = cm.anchors;
+      this.sceneDispose = cm.dispose;
     }
     this.bonfire = buildBonfire(this.scene, this.anchors.bonfire);
     this.fog = new FogGate(this.scene, this.anchors.fogGate);
   }
 
-  /** 灰烬墓地：走廊地面/墙 + 竞技场 + 残柱 + 远景地面 */
-  private buildCemetery(): void {
-    const stoneMat = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
-    const pathMat = new THREE.MeshStandardMaterial({ color: COLORS.groundPath, roughness: 1 });
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
-      this.scene.add(m);
-      return m;
-    };
-    // 走廊地面与墙
-    box(9.6, 0.2, 3.6, pathMat, -9.6, -0.1, 0);
-    box(9.6, 2.4, 0.5, stoneMat, -9.6, 1.2, 2.0);
-    box(9.6, 2.4, 0.5, stoneMat, -9.6, 1.2, -2.0);
-    // 竞技场
-    const arena = new THREE.Mesh(new THREE.CircleGeometry(6.6, 48), new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 0.95 }));
-    arena.rotation.x = -Math.PI / 2;
-    arena.position.set(0.6, 0.001, 0);
-    arena.receiveShadow = true;
-    this.scene.add(arena);
-    // 竞技场残柱
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 + 0.35;
-      if (Math.abs(a - Math.PI) < 0.5) continue;    // 留出门口（-X 朝走廊）
-      const r = 6.1;
-      const h = 1.2 + ((i * 7919) % 100) / 100 * 1.8;
-      box(0.7, h, 0.7, stoneMat, 0.6 + Math.cos(a) * r, h / 2, Math.sin(a) * r);
+  // ---------------- Boss 生命周期（M2：进度线选人 / 旅行销毁重建） ----------------
+  private spawnBoss(): void {
+    const pick = this.bossOverride && BOSSES[this.bossOverride] ? this.bossOverride : bossForScene(this.progress, this.sceneId, ARENAS);
+    this.bossOverride = null;
+    this.bossId = pick;
+    this.bossEntry = BOSSES[pick];
+    this.boss = this.bossEntry.create(this.scene, this.vfx, this.anchors.bossArena.clone().add(new THREE.Vector3(1.8, 0, 0)), {
+      onBossHit: (dmg, dir, point, move) => this.onBossHitPlayer(dmg, dir, point, move),
+      onBossReveal: () => this.revealBoss(),
+      onBossTransform: point => this.transformShock(point),
+      onBossDeath: () => this.onBossDeath(),
+      shake: a => this.shake(a),
+      fireProjectile: (pos, yaw, def) => this.projectiles.spawn(pos, yaw, def),
+    });
+  }
+
+  /** 通用对象销毁：释放几何/材质并摘树（篝火/雾门等无自管 dispose 的对象） */
+  private disposeObj(o: THREE.Object3D): void {
+    o.traverse(c => {
+      const m = c as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry?.dispose();
+        const ms = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mt of ms) mt?.dispose();
+      }
+    });
+    o.removeFromParent();
+  }
+
+  /** 篝火旅行：销毁旧场景与 Boss → 重建目标场景 → 玩家置新篝火（restart 也走此路） */
+  private travelTo(target: SceneId): void {
+    this.closeMenu();
+    this.boss.dispose();
+    this.disposeObj(this.bonfire.group);
+    this.disposeObj(this.fog.group);
+    this.bloodstain?.dispose();
+    this.bloodstain = null;
+    this.projectiles.clear();
+    this.sceneId = target;
+    this.setupScene();
+    this.spawnBoss();
+    this.tune.retarget(this.boss);
+    this.player.reset(this.anchors.spawn);
+    this.prevPx = this.anchors.spawn.x;
+    this.flow = "intro";
+    this.tryN = 0;
+    $("bossbar").classList.remove("on");
+    $("overlayDeath").classList.remove("show");
+    $("overlayWin").classList.remove("show");
+    if (this.progress.bloodstain && this.progress.bloodstain.scene === target) {
+      this.bloodstain = buildSoulSign(this.scene, new THREE.Vector3(this.progress.bloodstain.x, 0, this.progress.bloodstain.z));
     }
-    // 大地面（远景）
-    const vast = new THREE.Mesh(new THREE.CircleGeometry(60, 32), new THREE.MeshStandardMaterial({ color: 0x14161b, roughness: 1 }));
-    vast.rotation.x = -Math.PI / 2;
-    vast.position.y = -0.05;
-    this.scene.add(vast);
+    this.showMsg(SCENE_NAME[target], 2.2, true);
+  }
+
+  private saveState(): void {
+    this.progress.souls = this.player.souls;
+    this.progress.stats.parries = this.stats.parries;
+    this.progress.stats.ripostes = this.stats.ripostes;
+    saveProgress(this.progress);
   }
 
   // ---------------- 输入 ----------------
@@ -219,8 +249,8 @@ export class Game {
       if (document.pointerLockElement !== canvas) return;    // 仅自由视角下缩放，避免触控板双指误触
       this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004));
     });
-    addEventListener("mousedown", e => this.player.onMouse(e.button, true));
-    addEventListener("mouseup", e => this.player.onMouse(e.button, false));
+    addEventListener("mousedown", e => { if (!this.menuOpen) this.player.onMouse(e.button, true); });
+    addEventListener("mouseup", e => { if (!this.menuOpen) this.player.onMouse(e.button, false); });
     const inPanelInput = (e: KeyboardEvent): boolean => {
       const t = e.target as HTMLElement | null;
       return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
@@ -228,6 +258,14 @@ export class Game {
     addEventListener("keydown", e => {
       if (e.code === "Space" && !inPanelInput(e)) e.preventDefault();
       if (inPanelInput(e)) return;   // 面板输入中不触发游戏按键
+      // 篝火菜单：吞掉游戏按键，只响应菜单操作
+      if (this.menuOpen) {
+        if (e.code === "ArrowUp" || e.code === "KeyW") this.menuMove(-1);
+        else if (e.code === "ArrowDown" || e.code === "KeyS") this.menuMove(1);
+        else if (e.code === "KeyE" || e.code === "Enter") this.menuConfirm();
+        else if (e.code === "Escape" || e.code === "Backspace") this.closeMenu();
+        return;
+      }
       this.player.onKey(e.code, true);
       if (e.code === "KeyV" && !e.repeat) {                       // 自由视角开关（鼠标用户）
         if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -332,6 +370,7 @@ export class Game {
     // 只改标题 span，勿动 #bossName.textContent——会连带销毁 #bossPhase2（曾致每帧 null.style 崩循环）
     $("bossTitle").textContent = this.bossEntry.name;
     $("winBig").textContent = `${this.bossEntry.name} 已陨落`;
+    $("bossTry").textContent = `第 ${this.tryN} 次挑战`;
     this.showMsg(this.bossEntry.name, 2.2, true);
     AU.roar();
     this.fightStart = this.elapsed;
@@ -341,37 +380,60 @@ export class Game {
   private onBossDeath(): void {
     this.flow = "victory";
     this.victoryDelay = 2.2;
-    this.player.souls += 3000;
+    const award = this.bossEntry.souls;
+    this.player.souls += award;
+    onDefeat(this.progress, this.bossId as BossId, ARENAS);   // 记 defeated + 解锁下一位场景/点篝火
+    const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
+    $("winSub").textContent = allClear ? "薪火的巡礼告一段落 —— 四位 Boss 尽数陨落" : `魂 +${award}`;
     this.player.lockOn = false;
+    this.saveState();
   }
 
   private onPlayerDeath(): void {
     this.flow = "dead";
     this.deathDelay = 1.6;
     this.stats.deaths++;
+    this.progress.stats.deaths++;
+    // 掉魂铁律：全部魂掉在死点，旧血渍随之消散
+    if (this.player.souls > 0) {
+      this.dropBloodstain(this.player.pos.clone(), this.player.souls);
+      this.player.souls = 0;
+    }
     this.player.lockOn = false;
+    this.saveState();
   }
 
+  private dropBloodstain(pos: THREE.Vector3, souls: number): void {
+    this.bloodstain?.dispose();
+    this.bloodstain = buildSoulSign(this.scene, pos);
+    this.progress.bloodstain = { scene: this.sceneId, x: pos.x, z: pos.z, souls };
+  }
+
+  /** R 回到篝火：走旅行管线（同场景也整场重建——雾门 Boss 随进度换人） */
   private restart(): void {
-    this.player.reset(this.anchors.spawn);
-    this.boss.reset();
-    this.projectiles.clear();
-    this.prevPx = this.anchors.spawn.x;
-    this.fog.solid = false;
-    this.flow = "intro";
-    $("bossbar").classList.remove("on");
-    $("overlayDeath").classList.remove("show");
-    $("overlayWin").classList.remove("show");
+    this.travelTo(this.progress.lastBonfire);
   }
 
   // ---------------- 交互 ----------------
   private interact(): void {
+    if (this.menuOpen) { this.menuConfirm(); return; }
     if (this.flow === "fight" && this.player.tryRiposte()) { this.stats.ripostes++; return; }
+    // 血渍拾回（任何非菜单时刻，含战斗中——DS3 规则）
+    if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) {
+      const souls = this.progress.bloodstain.souls;
+      this.player.souls += souls;
+      this.progress.bloodstain = null;
+      this.bloodstain.dispose();
+      this.bloodstain = null;
+      this.progress.stats.soulRegains++;
+      AU.soulGain();
+      this.showMsg(`拾回 ${souls} 魂`, 1.6, true);
+      this.saveState();
+      return;
+    }
     if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) {
-      this.player.hp = P.hp; this.player.estus = P.estusMax;
-      AU.bonfireRest();
-      this.showMsg("在篝火旁稍作休息", 1.5);
-      this.vfx.embers.burst(this.bonfire.pos.clone().setY(0.8), 20, 2, 1.5);
+      if (!this.progress.litBonfires.includes(this.sceneId)) { this.showMsg("篝火尚未点燃", 1.4); return; }
+      this.openBonfireMenu();
       return;
     }
     if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) {
@@ -382,10 +444,85 @@ export class Game {
       return;
     }
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) {
+      this.tryN = (this.progress.attempts[this.bossId] ?? 0) + 1;
+      this.progress.attempts[this.bossId] = this.tryN;
+      this.saveState();
       this.boss.pull();
       this.flow = "fight";
       setTimeout(() => { this.fog.close(); this.fog.solid = true; }, 800);
     }
+  }
+
+  // ---------------- 篝火菜单（M2：休息/传送/再战） ----------------
+  private openBonfireMenu(): void {
+    const items: { label: string; off?: boolean; act: () => void }[] = [];
+    items.push({ label: "休息", act: () => { this.closeMenu(); this.restAtBonfire(); } });
+    for (const sc of ["cemetery", "highwall"] as SceneId[]) {
+      const unlocked = this.progress.unlockedScenes.includes(sc);
+      items.push({
+        label: `传送 · ${SCENE_NAME[sc]}`,
+        off: !unlocked || sc === this.sceneId,
+        act: () => { if (unlocked) this.travelTo(sc); },
+      });
+    }
+    // 全通后：再战任意 Boss（同时是调校入口）
+    if (this.progress.defeated.length >= BOSS_ORDER.length) {
+      for (const id of BOSS_ORDER) {
+        items.push({ label: `再战 · ${BOSSES[id].name}`, act: () => { this.bossOverride = id; this.travelTo(BOSSES[id].arena); } });
+      }
+    }
+    items.push({ label: "离开", act: () => this.closeMenu() });
+    this.menuItems = items;
+    this.menuIdx = 0;
+    this.menuOpen = true;
+    this.renderMenu();
+    $("bonfireMenu").classList.add("show");
+  }
+
+  private renderMenu(): void {
+    const box = $("menuItems");
+    box.replaceChildren();
+    this.menuItems.forEach((it, i) => {
+      const d = document.createElement("div");
+      d.className = `mi${i === this.menuIdx ? " sel" : ""}${it.off ? " off" : ""}`;
+      d.textContent = it.label;
+      box.appendChild(d);
+    });
+  }
+
+  private menuMove(dir: number): void {
+    const n = this.menuItems.length;
+    if (!n) return;
+    for (let k = 1; k <= n; k++) {                       // 跳过灰显项
+      const i = (this.menuIdx + dir * k + n * 2) % n;
+      if (!this.menuItems[i].off) { this.menuIdx = i; break; }
+    }
+    this.renderMenu();
+  }
+
+  private menuConfirm(): void {
+    const it = this.menuItems[this.menuIdx];
+    if (!it) return;
+    if (it.off) { this.showMsg("尚不可用", 1); return; }
+    it.act();
+  }
+
+  private closeMenu(): void {
+    if (!this.menuOpen) return;
+    this.menuOpen = false;
+    $("bonfireMenu").classList.remove("show");
+  }
+
+  private restAtBonfire(): void {
+    this.player.hp = P.hp;
+    this.player.estus = P.estusMax;
+    this.progress.lastBonfire = this.sceneId;           // 重生点设为此篝火
+    this.boss.reset();                                   // 敌人重置
+    this.projectiles.clear();
+    AU.bonfireRest();
+    this.showMsg("在篝火旁稍作休息", 1.6);
+    this.vfx.embers.burst(this.bonfire.pos.clone().setY(0.8), 24, 2, 1.6);
+    this.saveState();
   }
 
   // ---------------- 流程与主循环 ----------------
@@ -413,8 +550,10 @@ export class Game {
   }
 
   private prompt(): string | null {
+    if (this.menuOpen) return null;
     if (this.flow === "fight" && (this.boss.state === "parried" || this.boss.state === "stagger") && this.player.pos.distanceTo(this.boss.root.position) < 2.5) return "E 处决";
-    if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return "E 篝火休息（补满血与原素瓶）";
+    if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) return `E 拾回 ${this.progress.bloodstain.souls} 魂`;
+    if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return this.progress.litBonfires.includes(this.sceneId) ? "E 篝火（休息 · 传送）" : "篝火尚未点燃";
     if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) return "E 拔出螺旋剑";
     return null;
@@ -519,12 +658,13 @@ export class Game {
       this.elapsed += rdt;
       this.tune.frameTick(rdt);
 
-      // 时间控制：调校台暂停/逐帧 > 顿帧 > 慢动作 > 调校台慢放
+      // 时间控制：调校台暂停/逐帧 > 篝火菜单冻结 > 顿帧 > 慢动作 > 调校台慢放
       let dt = rdt;
       if (this.tune.paused) {
         if (this.tune.steps > 0) { this.tune.steps--; dt = (1 / 60) * (this.tune.slowOn ? this.tune.timeScale : 1); }
         else dt = 0;
-      } else if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
+      } else if (this.menuOpen) dt = 0;
+      else if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
       else if (this.slowT > 0) { this.slowT -= rdt; dt *= this.slowScale; }
       else if (this.tune.slowOn) dt *= this.tune.timeScale;
 
@@ -540,6 +680,7 @@ export class Game {
         this.player.applyHit(def.dmg, dir, null, def.feelKey);
       });
       this.fog.update(this.elapsed);
+      this.bloodstain?.update(this.elapsed);
       this.sceneUpdate?.(this.elapsed, dt);
       this.tune.updateViz();
 
@@ -553,8 +694,10 @@ export class Game {
         this.deathDelay = 999;
       }
       if (this.flow === "victory" && (this.victoryDelay -= rdt) <= 0) {
+        const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
         $("winStats").textContent =
-          `用时 ${this.fmtTime(this.elapsed - this.fightStart)} · 受击 ${this.stats.hitsTaken} · 弹反 ${this.stats.parries} · 处决 ${this.stats.ripostes} · 身陨 ${this.stats.deaths}`;
+          `用时 ${this.fmtTime(this.elapsed - this.fightStart)} · 受击 ${this.stats.hitsTaken} · 弹反 ${this.stats.parries} · 处决 ${this.stats.ripostes}`
+          + (allClear ? ` · 身陨合计 ${this.progress.stats.deaths} · 拾回魂 ${this.progress.stats.soulRegains} 次` : "");
         $("overlayWin").classList.add("show");
         AU.victoryBell();
         AU.soulGain();

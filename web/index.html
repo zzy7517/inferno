@@ -34,6 +34,7 @@
     #bossbar.on { opacity: 1; }
     #bossName { text-align: right; font-size: 17px; letter-spacing: 5px; color: #d8dee8; margin-bottom: 4px; text-shadow: 0 1px 4px #000; }
     #bossPhase2 { color: var(--ember); font-size: 12px; margin-left: 8px; opacity: 0; transition: opacity 0.6s; }
+    #bossTry { text-align: right; font-size: 11.5px; letter-spacing: 3px; color: #6f7784; margin-top: 3px; }
     .bar.boss { height: 13px; }
     .bar.boss i.lag { background: #c9cdd4; }
     .bar.boss i.fill { background: linear-gradient(180deg, #c05a48, var(--blood)); }
@@ -87,6 +88,16 @@
     .overlay .sub { margin-top: 26px; font-size: 15px; letter-spacing: 3px; color: #7d8490; }
     .overlay .sub b { color: #b8bfc9; font-weight: 500; }
     #winStats { margin-top: 14px; font-size: 14px; letter-spacing: 2px; color: #8a93a6; }
+
+    /* ---- 篝火菜单（M2：休息/传送/再战） ---- */
+    #bonfireMenu { z-index: 35; }
+    #bonfireMenu .fire { font-size: 30px; letter-spacing: 12px; color: var(--gold); text-shadow: 0 0 26px rgba(230,195,122,0.45); margin-bottom: 34px; }
+    #menuItems { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #menuItems .mi { font-size: 19px; letter-spacing: 7px; text-indent: 7px; color: #8a93a6; padding: 7px 34px;
+      transition: color 0.15s; }
+    #menuItems .mi.sel { color: var(--gold); text-shadow: 0 0 14px rgba(230,195,122,0.5); }
+    #menuItems .mi.off { opacity: 0.32; }
+    #menuHint { margin-top: 30px; font-size: 13px; letter-spacing: 3px; color: #5d6470; }
   </style>
 </head>
 <body>
@@ -105,6 +116,7 @@
   <div id="bossbar">
     <div id="bossName"><span id="bossTitle">灰烬审判者古达</span><span id="bossPhase2">· 人性的沉淀</span></div>
     <div class="bar boss"><i class="lag" id="bossLag"></i><i class="fill" id="bossFill"></i></div>
+    <div id="bossTry"></div>
   </div>
 
   <div id="prompt"></div>
@@ -126,9 +138,14 @@
   </div>
   <div class="overlay" id="overlayWin">
     <div class="big" id="winBig">古达 已陨落</div>
-    <div class="sub">螺旋剑已入手 · 魂 +3000</div>
+    <div class="sub" id="winSub">螺旋剑已入手 · 魂 +3000</div>
     <div id="winStats"></div>
-    <div class="sub"><b>R</b> 再战</div>
+    <div class="sub"><b>R</b> 回到篝火</div>
+  </div>
+  <div class="overlay" id="bonfireMenu">
+    <div class="fire">✦ 篝 火 ✦</div>
+    <div id="menuItems"></div>
+    <div id="menuHint">↑↓ 选择 · E 确认 · Esc 离开</div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

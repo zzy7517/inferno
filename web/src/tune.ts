@@ -151,6 +151,9 @@ export class Tuning {
   }
 
   toggle(): void { this.visible = !this.visible; this.root.classList.toggle("on", this.visible); }
+
+  /** 场景旅行/再战换 Boss 后重绑目标（血量上限/招式表/数值热调跟新实例走） */
+  retarget(boss: BossBase): void { this.boss = boss; }
   toggleSlow(): void {
     this.slowOn = !this.slowOn;
     this.slowBox.checked = this.slowOn;
