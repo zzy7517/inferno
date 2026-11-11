@@ -18,8 +18,10 @@ import { Margit, MARGIT_STATS } from "./boss-margit";
 import { Godrick, GODRICK_STATS } from "./boss-godrick";
 import { EnemyManager } from "./enemy";
 import { ENEMY_PRESETS } from "./enemies-config";
-import { BOSS_ORDER, SCENE_NAME, ZONE_OF, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene } from "./progress";
+import { BOSS_ORDER, SCENE_NAME, ZONE_OF, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene, shortcutUnlockedOn } from "./progress";
 import type { SceneId, BossId, Progress } from "./progress";
+import { Shortcut, SHORTCUT_RADIUS } from "./mechanic";
+import type { ShortcutDef, ShortcutHost } from "./mechanic";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
@@ -45,6 +47,21 @@ const BOSSES: Record<string, BossEntry> = {
 /** Boss→场景映射（进度线推导用） */
 const ARENAS: Record<string, SceneId> = Object.fromEntries(Object.entries(BOSSES).map(([k, v]) => [k, v.arena]));
 
+/** T6 捷径布点表：id 对齐 progress.SHORTCUT_IDS，开启条件见 progress.shortcutUnlockedOn。
+ *  坐标均已对齐 SceneAnchors v2 zones 可走域（探针 t6-probe 校验）：
+ *  pos=交互圆心（电梯本体），dest=黑场落位点 */
+const SHORTCUT_DEFS: (ShortcutDef & { scene: SceneId })[] = [
+  // A3 古达房西南角（房心 -1.5 r12→可走 r11.1，距房心 8.8m，避开雾门线 x=-10）→ A1 篝火旁（走廊 -142..-101，half 2.75）
+  { id: "cemetery:a3-a1", scene: "cemetery", kind: "elevator", label: "墓园电梯",
+    pos: new THREE.Vector3(-7.5, 0, -6.5), dest: new THREE.Vector3(-139.2, 0, 1.2), destName: "灰烬墓地 · 出生台地" },
+  // D2 沙力万月坛房东北角（房心 74.1 r12，距房心 9.3m）→ B 走廊东端（-282..-4 half 2.4，雾门西侧 1.6m）
+  { id: "highwall:d-b", scene: "highwall", kind: "elevator", label: "月坛电梯",
+    pos: new THREE.Vector3(80.7, 0, 6.6), dest: new THREE.Vector3(-6, 0, 0), destName: "高墙 · 城墙步道" },
+  // E4 残柱厅中段（12.4..24 half 4，拱门 x=14.5 之东）→ E1 篝火旁（走廊 -38..-20.5 half 11）
+  { id: "stormveil:e4-e1", scene: "stormveil", kind: "elevator", label: "教堂电梯",
+    pos: new THREE.Vector3(16, 0, -2.5), dest: new THREE.Vector3(-35.4, 0, 1.6), destName: "城垣 · 外梯" },
+];
+
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export class Game {
@@ -54,6 +71,7 @@ export class Game {
   private vfx!: Vfx;
   private bonfire!: Bonfire;
   private fog!: FogGate;
+  private shortcuts: Shortcut[] = [];          // T6 捷径（setupScene 按场景表重建）
   private boss!: BossBase;
   private bossEntry!: BossEntry;
   private bossId = "gundyr";
@@ -199,6 +217,12 @@ export class Game {
     }
     this.bonfire = buildBonfire(this.scene, this.anchors.bonfire);
     this.fog = new FogGate(this.scene, this.anchors.fogGate);
+    // T6 捷径：按场景表建实例（旅行重建/首次构造同一路径），开放态读 progress.shortcuts
+    for (const s of this.shortcuts) s.dispose();
+    const host: ShortcutHost = { onShortcutRide: def => this.onShortcutRide(def) };
+    this.shortcuts = SHORTCUT_DEFS
+      .filter(d => d.scene === this.sceneId)
+      .map(d => new Shortcut(this.scene, d, this.progress.shortcuts.includes(d.id), host));
   }
 
   // ---------------- Boss 生命周期（M2：进度线选人 / 旅行销毁重建） ----------------
@@ -456,7 +480,16 @@ export class Game {
     this.victoryDelay = 2.2;
     const award = this.bossEntry.souls;
     this.player.souls += award;
-    onDefeat(this.progress, this.bossId as BossId, ARENAS);   // 记 defeated + 解锁下一位场景/点篝火
+    // T6：先取本次击败新增的捷径（onDefeat→deriveZones 会幂等并入 progress.shortcuts）
+    const freshShortcuts = shortcutUnlockedOn(this.bossId as BossId)
+      .filter(sid => !this.progress.shortcuts.includes(sid));
+    onDefeat(this.progress, this.bossId as BossId, ARENAS);   // 记 defeated + 解锁下一位场景/点篝火/开捷径
+    for (const sid of freshShortcuts) {
+      // 本场景实例即时开门 + 提示；他乡捷径（如监视者胜开高墙电梯）旅行后 rebuildScene 读 progress 自然开门
+      const sc = this.shortcuts.find(s => s.def.id === sid);
+      if (sc) { sc.setOpen(true); this.showMsg(`捷径开启 · ${sc.def.label}`, 2.2, true); }
+      else this.showMsg("远方传来机关开启的轰鸣……", 2.2, true);
+    }
     const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
     $("winSub").textContent = allClear
       ? `薪火的巡礼告一段落 —— ${BOSS_ORDER.length} 位 Boss 尽数陨落`
@@ -508,6 +541,8 @@ export class Game {
       this.saveState();
       return;
     }
+    // T6 捷径：近旁 E 搭乘（locked 也命中——提示与乘坐判定居 onShortcutRide）
+    for (const sc of this.shortcuts) if (sc.interact(this.player.pos)) return;
     if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) {
       if (!this.progress.litBonfires.includes(this.sceneId)) { this.showMsg("篝火尚未点燃", 1.4); return; }
       this.openBonfireMenu();
@@ -528,6 +563,22 @@ export class Game {
       this.flow = "fight";
       setTimeout(() => { this.fog.close(); this.fog.solid = true; }, 800);
     }
+  }
+
+  // ---------------- 捷径（T6：电梯/单向门） ----------------
+  /** Shortcut.interact 命中回调：locked 提示「尚未开启」；open 黑场渐隐（复用 #fade）→ 落位 + 题字卡 */
+  private onShortcutRide(def: ShortcutDef): void {
+    const sc = this.shortcuts.find(s => s.def.id === def.id);
+    if (!sc?.isOpen) { this.showMsg("捷径尚未开启", 1.4); return; }
+    if (this.flow !== "intro" && this.flow !== "statue") return;   // 战斗/结算中不乘梯（防 Boss 追出房区）
+    AU.fogGate();
+    $("fade").classList.add("on");
+    setTimeout(() => {
+      this.player.pos.copy(def.dest);
+      this.prevPx = def.dest.x;          // 同步雾门单向墙判据，防 clampWorld 按“上一帧在东”把玩家拽回
+      $("fade").classList.remove("on");
+      this.showZoneCard(def.destName);
+    }, 340);
   }
 
   // ---------------- 篝火菜单（M2：休息/传送/再战） ----------------
@@ -649,6 +700,9 @@ export class Game {
     if (this.menuOpen) return null;
     if (this.flow === "fight" && (this.boss.state === "parried" || this.boss.state === "stagger") && this.player.pos.distanceTo(this.boss.root.position) < 2.5) return "E 处决";
     if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) return `E 拾回 ${this.progress.bloodstain.souls} 魂`;
+    // T6 捷径提示：靠近显示搭乘/未开启（与篝火提示同式）
+    const sc = this.shortcuts.find(s => this.player.pos.distanceTo(s.def.pos) < SHORTCUT_RADIUS);
+    if (sc && (this.flow === "intro" || this.flow === "statue")) return sc.isOpen ? "E 搭乘捷径" : "捷径尚未开启";
     if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return this.progress.litBonfires.includes(this.sceneId) ? "E 篝火（休息 · 传送）" : "篝火尚未点燃";
     if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) return "E 拔出螺旋剑";
@@ -779,6 +833,7 @@ export class Game {
           this.player.applyHit(def.dmg, dir, null, def.feelKey);
         });
         this.fog.update(this.elapsed);
+        for (const sc of this.shortcuts) sc.update(dt);   // T6 捷径动画（封印呼吸/门扇旋开）
         this.bloodstain?.update(this.elapsed);
         this.sceneUpdate?.(this.elapsed, dt);
         this.tune.updateViz();
