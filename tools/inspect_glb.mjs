@@ -16,7 +16,7 @@ const meshes = gltf.meshes?.length ?? 0;
 const joints = (gltf.nodes ?? []).filter(n => n.joint ?? n.skin !== undefined).length;
 console.log(`animations=${JSON.stringify(anims)} nodes=${nodes} meshes=${meshes}`);
 
-const need = ["idle", "attack", "roll"];
+const need = ["idle", "attack", "roll", "walk", "block_idle", "parry", "estus", "hurt", "death"];
 const missing = need.filter(n => !anims.includes(n));
 if (missing.length) throw new Error(`缺少动画 clip: ${missing}`);
 if (meshes < 20) throw new Error(`部件数异常: ${meshes}`);

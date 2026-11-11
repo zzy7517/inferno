@@ -18,6 +18,31 @@
         0.04,
         0.3
       ]
+    },
+    "walk": {
+      "loop": true,
+      "duration": 0.8
+    },
+    "block_idle": {
+      "loop": true,
+      "duration": 1.3333333333333333
+    },
+    "parry": {
+      "total": 0.4666666666666667,
+      "window": [
+        0.08,
+        0.2
+      ]
+    },
+    "estus": {
+      "total": 1.1,
+      "healAt": 0.55
+    },
+    "hurt": {
+      "total": 0.4
+    },
+    "death": {
+      "total": 1.0
     }
   }
 }

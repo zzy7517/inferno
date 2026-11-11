@@ -35,6 +35,12 @@ FRAME_DATA = {
             "total": 21 / FPS,
             "iframes": [0.04, 0.30],  # 无敌帧窗口（combat-feel.md 起始参数）
         },
+        "walk":        {"loop": True, "duration": 24 / FPS},
+        "block_idle":  {"loop": True, "duration": 40 / FPS},
+        "parry":       {"total": 14 / FPS, "window": [0.08, 0.20]},  # 弹反判定窗口
+        "estus":       {"total": 33 / FPS, "healAt": 0.55},
+        "hurt":        {"total": 12 / FPS},
+        "death":       {"total": 30 / FPS},
     },
 }
 
@@ -271,6 +277,82 @@ def anim_roll(arm_obj, start=400):
     apply_stance(pbs, 21)
     key(pbs["Hips"], 21, loc=(0, 0, 0.96), rot=(0, 0, 0))
 
+def anim_walk(arm_obj, start=600):
+    """24f 循环步行：双腿摆动+髋部起伏，待机姿态叠加"""
+    begin_action(arm_obj, "walk", start)
+    pbs = pose_bones(arm_obj)
+    for f, phase in [(1, 0), (7, 1), (13, 0), (19, -1), (24, 0)]:
+        apply_stance(pbs, f)
+        key(pbs["UpperLeg.L"], f, rot=(RAD(-32 * phase), 0, 0))
+        key(pbs["UpperLeg.R"], f, rot=(RAD(32 * phase), 0, 0))
+        key(pbs["LowerLeg.L"], f, rot=(RAD(20 + 25 * max(0, phase)), 0, 0))
+        key(pbs["LowerLeg.R"], f, rot=(RAD(20 + 25 * max(0, -phase)), 0, 0))
+        key(pbs["Hips"], f, loc=(0, 0, 0.95 - 0.015 * abs(phase)))
+
+def anim_block(arm_obj, start=800):
+    """40f 循环举盾：左臂横档胸前，重心微沉"""
+    begin_action(arm_obj, "block_idle", start)
+    pbs = pose_bones(arm_obj)
+    for f, breathe in [(1, 0), (20, 1), (40, 0)]:
+        apply_stance(pbs, f)
+        key(pbs["UpperArm.L"], f, rot=(RAD(-35 - 2 * breathe), 0, RAD(-75)))
+        key(pbs["LowerArm.L"], f, rot=(RAD(-55), 0, RAD(-15)))
+        key(pbs["UpperArm.R"], f, rot=(RAD(-15), 0, RAD(30)))   # 剑回收警戒
+        key(pbs["Hips"], f, loc=(0, 0, 0.94))
+
+def anim_parry(arm_obj, start=1000):
+    """14f 盾击弹反：f3-f7 盾向前推（window 0.08-0.20s ≈ f2.4-f6）"""
+    begin_action(arm_obj, "parry", start)
+    pbs = pose_bones(arm_obj)
+    # 起手 = 举盾姿态
+    apply_stance(pbs, 1)
+    key(pbs["UpperArm.L"], 1, rot=(RAD(-35), 0, RAD(-75)))
+    key(pbs["LowerArm.L"], 1, rot=(RAD(-55), 0, RAD(-15)))
+    # 盾猛推向前（判定窗）
+    key(pbs["UpperArm.L"], 4, rot=(RAD(-70), 0, RAD(-30)))
+    key(pbs["LowerArm.L"], 4, rot=(RAD(-15), 0, RAD(0)))
+    key(pbs["Chest"], 4, rot=(RAD(-6), 0, RAD(-10)))   # 上身前顶
+    # 收回举盾
+    key(pbs["UpperArm.L"], 8, rot=(RAD(-40), 0, RAD(-60)))
+    key(pbs["LowerArm.L"], 8, rot=(RAD(-45), 0, RAD(-10)))
+    apply_stance(pbs, 14)
+
+def anim_estus(arm_obj, start=1200):
+    """33f 原素瓶：左手举起饮用，f16(0.53s) 低头，f18 后回复"""
+    begin_action(arm_obj, "estus", start)
+    pbs = pose_bones(arm_obj)
+    apply_stance(pbs, 1)
+    key(pbs["UpperArm.L"], 8, rot=(RAD(-120), 0, RAD(-30)))   # 举瓶到面前
+    key(pbs["LowerArm.L"], 8, rot=(RAD(-90), 0, 0))
+    key(pbs["Head"], 10, rot=(RAD(-25), 0, 0))                 # 仰头
+    key(pbs["Head"], 16, rot=(RAD(-30), 0, 0))
+    key(pbs["Head"], 22, rot=(RAD(-8), 0, 0))
+    apply_stance(pbs, 33)
+
+def anim_hurt(arm_obj, start=1400):
+    """12f 受击趔趄：上身后仰"""
+    begin_action(arm_obj, "hurt", start)
+    pbs = pose_bones(arm_obj)
+    apply_stance(pbs, 1)
+    key(pbs["Chest"], 3, rot=(RAD(-18), 0, 0))
+    key(pbs["Head"], 3, rot=(RAD(-22), 0, 0))
+    apply_stance(pbs, 12)
+
+def anim_death(arm_obj, start=1600):
+    """30f 死亡倒地：髋前倾 90°，全身瘫软"""
+    begin_action(arm_obj, "death", start)
+    pbs = pose_bones(arm_obj)
+    apply_stance(pbs, 1)
+    key(pbs["Hips"], 8, loc=(0, 0.1, 0.55), rot=(RAD(55), 0, 0))
+    key(pbs["Spine"], 8, rot=(RAD(30), 0, 0))
+    key(pbs["UpperLeg.L"], 8, rot=(RAD(-40), 0, 0))
+    key(pbs["UpperLeg.R"], 8, rot=(RAD(-30), 0, 0))
+    key(pbs["Hips"], 24, loc=(0, 0.12, 0.18), rot=(RAD(88), 0, 0))
+    key(pbs["Spine"], 24, rot=(RAD(15), 0, 0))
+    key(pbs["Head"], 24, rot=(RAD(10), 0, 0))
+    key(pbs["UpperArm.L"], 24, rot=(0, 0, RAD(10)))
+    key(pbs["UpperArm.R"], 24, rot=(0, 0, RAD(-10)))
+
 # ============================================================
 # 4. 导出
 # ============================================================
@@ -295,6 +377,12 @@ def main():
     anim_idle(arm_obj)
     anim_attack(arm_obj)
     anim_roll(arm_obj)
+    anim_walk(arm_obj)
+    anim_block(arm_obj)
+    anim_parry(arm_obj)
+    anim_estus(arm_obj)
+    anim_hurt(arm_obj)
+    anim_death(arm_obj)
     export(arm_obj)
 
 main()
