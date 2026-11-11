@@ -1,0 +1,35 @@
+.gitignore
+  s_0ea445ebe0d276::t_56096a0be7e726 1-20
+GLOSSARY.md
+  s_0ea445ebe0d276::t_1c019bda61dca5 1-57
+README.md
+  s_0ea445ebe0d276::t_18bfc2add25ef2 1-37
+docs/ROADMAP.md
+  s_0ea445ebe0d276::t_61564f264c9743 1-47
+docs/adr/0001-web-platform.md
+  s_0ea445ebe0d276::t_adf92f38458176 1-9
+docs/adr/0002-threejs-no-engine.md
+  s_0ea445ebe0d276::t_09d2b639841b13 1-16
+docs/adr/0003-blender-bpy-animation-pipeline.md
+  s_0ea445ebe0d276::t_c0d4415afea874 1-11
+docs/adr/0004-combat-timing-in-code.md
+  s_0ea445ebe0d276::t_ee51540c7bcfd4 1-11
+docs/design/combat-feel.md
+  s_0ea445ebe0d276::t_e08169fdf992a3 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "882972bf48015dda206fad75a30046ec78730582",
+  "prompts": {},
+  "sessions": {
+    "s_0ea445ebe0d276": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1ca2f-b494-7608-b5d8-c44e3546ae2a",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
