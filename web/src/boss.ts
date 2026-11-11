@@ -1,14 +1,16 @@
 /** Boss「灰烬审判者古达」（DS3 官方名直接复用）：程序化石像傀儡 + FSM（docs/design/m1-demo.md 招式表）
  * 骨架全部代码驱动（时序归代码 ADR-0004），帧数据来自 config.MOVES
+ * 通用机制（状态机/削韧破绽/弹反/阶段转换/死亡/命中判定/走近追踪）在 BossBase（boss-base.ts），
+ * 本文件只保留古达专属：外观、Pose 姿态系统、选招权重、变身爆发、拔剑唤醒
  */
 import * as THREE from "three";
 import { BOSS, MOVES, MoveDef, COLORS } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
+import { BossBase, clamp01, smooth, seg } from "./boss-base";
+import type { BossHost } from "./boss-base";
 
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const smooth = (v: number) => v * v * (3 - 2 * v);
-const seg = (t: number, a: number, b: number) => clamp01((t - a) / (b - a));
+export type { BossState, BossHost } from "./boss-base";
 
 interface Pose {
   y: number; lean: number; twist: number;
@@ -20,57 +22,29 @@ interface Pose {
 const STANCE: Pose = { y: 0, lean: 0.06, twist: 0, armLift: 0.25, armSwing: 0, halPitch: 0.3, reach: 0, crouch: 0, serpOut: 0, serpYaw: 0, armL: 0 };
 const STATUE: Pose = { ...STANCE, y: -0.62, lean: 0.55, armLift: -0.05, halPitch: -1.25, crouch: 0.4 };
 
-export type BossState = "statue" | "rising" | "combat" | "stagger" | "parried" | "transform" | "dead";
-
-export interface BossHost {
-  onBossHit: (dmg: number, dir: THREE.Vector3, point: THREE.Vector3, move: MoveDef) => void;
-  onBossReveal: () => void;          // 血条亮相（取戟）
-  onBossTransform: (point: THREE.Vector3) => void;  // 变身震波伤害判定由 game 处理
-  onBossDeath: () => void;
-  shake: (amp: number) => void;
-}
-
-export class Boss {
-  readonly root = new THREE.Group();
+export class Boss extends BossBase {
   private body = new THREE.Group();
   private torso = new THREE.Group();
   private armR = new THREE.Group();
   private armL = new THREE.Group();
   private head!: THREE.Mesh;
-  private eyes: THREE.Mesh[] = [];
-  private halberd = new THREE.Group();
   private serpent: THREE.Mesh[] = [];
   private serpGlow!: THREE.PointLight;
   private swordInChest!: THREE.Mesh;
   private swordLight!: THREE.PointLight;
   private emberMat!: THREE.MeshStandardMaterial;
 
-  state: BossState = "statue";
-  sub = "idle";                       // combat 内: idle/tel/act/rec
-  move: MoveDef | null = null;
-  t = 0;
-  hp = BOSS.hp;
-  phase = 1;
-  poise = 0;
-  yaw = -Math.PI / 2;                 // 面向 -X（雾门方向）
   private pose: Pose = { ...STATUE };
-  private cds: Record<string, number> = {};
   private jumpFrom = new THREE.Vector3();
   private jumpTo = new THREE.Vector3();
-  private hitDone = false;
-  private deathT = 0;
 
-  constructor(scene: THREE.Scene, private vfx: Vfx, pos: THREE.Vector3, private host: BossHost) {
-    this.root.position.copy(pos);
-    this.build();
-    this.root.add(this.body);
-    this.body.add(this.torso);
-    scene.add(this.root);
-    this.applyPose();
+  constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost) {
+    super(scene, vfx, pos, host, BOSS, -Math.PI / 2);   // 面向 -X（雾门方向）
+    this.assemble();
   }
 
   // ---------------- 外观 ----------------
-  private build(): void {
+  protected override buildBody(): void {
     const stone = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.95, flatShading: true });
     const dark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
     this.emberMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.7, emissive: COLORS.ember, emissiveIntensity: 0.9 });
@@ -90,8 +64,7 @@ export class Boss {
     this.head = box(0.46, 0.5, 0.5, stone, 0, 1.62, 0.05);
     this.torso.add(this.head);
     for (const sx of [-0.11, 0.11]) {
-      const eye = box(0.09, 0.05, 0.03, this.emberMat, sx, 1.66, 0.31);
-      this.eyes.push(eye); this.torso.add(eye);
+      this.torso.add(box(0.09, 0.05, 0.03, this.emberMat, sx, 1.66, 0.31));
     }
     // 胸口螺旋剑（拔出前可见）
     this.swordInChest = box(0.07, 0.85, 0.05, this.emberMat, 0.25, 0.55, 0.38);
@@ -126,10 +99,15 @@ export class Boss {
     }
     this.serpGlow = new THREE.PointLight(COLORS.ember, 0, 6, 2);
     this.torso.add(this.serpGlow);
+    this.root.add(this.body);
+    this.body.add(this.torso);
   }
 
+  protected override chestPart(): THREE.Object3D { return this.torso; }
+  protected override headPart(): THREE.Object3D { return this.head; }
+
   // ---------------- 姿态应用 ----------------
-  private applyPose(): void {
+  protected override applyPose(): void {
     const p = this.pose;
     this.root.rotation.y = this.yaw;
     this.body.position.set(0, p.y, p.reach);
@@ -164,7 +142,15 @@ export class Boss {
   }
 
   /** 招式姿态：随阶段进度插值到目标姿态 */
-  private movePose(m: MoveDef, sub: string, t: number, total: number): void {
+  protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
+    // 跳劈专属前摇：位移弧线 + 跃起，取代通用姿态分支
+    if (m.name === "jump" && sub === "tel") {
+      const k = smooth(clamp01(t / m.startup));
+      this.root.position.lerpVectors(this.jumpFrom, this.jumpTo, k);
+      this.pose.y = Math.sin(k * Math.PI) * 1.1;   // 跃起
+      this.lerpPose(STANCE, { ...STANCE, armLift: -1.6, lean: -0.1 }, smooth(k));
+      return;
+    }
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
     switch (m.name) {
       case "thrust": case "thrust2":
@@ -203,230 +189,88 @@ export class Boss {
     if (sub === "tel") this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.55, m.startup)));
     else if (sub === "act") this.lerpPose(wind, strike, seg(t, 0, m.active));
     else this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+    if (m.name === "jump" && sub === "act") this.pose.y = 0;   // 落地压回
     void total;
   }
 
-  // ---------------- 公共 API ----------------
-  pull(): void {
-    if (this.state !== "statue") return;
-    this.state = "rising"; this.t = 0;
+  // ---------------- 古达专属覆盖点 ----------------
+  /** 拔剑唤醒：起身姿态 + 尘土 + 血条亮相时机 + 切回 combat */
+  protected override updateRising(dt: number): void {
+    this.t += dt;
+    const k = smooth(clamp01(this.t / 2.2));
+    this.lerpPose(STATUE, STANCE, k);
+    if (Math.random() < dt * 8) this.vfx.dust.burst(this.root.position, 3, 2, 0.7);
+    if (this.t > 0.4 && this.t - dt <= 0.4) this.host.onBossReveal();
+    if (this.t >= 2.2) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
+  }
+
+  /** 拔出螺旋剑：胸口剑与光熄灭 + 起身音 */
+  protected override onAwaken(): void {
     this.swordInChest.visible = false;
     this.swordLight.intensity = 0;
     AU.rise();
   }
 
-  get awake(): boolean { return this.state !== "statue"; }
-  get inCombat(): boolean { return this.state === "combat"; }
-
-  chestWorld(out = new THREE.Vector3()): THREE.Vector3 {
-    return this.torso.getWorldPosition(out).add(new THREE.Vector3(0, 0.2, 0));
-  }
-  headWorld(out = new THREE.Vector3()): THREE.Vector3 {
-    return this.head.getWorldPosition(out);
+  /** 眼睛呼吸 */
+  protected override updateVisuals(): void {
+    this.emberMat.emissiveIntensity = (this.phase === 2 ? 1.8 : 0.9) + Math.sin(performance.now() * 0.003) * 0.2;
   }
 
-  /** 玩家命中 Boss：返回是否死亡/是否触发破绽 */
-  takeHit(dmg: number, poise: number): { died: boolean; staggered: boolean } {
-    if (this.state === "statue" || this.state === "dead") return { died: false, staggered: false };
-    const mult = this.state === "stagger" || this.state === "parried" ? BOSS.staggerMul : 1;
-    this.hp = Math.max(0, this.hp - dmg * mult);
-    if (this.phase === 1 && this.hp <= BOSS.hp * BOSS.phase2At && this.state !== "transform") {
-      this.state = "transform"; this.t = 0; this.sub = "idle";
-      AU.transform();
-      return { died: false, staggered: false };
+  /** 走近步态起伏 */
+  protected override onIdleWalk(): void {
+    this.pose.y = Math.abs(Math.sin(performance.now() * 0.004)) * 0.06 - 0.02;
+  }
+
+  /** 跳劈起跳点/落点预计算 */
+  protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
+    if (m.name !== "jump") return;
+    this.jumpFrom.copy(this.root.position);
+    const dir = toPlayer.clone().normalize();
+    this.jumpTo.copy(this.root.position).addScaledVector(dir, Math.min(m.lunge ?? 0, dist - 1.2));
+  }
+
+  /** 判定段开始：挥砍轨迹（蛇招橙焰） */
+  protected override onMoveActive(m: MoveDef): void {
+    const chest = this.chestWorld();
+    this.vfx.slash(chest, this.yaw, m.range * 0.85, m.arc > 2 || m.name === "serpSweep", m.name.startsWith("serp") ? 0xff7a30 : 0xffd9a0);
+  }
+
+  /** 破绽姿态：后仰蜷缩 */
+  protected override updateStaggerPose(): void {
+    this.lerpPose(STANCE, { ...STANCE, lean: 0.55, crouch: 0.35, y: -0.35 }, Math.min(1, this.t * 5));
+  }
+
+  /** 弹反踉跄姿态：更深的后仰 */
+  protected override updateParriedPose(): void {
+    this.lerpPose(STANCE, { ...STANCE, lean: 0.7, crouch: 0.45, y: -0.45, armLift: -0.4 }, Math.min(1, this.t * 8));
+  }
+
+  /** 变身爆发演出：蓄力蜷缩 → 0.8s 切二阶段、人性沉淀伸出 */
+  protected override updateTransform(): void {
+    if (this.t < 0.8) this.lerpPose(STANCE, { ...STANCE, crouch: 0.5, y: -0.5, lean: 0.4 }, smooth(this.t / 0.8));
+    else {
+      this.phase = 2;
+      this.lerpPose({ ...STANCE, crouch: 0.5, y: -0.5, lean: 0.4 }, { ...STANCE, serpOut: 1, lean: -0.15 }, smooth(seg(this.t, 0.8, 1.6)));
     }
-    if (this.hp <= 0) { this.die(); return { died: true, staggered: false }; }
-    if (this.state === "combat" || this.state === "stagger") {
-      this.poise += poise;
-      if (this.poise >= BOSS.poiseMax) {
-        this.poise = 0;
-        this.state = "stagger"; this.sub = "idle"; this.t = 0;
-        return { died: false, staggered: true };
-      }
-    }
-    return { died: false, staggered: false };
   }
 
-  /** 弹反判定：Boss 处于可弹反招式的判定帧前段 */
-  tryParried(): boolean {
-    if (this.state !== "combat" || this.sub !== "act" || !this.move || !this.move.parryable) return false;
-    if (this.t > this.move.active * 0.7 || this.hitDone) return false;
-    this.state = "parried"; this.sub = "idle"; this.t = 0; this.poise = 0;
-    return true;
+  /** 死亡：前倾垮塌 + 余烬 */
+  protected override updateDeath(dt: number): void {
+    this.lerpPose(this.pose, { ...STANCE, lean: 1.35, y: -0.75, crouch: 0.4 }, dt * 4);
+    if (Math.random() < dt * 20) this.vfx.embers.burst(this.chestWorld(), 3, 3, 1.2);
   }
 
-  reset(): void {
-    this.state = "statue"; this.sub = "idle"; this.move = null; this.t = 0;
-    this.hp = BOSS.hp; this.phase = 1; this.poise = 0; this.yaw = -Math.PI / 2;
-    this.cds = {}; this.hitDone = false; this.deathT = 0;
+  /** 复位外观：胸口剑/光复位、人性沉淀收回、回石像姿态 */
+  protected override resetVisuals(): void {
     this.swordInChest.visible = true; this.swordLight.intensity = 3;
     this.serpGlow.intensity = 0;
     this.emberMat.emissiveIntensity = 0.9;
     for (const s of this.serpent) s.visible = false;
     this.lerpPose(STANCE, STATUE, 1);
-    this.applyPose();
   }
 
-  private die(): void {
-    this.state = "dead"; this.t = 0; this.deathT = 0;
-    this.host.onBossDeath();
-    AU.roar();
-  }
-
-  // ---------------- 主更新 ----------------
-  update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
-    // 冷却
-    for (const k in this.cds) this.cds[k] = Math.max(0, this.cds[k] - dt);
-    // 削韧衰减
-    if (this.state === "combat") this.poise = Math.max(0, this.poise - BOSS.poiseDecay * dt);
-    // 眼睛呼吸
-    this.emberMat.emissiveIntensity = (this.phase === 2 ? 1.8 : 0.9) + Math.sin(performance.now() * 0.003) * 0.2;
-
-    switch (this.state) {
-      case "statue":
-        break;
-      case "rising": {
-        this.t += dt;
-        const k = smooth(clamp01(this.t / 2.2));
-        this.lerpPose(STATUE, STANCE, k);
-        if (Math.random() < dt * 8) this.vfx.dust.burst(this.root.position, 3, 2, 0.7);
-        if (this.t > 0.4 && this.t - dt <= 0.4) this.host.onBossReveal();
-        if (this.t >= 2.2) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
-        break;
-      }
-      case "combat": this.updateCombat(dt, playerPos, playerIframed); break;
-      case "stagger":
-        this.t += dt;
-        this.lerpPose(STANCE, { ...STANCE, lean: 0.55, crouch: 0.35, y: -0.35 }, Math.min(1, this.t * 5));
-        if (Math.random() < dt * 6) this.vfx.sparks.burst(this.chestWorld(), 2, 2.5, 0.3);
-        if (this.t >= BOSS.staggerDur) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
-        break;
-      case "parried":
-        this.t += dt;
-        this.lerpPose(STANCE, { ...STANCE, lean: 0.7, crouch: 0.45, y: -0.45, armLift: -0.4 }, Math.min(1, this.t * 8));
-        if (Math.random() < dt * 10) this.vfx.sparks.burst(this.chestWorld(), 3, 3, 0.35);
-        if (this.t >= BOSS.parriedDur) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
-        break;
-      case "transform": {
-        this.t += dt;
-        if (this.t < 0.8) this.lerpPose(STANCE, { ...STANCE, crouch: 0.5, y: -0.5, lean: 0.4 }, smooth(this.t / 0.8));
-        else {
-          this.phase = 2;
-          this.lerpPose({ ...STANCE, crouch: 0.5, y: -0.5, lean: 0.4 }, { ...STANCE, serpOut: 1, lean: -0.15 }, smooth(seg(this.t, 0.8, 1.6)));
-        }
-        if (this.t > 0.85 && this.t - dt <= 0.85) {
-          this.host.onBossTransform(this.root.position.clone());
-          this.vfx.ring(this.root.position, 5);
-          this.host.shake(0.7);
-        }
-        if (this.t >= 1.8) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
-        break;
-      }
-      case "dead": {
-        this.deathT += dt;
-        const k = smooth(clamp01(this.deathT / 1.4));
-        this.lerpPose(this.pose, { ...STANCE, lean: 1.35, y: -0.75, crouch: 0.4 }, dt * 4);
-        if (Math.random() < dt * 20) this.vfx.embers.burst(this.chestWorld(), 3, 3, 1.2);
-        void k;
-        break;
-      }
-    }
-    this.applyPose();
-  }
-
-  private updateCombat(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
-    const toPlayer = new THREE.Vector3().subVectors(playerPos, this.root.position);
-    toPlayer.y = 0;
-    const dist = toPlayer.length();
-    const dirYaw = Math.atan2(toPlayer.x, toPlayer.z);
-
-    if (this.sub === "idle") {
-      // 弱追踪转向
-      let d = dirYaw - this.yaw;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw += clampMag(d, BOSS.turnRate * dt * (this.phase === 2 ? 0.75 : 1));
-      // 走近
-      if (dist > 3.0) {
-        const speed = BOSS.walkSpeed * (this.phase === 2 ? 0.85 : 1) * dt;
-        this.root.position.addScaledVector(toPlayer.normalize(), speed);
-        this.pose.y = Math.abs(Math.sin(performance.now() * 0.004)) * 0.06 - 0.02;
-      }
-      // 选招
-      const pick = this.pickMove(dist);
-      if (pick) {
-        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false;
-        this.cds[pick.name] = pick.cd;
-        if (pick.name === "jump") {
-          this.jumpFrom.copy(this.root.position);
-          const dir = toPlayer.clone().normalize();
-          this.jumpTo.copy(this.root.position).addScaledVector(dir, Math.min(pick.lunge ?? 0, dist - 1.2));
-        }
-        AU.telegraph();
-      }
-      return;
-    }
-
-    const m = this.move as MoveDef;
-    this.t += dt;
-    const total = m.startup + m.active + m.recovery;
-
-    if (this.sub === "tel") {
-      if (m.name === "jump") {
-        const k = smooth(clamp01(this.t / m.startup));
-        this.root.position.lerpVectors(this.jumpFrom, this.jumpTo, k);
-        this.pose.y = Math.sin(k * Math.PI) * 1.1;   // 跃起
-        this.lerpPose(STANCE, { ...STANCE, armLift: -1.6, lean: -0.1 }, smooth(k));
-      } else {
-        this.movePose(m, "tel", this.t, total);
-      }
-      if (this.t >= m.startup) {
-        this.sub = "act"; this.t = 0;
-        AU.whoosh(m.name === "slam" || m.name === "jump" ? 0.6 : 1);
-        const chest = this.chestWorld();
-        this.vfx.slash(chest, this.yaw, m.range * 0.85, m.arc > 2 || m.name === "serpSweep", m.name.startsWith("serp") ? 0xff7a30 : 0xffd9a0);
-      }
-      return;
-    }
-
-    if (this.sub === "act") {
-      this.movePose(m, "act", this.t, total);
-      if (m.name === "jump") this.pose.y = 0;
-      if (!this.hitDone && this.t >= m.active * 0.4) {
-        // 命中判定：距离 + 夹角
-        const hitPoint = this.chestWorld();
-        if (dist <= m.range + 0.45 && angleWithin(this.yaw, dirYaw, m.arc / 2)) {
-          this.hitDone = true;
-          if (!playerIframed) {
-            const dir = toPlayer.clone().normalize();
-            this.host.onBossHit(m.dmg, dir, hitPoint, m);
-          }
-        }
-      }
-      if (m.shock && this.t >= m.active * 0.5 && !this.hitDone && this.t - dt < m.active * 0.5) {
-        this.vfx.ring(this.root.position, m.shock);
-        this.vfx.scorch(this.root.position.clone().addScaledVector(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), 2.2));
-        AU.slamShock();
-        this.host.shake(0.55);
-      }
-      if (this.t >= m.active) { this.sub = "rec"; this.t = 0; }
-      return;
-    }
-
-    // rec
-    this.movePose(m, "rec", this.t, total);
-    if (this.t >= m.recovery) {
-      // 连段：直戳后概率接二连戳
-      const chain = m.chain ? MOVES[m.chain] : null;
-      if (chain && (this.cds[chain.name] ?? 0) <= 0 && Math.random() < 0.4 && dist < chain.range) {
-        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false;
-        this.cds[chain.name] = chain.cd;
-      } else {
-        this.sub = "idle"; this.move = null;
-      }
-    }
-  }
-
-  private pickMove(dist: number): MoveDef | null {
+  // ---------------- 选招（古达权重） ----------------
+  protected override pickMove(dist: number): MoveDef | null {
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
     // 远距离：跳劈 / 蛇突刺
     if (dist > 6) {
@@ -452,11 +296,4 @@ export class Boss {
     for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
     return cands[0][0];
   }
-}
-
-function clampMag(v: number, max: number): number { return Math.max(-max, Math.min(max, v)); }
-function angleWithin(a: number, b: number, half: number): boolean {
-  let d = a - b;
-  d = Math.atan2(Math.sin(d), Math.cos(d));
-  return Math.abs(d) <= half;
 }
