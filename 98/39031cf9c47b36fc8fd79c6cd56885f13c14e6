@@ -1,0 +1,19 @@
+web/src/vfx.ts
+  s_6adfea1a8382d2::t_e4d198dcd91c99 82-91,96,99,104,142-147,149,152-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9839031cf9c47b36fc8fd79c6cd56885f13c14e6",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
