@@ -1,0 +1,41 @@
+web/scripts/t6-probe.mjs
+  s_6adfea1a8382d2::t_de513741bf58ed 120,168,184
+  s_6adfea1a8382d2::t_c63152e188ada1 31,34-36
+  s_6adfea1a8382d2::t_d544069fa8b8c8 72-73,75-76
+  s_6adfea1a8382d2::t_72a94d8622244b 29-30,32-33,37
+  s_6adfea1a8382d2::t_99fb3f803fb438 141,144-145,156-165
+  s_6adfea1a8382d2::t_70efb3d0cd843c 1-28,38-71,74,77,88-119,121-140,142-143,146-155,166-167,169-183,185-206
+  s_6adfea1a8382d2::t_ea0fcce82f6267 78-87
+web/src/mechanic.ts
+  s_6adfea1a8382d2::t_632b9bf08e5499 1-205,207,211-212,215-219
+  s_6adfea1a8382d2::t_5d076dc70fbb51 206,208-210,213-214
+web/src/progress.ts
+  s_6adfea1a8382d2::t_579f35de5418c4 26-39
+  s_6adfea1a8382d2::t_4b87d4af7d1354 86-87,93-95
+web/src/game.ts
+  s_6adfea1a8382d2::t_787b42b9a89353 50-64
+  s_6adfea1a8382d2::t_cae6b021aa5ea9 74
+  s_6adfea1a8382d2::t_ff38dbc4492674 21,23-24
+  s_6adfea1a8382d2::t_e0e5d668f0efae 220-225
+  s_6adfea1a8382d2::t_8d2123957dcdd3 544-545
+  s_6adfea1a8382d2::t_e0051db1987d15 483-492
+  s_6adfea1a8382d2::t_ab3b5c3d41386e 836
+  s_6adfea1a8382d2::t_83c8b84452b3b3 703-705
+  s_6adfea1a8382d2::t_1d25e5e4749d54 568-583
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "652250d40077e093a1e903166910a1911e2d6254",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
