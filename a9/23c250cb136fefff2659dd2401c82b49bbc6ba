@@ -1,0 +1,21 @@
+web/src/game.ts
+  s_6adfea1a8382d2::t_ca79891f8e66d1 165
+web/src/scene-cemetery.ts
+  s_6adfea1a8382d2::t_39439247dbb0a9 1,3-7,10,14-117,120,123,145-226,228-236,238-249,252-253,255-284,286,288-402,404,412-416,420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "a923c250cb136fefff2659dd2401c82b49bbc6ba",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
