@@ -1,8 +1,8 @@
 # Inferno（工作名）
 
-3D 网页魂类动作游戏，类《黑神话：悟空》同人方向。三人合一（程序+策划+美术）+ AI 辅助开发。
+3D 网页 Dark Souls-like 动作游戏：原创黑暗奇幻世界观，火与余烬的主题。三人合一（程序+策划+美术）+ AI 辅助开发。
 
-参考项目：[wukong.cnmwx.com](https://wukong.cnmwx.com/)（纯网页、程序化资产、AI 开发的黑猴同人，证明该路线可行）。
+技术路线参考：[wukong.cnmwx.com](https://wukong.cnmwx.com/)（纯网页、程序化资产、AI 开发的魂类同人，证明该技术路线可行；仅参考技术，不参考 IP）。
 
 ## 技术栈（已定稿，见 ADR）
 
@@ -12,11 +12,14 @@
 | 运行时 | TypeScript + Three.js + Vite，不用游戏引擎 | [ADR-0002](docs/adr/0002-threejs-no-engine.md) |
 | 动画管线 | Blender + bpy 生成脚本 + Mixamo 基底 → GLB + JSON 帧数据 | [ADR-0003](docs/adr/0003-blender-bpy-animation-pipeline.md) |
 | 战斗架构 | 时序归代码、动画归表现、onHit 总线 | [ADR-0004](docs/adr/0004-combat-timing-in-code.md) |
+| 游戏定位 | 原创黑暗奇幻，Dark Souls-like | [ADR-0005](docs/adr/0005-original-dark-fantasy-ip.md) |
+| 美术风格 | 暗黑奇幻·冷灰基调 + 火光唯一强调色，风格化渲染 | [ADR-0006](docs/adr/0006-art-style-dark-fantasy.md) |
+| 第一版范围 | 纯单机 + 桌面键鼠/手柄优先 | [ADR-0007](docs/adr/0007-v1-scope-singleplayer-desktop.md) |
 
 ## 仓库结构
 
 ```
-├── GLOSSARY.md              # 领域术语表（棍势、识破、削韧……）
+├── GLOSSARY.md              # 领域术语表（前摇/判定帧/削韧/手感档案……）
 ├── docs/
 │   ├── adr/                 # 架构决策记录
 │   ├── ROADMAP.md           # 里程碑 M0–M4
@@ -33,5 +36,5 @@
 
 ## 当前状态
 
-**设计阶段**。已定：平台、运行时、动画管线、战斗架构。
-待定（见讨论）：美术风格、时间预算、联机范围、输入目标 —— 定稿后补 ADR。
+**设计阶段**。已定：平台、运行时、动画管线、战斗架构、IP 方向（ADR-0005）、美术风格（ADR-0006）、单机+桌面优先（ADR-0007）、业余排期（每周 ~10h，M1 4–6 周）。
+待定：战斗资源模型、M1 武器原型、内容专有名词、中文正式名。
