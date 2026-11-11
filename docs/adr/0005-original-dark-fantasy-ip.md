@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0009
 ---
 
 # 游戏定位：原创黑暗奇幻，Dark Souls-like
