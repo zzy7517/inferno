@@ -4,14 +4,14 @@
 
 排期口径：**业余节奏，每周 ~10 小时**（ADR 定于 2025-11）；里程碑耗时按此估算，全职可减半。
 
-## M0 · 管线验证（1–2 天）
+## M0 · 管线验证（1–2 天）✅ 完成（2026-11-11）
 
 打通"Blender 脚本生成 → GLB → Three.js 播放"整条链路。
 
-- bpy 脚本生成一个简单人形 + 3 个动画 clip（idle / 攻击 / 翻滚）
-- 导出 GLB + JSON 帧数据侧车
-- Three.js：GLTFLoader 载入，状态机按名切 clip
-- 验收：clip 切换无跳变；帧表与动画对齐；`mixer.timeScale` 慢动作生效
+- bpy 脚本：`tools/blender/build_character.py`（剑盾不死人：17 骨骼 + 23 部件，帧数据单一事实源）
+- 产物：`web/public/assets/character.glb`（53KB）+ `character_frames.json`
+- 播放器：`web/`（Vite+TS+Three.js，状态机/预输入缓冲/取消窗口/慢动作/阶段 HUD）
+- 验收记录：GLB 结构自动验证通过（`tools/inspect_glb.mjs`：3 clip/骨架/部件）；tsc --noEmit + vite build 全绿；浏览器侧验收（clip 切换无跳变、阶段标签实时对齐、T 慢动作、后摇 55% 取消）由作者在 `npm run dev` 中确认
 
 ## M1 · 战斗垂直切片（2–6 周，视时间预算）
 

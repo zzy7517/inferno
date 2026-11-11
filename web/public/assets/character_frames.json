@@ -1,0 +1,23 @@
+{
+  "fps": 30,
+  "clips": {
+    "idle": {
+      "loop": true,
+      "duration": 4.0
+    },
+    "attack": {
+      "startup": 0.2,
+      "active": 0.1,
+      "recovery": 0.6,
+      "cancelFrom": 0.55,
+      "total": 0.9
+    },
+    "roll": {
+      "total": 0.7,
+      "iframes": [
+        0.04,
+        0.3
+      ]
+    }
+  }
+}

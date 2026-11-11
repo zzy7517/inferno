@@ -20,13 +20,16 @@
 ## 仓库结构
 
 ```
-├── GLOSSARY.md              # 领域术语表（前摇/判定帧/削韧/手感档案……）
-├── docs/
-│   ├── adr/                 # 架构决策记录
-│   ├── ROADMAP.md           # 里程碑 M0–M4
-│   └── design/
-│       └── combat-feel.md   # 打击感设计规范（六通道/数值表/验收标准）
-└── (代码于 M0 启动时加入)
+├── GLOSSARY.md              # 领域术语表（不死人/篝火/魂/弹反……）
+├── tools/
+│   ├── blender/build_character.py   # 角色生成脚本（事实源，ADR-0003）
+│   └── inspect_glb.mjs               # GLB 结构自动验证
+├── web/                     # Three.js 播放器（M0：管线验证）
+└── docs/
+    ├── adr/                 # 架构决策记录（0001–0009）
+    ├── ROADMAP.md           # 里程碑 M0–M4（M0 ✅）
+    └── design/
+        └── combat-feel.md   # 打击感设计规范
 ```
 
 ## 开发环境
