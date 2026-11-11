@@ -1,0 +1,21 @@
+GLOSSARY.md
+  s_4ee24ae318192e::t_ba5c0b92b75289 1,3
+README.md
+  s_4ee24ae318192e::t_611437507aaa99 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e21b35eef833b634e2ce274fbe8923383baa1509",
+  "prompts": {},
+  "sessions": {
+    "s_4ee24ae318192e": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1ca12-bb59-73b4-937e-277fd4d673ea",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
