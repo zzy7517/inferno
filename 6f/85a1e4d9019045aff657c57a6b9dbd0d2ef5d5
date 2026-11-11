@@ -1,0 +1,52 @@
+web/src/scene-cemetery.ts
+  s_6adfea1a8382d2::t_f48c371aea37f1 1-93
+web/src/progress.ts
+  s_6adfea1a8382d2::t_027c141a6d20e9 30
+  s_6adfea1a8382d2::t_dda6a02e11e616 1-29,31-96
+web/src/boss-sulyvahn.ts
+  s_6adfea1a8382d2::t_ecd82dfb890777 553-557
+web/index.html
+  s_6adfea1a8382d2::t_3f64fb73265bdc 91-100
+  s_6adfea1a8382d2::t_23d145fa12c3a7 141,143-148
+  s_6adfea1a8382d2::t_4fdb3eacd7dcfc 119
+  s_6adfea1a8382d2::t_5b98a9c1be3bfc 37
+web/src/tune.ts
+  s_6adfea1a8382d2::t_ab462db573836a 154-156
+web/src/game.ts
+  s_6adfea1a8382d2::t_c629cbe1a0299c 697,699-700
+  s_6adfea1a8382d2::t_d361bf2fac5795 98-99
+  s_6adfea1a8382d2::t_f27418550f492e 3
+  s_6adfea1a8382d2::t_37606694848cb4 154-156,161,163-165,171-221,223-230
+  s_6adfea1a8382d2::t_dbb3dd0a913662 252-253
+  s_6adfea1a8382d2::t_92d9a0e70d5e72 261-268
+  s_6adfea1a8382d2::t_4ce2a76b74a408 553,555-556
+  s_6adfea1a8382d2::t_fc165ac8c76b8f 73-82,84-88
+  s_6adfea1a8382d2::t_4f1fb25bf064e9 661,666-667
+  s_6adfea1a8382d2::t_e002756c3ab1d8 5,15-17,27,31-34,36-37
+  s_6adfea1a8382d2::t_6dbc860caf073f 683
+  s_6adfea1a8382d2::t_9260d20f60de1f 125,128-131,136-139
+  s_6adfea1a8382d2::t_62fdf7160c6826 419,421-433,435-436,447-449,456-526
+  s_6adfea1a8382d2::t_e0aaee41236e36 373,383-387,389,396-401,403,406-412,414
+  s_6adfea1a8382d2::t_aa65672364abcf 140
+  s_6adfea1a8382d2::t_8709e83ebc489d 527
+web/src/boss-base.ts
+  s_6adfea1a8382d2::t_298936ae2bdf75 183-200
+web/src/vfx.ts
+  s_6adfea1a8382d2::t_22d7dfa970645d 210-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "6f85a1e4d9019045aff657c57a6b9dbd0d2ef5d5",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
