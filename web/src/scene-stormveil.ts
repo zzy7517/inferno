@@ -10,6 +10,13 @@
  *   E4 残柱厅    x∈[12.4,24]    接肢教堂西段塌顶走道（z±4，塌方碎堆夹峙的残柱通道）
  *   E5 接肢教堂  d=28 m         巨厅 x∈[14,41.5]×z±15.2，可走圆 r=13.1 中心 (26.5,0,0)=葛瑞克竞技场
  *
+ * E4/E5 接肢教堂内景深加工（对标法环·接肢教堂「被亵渎的圣所」）：E5 教堂中厅竖向空间用足
+ *   （三面墙抬升到 12.4 + 幸存桁架屋盖 x∈[24.5,41.8]——E4 段塌顶露天，「教堂断成两截」天际线）、
+ *   尖拱高侧窗冷月透光 / 东端半圆后殿 apse+残破玫瑰窗（金红祭仪焦点）/ 悬肢残躯+锁链+蜡泪祭坛+
+ *   接肢失败蜷躯+金血红渍（肢体崇拜叙事）；E4 暗廊残墙+烛台光龛（暖橙）+地面裂缝余烬微光，
+ *   与教堂内冷月形成进深对比；氛围=尘埃光柱（additive 单批）+腐金/冷月双色温+雾密度室内外分层。
+ *   PointLight 预算已满 5 盏（壁炬×2/火盆×2/圣坛恩泽），新增光效全走 emissive 批。
+ *
  * 色板（§7 裁决：风暴青灰）：石色整体带青灰(绿相)、天穹青灰风暴云、无月——以「风暴面纱」双旋带与
  *   远堡暖窗代偿高墙月亮的构图锚；暗金只留给接肢教堂（E4/E5），玛尔基特房仅一枚暗金徽环点题。
  *   与墓地灰金、高墙冷蓝三分立。
@@ -64,6 +71,12 @@ const PAL = {
   wood: 0x2b2620, metal: 0x4c525a, bone: 0x494337, ash: 0x17140f,
   goldDim: 0x6d5e40, amber: 0x8a6a3e, amberHi: 0xb98d52,
   mistColor: 0x2a3641,
+  // —— E4 接肢教堂内景派生色（§7「暗金只留给接肢教堂」的深加工：建筑本体冷蓝 / 祭仪元素腐金）——
+  paneMoon: 0x7fa6d4, paneMoonB: 0x6e94c6, paneMoonC: 0x8db8e2, paneDim: 0x33486e,
+  amberGlow: 0xd89850, amberHiGlow: 0xf2bd6e, spokeGlow: 0xc08a48,           // 玫瑰窗日晖（自发光亮阶——远读的信标）
+  rot1: 0x4c5540, rot2: 0x3d4434, flesh: 0x452a22,                    // 接肢肉色（腐绿/暗红低饱和）
+  bloodA: 0x351c16, bloodB: 0x42231a, bloodC: 0x4a3020,               // 金血红渍（暗红→带金的三阶）
+  wax: 0x9a8258, emberRed: 0x8a3b26, vault: 0x1a1f26,
 };
 
 // ---------------- 确定性随机（build 时重置种子：每次构建布局一致） ----------------
@@ -215,11 +228,14 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     ] satisfies SceneZone[],
   };
 
-  // 天空与雾（dispose 时还原）
+  // 天空与雾（dispose 时还原）；雾密度/色温随相机 x 室内外分层（update 驱动）
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new THREE.Color(PAL.skyUnder);
   scene.fog = new THREE.FogExp2(PAL.skyUnder, 0.026);
+  const fogBase = new THREE.Color(PAL.skyUnder);   // 室外：风暴青灰
+  const fogIn = new THREE.Color(0x241f18);         // 教堂内：微暖的腐金空气
+  let camX = -36.6;                                // 相机 x（天穹 onBeforeRender 逐帧记录）
 
   const mats: THREE.Material[] = [];
   const track = <T extends THREE.Material>(m: T): T => { mats.push(m); return m; };
@@ -239,6 +255,15 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
   stormLight.target = lightTarget;
   root.add(stormLight);
   root.add(new THREE.HemisphereLight(0x364650, 0x181c20, 0.85));
+  // 教堂内景补光：无投影冷色平行光（同 stormLight 方位、穿墙不投影）——三面高墙的投影扇会把
+  // 中厅地板压到近黑；此灯模拟「北面尖拱窗透进的冷月」，救回 Boss 房可读性（非 PointLight，不占预算）
+  const naveFill = new THREE.DirectionalLight(0x9db4c6, 0.52);
+  naveFill.position.set(37, 30, -20);
+  const fillTarget = new THREE.Object3D();
+  fillTarget.position.set(29, 0, 0);
+  root.add(fillTarget);
+  naveFill.target = fillTarget;
+  root.add(naveFill);
 
   // ---------------- 天幕：大球内壁竖向渐变（青灰风暴，地平线微亮） ----------------
   {
@@ -257,6 +282,7 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     const sky = new THREE.Mesh(geo, track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
     sky.renderOrder = -10;
     sky.frustumCulled = false;
+    sky.onBeforeRender = (_r, _s, cam) => { camX = cam.position.x; };   // 记录相机 x：室内外雾分层用
     root.add(sky);
   }
 
@@ -373,6 +399,8 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
   const fE45: THREE.BufferGeometry[] = [];
   const massGeoms: THREE.BufferGeometry[] = [];
   const emisGeoms: THREE.BufferGeometry[] = [];     // 暖窗/残烛/玫瑰窗碎片（自发光小批）
+  const coldGlowGeoms: THREE.BufferGeometry[] = []; // 冷月窗格/玫瑰窗龛（建筑本体冷蓝，慢呼吸批）
+  const shaftsGeoms: THREE.BufferGeometry[] = [];   // 尘埃光柱（additive 半透明，顶亮底暗顶点色）
 
   /** 顺墙段：两点连线生成旋转墙体 */
   const wallSeg = (arr: THREE.BufferGeometry[], x1: number, z1: number, x2: number, z2: number, h: number, y: number, c: number, th = 0.6): void => {
@@ -634,73 +662,371 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
       for (let i = 0; i < 6; i++) sE4.push(boxG(rr(0.09, 0.16), rr(0.35, 0.6), rr(0.09, 0.14), gx + rr(-0.7, 0.7), rr(0.1, 0.5), gz + rr(-0.7, 0.7), pick([PAL.bone, 0x4a3a36, PAL.stoneDeep]), { rx: rr(-0.9, 0.9), ry: rnd() * 3, rz: rr(-0.9, 0.9), jitter: 0.15 }));
       sE4.push(dodG(rr(0.3, 0.55), gx, 0.25, gz, PAL.stoneDeep, { ry: rnd() * 3 }));
     }
+
+    // —— 葛瑞克房入口仪式感（x=14.5 拱门）：残破玫瑰窗拱 + 双石兽首 ——
+    {
+      const gy = 9.15, R = 1.55;
+      // 门洞上方的卸力拱券（贴墙面内外两道，残缺；深度 14.0/15.02 避开玫瑰窗件 13.95±）
+      for (const fx of [14.0, 15.02]) {
+        for (let k = 0; k <= 8; k++) {
+          const a = 0.14 + (Math.PI - 0.28) * (k / 8);
+          if (fx < 14 && (k === 2 || k === 6)) continue;                            // 西面残缺
+          sE4.push(boxG(0.12, 0.5, 0.6, fx, 6.6 + Math.sin(a) * 4.35, Math.cos(a) * 4.35, k % 4 === 0 ? PAL.stoneHi : PAL.stone, { rx: Math.PI / 2 - a, jitter: 0.08 }));
+        }
+      }
+      // 玫瑰窗：暗龛底(13.84) + 冷晕(13.88) + 碎片环/轮辐石/芯格(13.95) 三层浅浮雕
+      sE4.push(paint(new THREE.CircleGeometry(R + 0.5, 24).rotateY(-Math.PI / 2).translate(13.84, gy, 0), PAL.stoneDeep, 0.08));
+      coldGlowGeoms.push(paint(new THREE.CircleGeometry(R + 0.14, 24).rotateY(-Math.PI / 2).translate(13.88, gy, 0), PAL.paneDim));
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 + 0.26;
+        if (i % 2 === 1 && rnd() < 0.55) continue;                                  // 碎缺
+        sE4.push(boxG(0.34, 0.3, 0.16, 13.95, gy + Math.sin(a) * R, Math.cos(a) * R, PAL.stoneMid, { rx: Math.PI / 2 - a, jitter: 0.1 }));  // 环石
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        if (a > 1.1 && a < 2.1) continue;                                           // 破洞辐条缺失
+        const pc = i === 2 ? PAL.amber : pick([PAL.paneMoon, PAL.paneMoonB, PAL.paneMoonC]);
+        const pg = boxG(0.3, 0.82, 0.09, 13.95, gy + Math.sin(a) * R * 0.55, Math.cos(a) * R * 0.55, pc, { rx: Math.PI / 2 - a });
+        if (i === 2) emisGeoms.push(pg); else coldGlowGeoms.push(pg);               // 一枚残火金瓣，余为冷月
+      }
+      coldGlowGeoms.push(boxG(0.3, 0.3, 0.1, 13.95, gy, 0, PAL.paneMoonC, { ry: Math.PI / 4 }));   // 芯格
+      // 双石兽首（门楣上方两角，俯瞰来者）：吻部前伸 + 眼窝余烬
+      const beast = (side: number): void => {
+        const bz = side * 5.95, by = 7.0;
+        sE4.push(boxG(0.9, 0.5, 0.7, 14.15, by - 0.5, bz, PAL.stoneDeep, { jitter: 0.08 }));      // 兽首座
+        sE4.push(boxG(0.4, 0.42, 0.46, 13.9, by, bz, PAL.stoneMid, { ry: -side * 0.15, jitter: 0.08 }));
+        sE4.push(boxG(0.36, 0.26, 0.3, 13.5, by - 0.12, bz, PAL.stone, { ry: -side * 0.15 }));  // 吻部
+        sE4.push(boxG(0.3, 0.12, 0.46, 13.8, by + 0.24, bz, PAL.stone, { ry: -side * 0.15 }));  // 眉脊
+        sE4.push(boxG(0.3, 0.1, 0.3, 13.55, by - 0.32, bz, PAL.stoneMid, { ry: -side * 0.15, rx: 0.18 })); // 下颚
+        for (const hs of [-1, 1]) sE4.push(coneG(0.08, 0.32, 5, 13.88, by + 0.42, bz + hs * 0.24, PAL.stoneDeep, { rz: 0.55 * hs }));
+        for (const hs of [-1, 1]) emisGeoms.push(boxG(0.1, 0.08, 0.1, 13.76, by + 0.06, bz + hs * 0.15, PAL.amberHiGlow));  // 眼窝余烬
+      };
+      beast(1);
+      beast(-1);
+      // 门洞暖光透出（面朝西；E4 内侧为背面剔除，不挡行内视点）：烛廊光从破拱溢出，与冷月玫瑰成双色信标
+      coldGlowGeoms.push(paint(new THREE.PlaneGeometry(7.8, 2.4).rotateY(-Math.PI / 2).translate(15.3, 2.2, 0), PAL.amberGlow));
+      coldGlowGeoms.push(paint(new THREE.PlaneGeometry(7.8, 3.1).rotateY(-Math.PI / 2).translate(15.3, 4.95, 0), 0x8a6136));
+    }
+
+    // —— 暗廊侧界：残墙段（z±4.62，走幅 z±4 外）界定走廊 + 坠落石梁 ——
+    for (const side of [-1, 1]) {
+      let x = 16.7;
+      let k = 0;
+      while (x < 23.9) {
+        const len = rr(1.5, 3.0);
+        const h = rr(1.5, 2.6);
+        // 北侧让开火盆（18.7,-4.75）与残柱位；南侧整段
+        const blocked = side < 0 && x < 19.7 && x + len > 17.9;
+        if (!blocked && (k % 2 === 0 || rnd() < 0.7)) {
+          sE4.push(boxG(len, h, 0.5, x + len / 2, h / 2, side * 4.62, PAL.stoneDark, { ry: rr(-0.04, 0.04), jitter: 0.1 }));
+          sE4.push(boxG(len + 0.22, 0.18, 0.64, x + len / 2, h, side * 4.62, PAL.stoneMid));
+        }
+        x += len + rr(0.9, 2.2);
+        k++;
+      }
+    }
+    // 坠落石梁（平放贴地/半埋碎堆，避免悬空；平行走廊不侵走幅）
+    sE4.push(boxG(4.4, 0.42, 0.55, 17.3, 0.22, 5.15, PAL.stoneMid, { ry: 0.16, rz: 0.03, jitter: 0.1 }));
+    sE4.push(boxG(3.8, 0.38, 0.5, 20.3, 0.5, -6.8, PAL.stoneMid, { rx: 0.28, ry: 0.2, jitter: 0.1 }));
+    sE4.push(boxG(3.0, 0.36, 0.48, 23.0, 0.9, 6.3, PAL.stone, { ry: 0.3, rz: 0.24, jitter: 0.1 }));
+
+    // —— 烛台光龛：壁龛 ×3（残墙面上）+ 立式烛台 ×2（暖橙呼吸——与教堂内冷月成进深对比）——
+    const shrine = (x: number, side: number): void => {
+      const sz = side * 4.34;
+      sE4.push(boxG(0.56, 0.78, 0.09, x, 2.2, side * 4.42, PAL.dark, { jitter: 0.06 }));          // 龛底暗背板
+      sE4.push(boxG(0.62, 0.09, 0.28, x, 1.78, sz, PAL.stoneMid));                               // 龛楣/托板
+      for (const cs of [-0.14, 0.12]) {
+        sE4.push(cylG(0.035, 0.042, rr(0.18, 0.3), 6, x + cs, 1.9 + 0.09, sz + side * 0.03, PAL.bone));
+        emisGeoms.push(boxG(0.055, 0.09, 0.055, x + cs, 2.06, sz + side * 0.03, PAL.amberHi));    // 烛焰
+      }
+      emisGeoms.push(boxG(0.34, 0.42, 0.08, x, 1.95, side * 4.4, 0x7a5228));                      // 暖晕（呼吸批）
+    };
+    shrine(18.35, 1);
+    shrine(21.6, -1);
+    shrine(23.55, 1);
+    for (const [sx, sz] of [[19.8, 4.2], [22.7, -4.2]] as const) {                                // 立式烛台（墙前，走幅外）
+      sE4.push(cylG(0.04, 0.055, 1.5, 7, sx, 0.75, sz, PAL.metal));
+      sE4.push(cylG(0.2, 0.11, 0.09, 8, sx, 1.53, sz, PAL.metal));
+      for (let b = 0; b < 3; b++) {
+        const ba = b * 2.1 + 0.6;
+        sE4.push(cylG(0.03, 0.038, 0.24, 6, sx + Math.cos(ba) * 0.14, 1.68, sz + Math.sin(ba) * 0.14, PAL.bone));
+        emisGeoms.push(boxG(0.05, 0.08, 0.05, sx + Math.cos(ba) * 0.14, 1.84, sz + Math.sin(ba) * 0.14, PAL.amberHi));
+      }
+      emisGeoms.push(boxG(0.38, 0.4, 0.38, sx, 1.78, sz, 0x7a5228));
+    }
+
+    // —— 地面裂缝余烬微光（缝两侧暗色崩边 + 缝内 ember 红芯；折线随机游走，确定性。
+    //    注意走道铺石顶面 y≈0.055：裂缝件顶面必须抬高到 y≥0.065 否则埋进铺石）——
+    const crack = (cx: number, cz: number, dir: number): void => {
+      let x = cx, z = cz, a = dir;
+      for (let i = 0; i < 5; i++) {
+        const l = rr(0.5, 1.0);
+        const mx = x + Math.cos(a) * l / 2, mz = z - Math.sin(a) * l / 2;
+        for (const s2 of [-1, 1])
+          sE4.push(boxG(l + 0.14, 0.05, 0.075, mx + Math.sin(a) * s2 * 0.085, 0.038, mz + Math.cos(a) * s2 * 0.085, PAL.dark, { ry: a, jitter: 0.1 }));
+        emisGeoms.push(boxG(l, 0.055, 0.06, mx, 0.04, mz, PAL.emberRed, { ry: a }));
+        x += Math.cos(a) * l;
+        z -= Math.sin(a) * l;
+        a += rr(-0.5, 0.5);
+      }
+    };
+    crack(17.5, 1.9, 0.2);
+    crack(20.7, -1.7, -0.45);
+    crack(23.0, 1.1, 0.55);
   }
 
   // ================================================= E5 接肢教堂（巨厅=葛瑞克竞技场，可走圆 r13.1@26.5）
   {
     const HC = 26.5;                                 // 可走圆心（r13.1；视觉墙在 z±15.2 / x 41.5）
-    // 巨厅外墙（南/北/东三面 + 西墙带拱门）
-    sE5.push(boxG(28.6, 11, 1.4, 27.7, 5.5, -15.2, PAL.wall, { jitter: 0.06 }));
-    sE5.push(boxG(28.6, 11, 1.4, 27.7, 5.5, 15.2, PAL.wall, { jitter: 0.06 }));
-    sE5.push(boxG(1.4, 11, 31.8, 41.5, 5.5, 0, PAL.wall, { jitter: 0.06 }));
+    // —— 外壳：三面墙抬升到 12.4（教堂中厅体量）+ 檐口压顶 ——
+    sE5.push(boxG(28.6, 12.4, 1.4, 27.7, 6.2, -15.2, PAL.wall, { jitter: 0.06 }));
+    sE5.push(boxG(28.6, 12.4, 1.4, 27.7, 6.2, 15.2, PAL.wall, { jitter: 0.06 }));
+    sE5.push(boxG(1.4, 12.4, 31.8, 41.5, 6.2, 0, PAL.wall, { jitter: 0.06 }));
     sE5.push(boxG(29.2, 2.4, 3.2, 27.7, 1.2, -16.4, PAL.wallDeep, { jitter: 0.08 }));
     sE5.push(boxG(29.2, 2.4, 3.2, 27.7, 1.2, 16.4, PAL.wallDeep, { jitter: 0.08 }));
     sE5.push(boxG(3.2, 2.4, 32.4, 42.8, 1.2, 0, PAL.wallDeep, { jitter: 0.08 }));
-    // 西墙（拱门开口 z±4.4）：下半分踞开口两侧，上半整幅封墙（门洞高 ~6.4）
+    for (const zz of [-15.2, 15.2]) sE5.push(boxG(29.3, 0.62, 1.95, 27.7, 12.7, zz, PAL.wallHi));
+    sE5.push(boxG(1.95, 0.62, 32.4, 41.5, 12.7, 0, PAL.wallHi));
+    // 西墙（拱门开口 z±4.4）：下半分踞开口两侧，上半整幅封墙 + 阶梯山墙升到脊（教堂正立面）
     sE5.push(boxG(1.4, 6.6, 10.7, 14.5, 3.3, -9.85, PAL.wall, { jitter: 0.07 }));
     sE5.push(boxG(1.4, 6.6, 10.7, 14.5, 3.3, 9.85, PAL.wall, { jitter: 0.07 }));
-    sE5.push(boxG(1.4, 4.4, 30.4, 14.5, 8.8, 0, PAL.wall, { jitter: 0.07 }));
-    sE5.push(boxG(1.7, 0.5, 31.0, 14.5, 11.2, 0, PAL.wallHi));                                 // 檐口压顶
-    // 半嵌壁柱（两长边各 6 + 东墙 4）+ 高侧窗（一半残火微光：接肢厅的暖色从窗入）
+    sE5.push(boxG(1.4, 5.8, 30.4, 14.5, 9.5, 0, PAL.wall, { jitter: 0.07 }));
+    sE5.push(boxG(1.7, 0.5, 30.9, 14.5, 12.5, 0, PAL.wallHi));                                 // 檐口压顶
+    for (let i = 0; i < 6; i++) sE5.push(boxG(1.5, 0.55, 27.4 - i * 4.6, 14.5, 12.95 + i * 0.52, 0, PAL.wall, { jitter: 0.07 }));  // 阶梯山墙
+    // —— 中厅节奏：半嵌壁柱（两长边各 6 + 东墙 2）+ 外扶壁到檐 ——
     for (const side of [-1, 1]) {
       for (let k = 0; k < 6; k++) {
         const px = 18.5 + k * 4.6;
         sE5.push(cylG(0.55, 0.62, 10.4, 12, px, 5.2, side * 14.6, PAL.stoneDark, { jitter: 0.07 }));
         sE5.push(boxG(1.6, 0.4, 1.1, px, 10.6, side * 14.6, PAL.stoneMid));
-        sE5.push(boxG(0.22, 2.6, 0.16, px, 8.4, side * 14.48, PAL.dark));               // 窗龛暗缝
-        if (rnd() < 0.5) emisGeoms.push(boxG(0.16, 2.1, 0.1, px, 8.35, side * 14.4, PAL.amber));
+        sE5.push(boxG(0.22, 2.6, 0.16, px, 8.4, side * 14.48, PAL.dark));               // 柱身暗缝（残龛）
         sE5.push(boxG(0.7, 3.0, 1.4, px, 1.5, side * 15.5, PAL.wallDeep, { jitter: 0.08 }));   // 外扶壁
+        sE5.push(boxG(0.9, 0.3, 1.6, px, 12.55, side * 15.5, PAL.stoneMid));           // 扶壁压顶
       }
     }
-    for (const pz of [-10, -3.4, 3.4, 10]) {
+    for (const pz of [-10, 10]) {
       sE5.push(cylG(0.55, 0.62, 10.4, 12, 40.9, 5.2, pz, PAL.stoneDark, { jitter: 0.07 }));
       sE5.push(boxG(1.1, 0.4, 1.6, 40.9, 10.6, pz, PAL.stoneMid));
     }
-    // 东墙大玫瑰窗（残破：碎片圆环 + 后衬暖晕）——接肢教堂的视觉句点
-    for (let i = 0; i < 9; i++) {
+    // —— 尖拱高侧窗（冷月透光窗格——建筑本体冷蓝；壁柱跨中 4 樘/侧，两樘「熄窗」残破）——
+    {
+      const winX = [20.8, 25.4, 30.0, 34.6];
+      for (let i = 0; i < winX.length; i++) {
+        const wx = winX[i];
+        for (const side of [-1, 1]) {
+          const lit = !((i === 2 && side > 0) || (i === 0 && side < 0));
+          sE5.push(boxG(1.04, 3.3, 0.1, wx, 9.35, side * 14.46, PAL.dark, { jitter: 0.05 }));        // 暗龛
+          sE5.push(boxG(0.68, 0.68, 0.1, wx, 11.3, side * 14.46, PAL.dark, { rz: Math.PI / 4 }));    // 尖拱龛顶
+          if (lit) {
+            const pc = [PAL.paneMoon, PAL.paneMoonB, PAL.paneMoonC][(i + (side > 0 ? 1 : 0)) % 3];
+            coldGlowGeoms.push(boxG(0.68, 2.75, 0.07, wx, 9.2, side * 14.4, pc, { jitter: 0.04 })); // 冷月窗格
+            coldGlowGeoms.push(boxG(0.44, 0.44, 0.07, wx, 11.16, side * 14.4, pc, { rz: Math.PI / 4 })); // 尖顶格
+          }
+          sE5.push(boxG(0.08, 2.6, 0.06, wx, 9.2, side * 14.34, PAL.stoneDeep));                     // 直棂
+          sE5.push(boxG(0.56, 0.08, 0.06, wx, 10.15, side * 14.34, PAL.stoneDeep));                  // 横棂
+          sE5.push(boxG(1.16, 0.18, 0.26, wx, 7.62, side * 14.42, PAL.stoneMid));                    // 窗台
+        }
+      }
+    }
+    // —— 尽头半圆后殿 apse：暗龛半圆底 + 双柱 + 残缺半券拱肋（Boss 位背后的圣所收束）——
+    sE5.push(paint(new THREE.CircleGeometry(4.7, 30, 0, Math.PI).rotateY(-Math.PI / 2).translate(40.74, 5.5, 0), PAL.stoneDeep, 0.07));
+    for (const s of [-1, 1]) {
+      sE5.push(cylG(0.5, 0.58, 10.2, 12, 40.85, 5.1, s * 4.35, PAL.stoneDark, { jitter: 0.07 }));
+      sE5.push(boxG(1.4, 0.38, 1.0, 40.85, 10.4, s * 4.35, PAL.stoneMid));
+    }
+    {
+      const R = 4.3, AY = 5.5;
+      for (let k = 0; k <= 10; k++) {
+        const a = 0.12 + (Math.PI - 0.24) * (k / 10);
+        if (k === 3 || k === 7) continue;                                                             // 残缺
+        sE5.push(boxG(0.18, 0.52, 0.34, 40.52, AY + Math.sin(a) * R, Math.cos(a) * R, k % 5 === 0 ? PAL.stoneHi : PAL.stone, { rx: Math.PI / 2 - a, jitter: 0.08 }));
+      }
+    }
+    // 大玫瑰窗（残破：碎片环 + 芯徽——后殿的暖金祭仪焦点，与侧窗冷月成双色温对极；自发光亮阶当信标读）
+    for (let i = 0; i < 11; i++) {
       const a = -1.9 + i * 0.475;
       if (a > -0.5 && a < 0.5 && rnd() < 0.6) continue;                               // 破洞
-      emisGeoms.push(boxG(0.34, 1.35, 0.12, 40.75, 7.6 + Math.sin(a) * 2.35, Math.cos(a) * 2.35 * 1.35, i % 3 === 0 ? PAL.amberHi : PAL.amber, { rz: a }));
+      emisGeoms.push(boxG(0.34, 1.35, 0.12, 40.62, 7.6 + Math.sin(a) * 2.35, Math.cos(a) * 2.35 * 1.35, i % 3 === 0 ? PAL.amberHiGlow : PAL.amberGlow, { rz: a }));
     }
-    emisGeoms.push(boxG(0.5, 0.5, 0.14, 40.75, 7.6, 0, PAL.amberHi, { ry: Math.PI / 4 }));
-    // 圣坛（东端贴墙，可走圆外）：阶台+石案+交错巨剑+烛台
+    emisGeoms.push(boxG(0.5, 0.5, 0.14, 40.62, 7.6, 0, PAL.amberHiGlow, { ry: Math.PI / 4 }));
+    for (let i = 0; i < 6; i++) {                                                                                    // 日晖辐条（金红）
+      const a = -1.2 + i * 0.48;
+      const rl = rr(2.6, 4.0);
+      emisGeoms.push(boxG(0.1, rl, 0.05, 40.68, 7.6 + Math.sin(a) * rl / 2, Math.cos(a) * rl / 2, PAL.spokeGlow, { rx: Math.PI / 2 - a }));
+    }
+    // 圣坛（东端贴墙，可走圆外）：阶台+石案+交错巨剑+断剑供品+蜡泪+烛群
     sE5.push(boxG(3.2, 0.4, 5.2, 40.1, 0.2, 0, PAL.stoneMid, { jitter: 0.08 }));
     sE5.push(boxG(2.5, 0.4, 4.0, 40.3, 0.6, 0, PAL.stoneMid, { jitter: 0.08 }));
     sE5.push(boxG(1.6, 1.05, 0.8, 40.5, 1.3, 0, PAL.stoneHi, { jitter: 0.08 }));
     sE5.push(boxG(0.14, 2.6, 0.05, 40.45, 2.6, 0.45, COLORS.steel, { rz: 0.35 }));
     sE5.push(boxG(0.14, 2.6, 0.05, 40.45, 2.6, -0.45, COLORS.steel, { rz: -0.35 }));
     sE5.push(boxG(0.5, 0.08, 0.1, 40.45, 3.9, 0, PAL.goldDim));
+    // 断剑供品：斜插阶上的残刃 ×3（「接肢失败者」的献纳）
+    for (const [sx, sz, sa] of [[39.45, 1.25, 0.5], [39.35, -1.5, -0.42], [40.95, 1.85, 0.28]] as const) {
+      sE5.push(boxG(0.09, rr(0.7, 1.15), 0.05, sx, 0.45, sz, COLORS.steel, { rz: sa, ry: rnd() * 3 }));
+      sE5.push(boxG(0.2, 0.08, 0.07, sx - Math.sin(sa) * 0.4, 0.72, sz, PAL.goldDim, { rz: sa }));
+    }
+    // 蜡泪：案沿垂凝 ×7（近火两枚透光入暖批）
+    for (let i = 0; i < 7; i++) {
+      const wx = 40.3 + rr(-0.9, 0.9), wz = rr(-1.2, 1.2), hy = 0.82 + (rnd() < 0.5 ? 0 : 0.45);
+      const wl = rr(0.14, 0.4);
+      if (i < 2) emisGeoms.push(boxG(0.075, wl * 0.8, 0.075, wx, hy - wl * 0.4, wz, 0x8a6a3e));
+      else sE5.push(boxG(0.07, wl, 0.07, wx, hy - wl / 2, wz, PAL.wax, { ry: rnd() * 3, jitter: 0.1 }));
+    }
     for (const [cx, cz] of [[39.9, 1.6], [39.9, -1.6], [40.8, 1.2], [40.8, -1.2]] as const)
       emisGeoms.push(cylG(0.05, 0.06, rr(0.3, 0.55), 6, cx, 1.1, cz, PAL.amberHi));
+    // 立式三臂烛台 ×2（夹道阶前，r 13.4 外）
+    for (const s of [-1, 1]) {
+      const sx = 39.6, sz = s * 3.0;
+      sE5.push(cylG(0.05, 0.07, 1.7, 8, sx, 0.85, sz, PAL.metal));
+      sE5.push(cylG(0.22, 0.12, 0.1, 8, sx, 1.72, sz, PAL.metal));
+      for (let b = 0; b < 3; b++) {
+        const ba = b * 2.1 + s;
+        emisGeoms.push(cylG(0.035, 0.045, 0.3, 6, sx + Math.cos(ba) * 0.16, 1.95, sz + Math.sin(ba) * 0.16, 0xd8a86a));
+      }
+      emisGeoms.push(boxG(0.42, 0.54, 0.42, sx, 2.12, sz, 0x7a5228));                 // 烛群暖晕
+    }
     // 祭坛尸山（南壁下：接肢的「素材」堆）
     {
       const gx = 25.0, gz = 13.9;
       for (let i = 0; i < 9; i++) sE5.push(dodG(rr(0.45, 0.95), gx + rr(-2.2, 2.2), rr(0.3, 1.3), gz + rr(-0.8, 0.8), pick([PAL.stoneDeep, PAL.bone, 0x4a3a36]), { rx: rnd() * 3, ry: rnd() * 3, rz: rnd() * 3 }));
       for (let i = 0; i < 7; i++) sE5.push(boxG(rr(0.1, 0.17), rr(0.4, 0.75), rr(0.1, 0.15), gx + rr(-2.4, 2.4), rr(0.2, 1.6), gz + rr(-1.0, 1.0), pick([PAL.bone, 0x4a3a36]), { rx: rr(-1, 1), ry: rnd() * 3, rz: rr(-1, 1), jitter: 0.15 }));
     }
-    // 龙尸（沿北壁蜷卧——葛瑞克的手笔，竞技场的体量锚；整体贴墙置于可走圆外）
+    // 龙尸（沿北壁蜷卧——葛瑞克的手笔，竞技场的体量锚；轴向取 X 与壁平行，整体留可走圆外）
     {
-      const dx = 30.0, dz = -13.9, dy = 0.55;
-      sE5.push(cylG(1.05, 1.3, 8.2, 10, dx, dy, dz, 0x262c33, { rx: Math.PI / 2, ry: 0.15, jitter: 0.09 }));
-      sE5.push(cylG(0.55, 0.8, 4.4, 8, 24.0, dy + 0.15, dz - 0.5, 0x232830, { rx: Math.PI / 2, ry: 0.5 }));          // 尾（西摆）
-      sE5.push(cylG(0.2, 0.34, 3.4, 6, 21.6, dy + 0.1, dz - 1.3, 0x232830, { rx: Math.PI / 2, ry: 0.9 }));
-      sE5.push(cylG(0.34, 0.5, 3.2, 8, 34.0, dy + 1.35, dz + 0.3, 0x2a3038, { rx: Math.PI / 2 - 0.55, ry: -0.3 }));  // 颈（东昂）
-      sE5.push(boxG(1.5, 0.7, 0.9, 35.3, dy + 2.3, dz + 0.7, 0x2a3038, { ry: -0.3, rz: 0.15, jitter: 0.1 }));         // 头颅
-      sE5.push(coneG(0.34, 1.3, 6, 36.3, dy + 2.25, dz + 0.9, 0x232830, { ry: -0.3, rz: 1.57 }));                     // 吻部
-      sE5.push(boxG(2.6, 0.16, 1.1, 29.0, dy + 1.25, dz - 0.8, 0x2d333b, { rx: 0.7, ry: 0.3, jitter: 0.1 }));         // 断翼骨
-      sE5.push(boxG(2.0, 0.14, 0.9, 31.6, dy + 1.15, dz + 0.5, 0x2d333b, { rx: -0.6, ry: 0.2, jitter: 0.1 }));
-      for (let i = 0; i < 4; i++) sE5.push(boxG(0.1, 1.0, 0.5, 28.4 + i * 1.4, dy + 0.85, dz + 1.0, 0x39414b, { rx: 0.35, ry: 0.15 }));  // 肋骨（朝场一侧）
+      const dx = 29.5, dz = -14.15, dy = 0.55;
+      sE5.push(cylG(1.0, 1.25, 8.4, 10, dx, dy, dz, 0x262c33, { rz: Math.PI / 2, ry: 0.1, jitter: 0.09 }));           // 躯干（沿壁）
+      sE5.push(cylG(0.5, 0.75, 4.2, 8, dx - 5.6, dy + 0.1, dz + 0.15, 0x232830, { rz: Math.PI / 2, ry: 0.5 }));       // 尾（西甩）
+      sE5.push(cylG(0.18, 0.32, 3.2, 6, dx - 8.3, dy + 0.08, dz + 0.6, 0x232830, { rz: Math.PI / 2, ry: 0.9 }));
+      sE5.push(cylG(0.32, 0.48, 3.0, 8, dx + 5.4, dy + 1.2, dz + 0.35, 0x2a3038, { rz: 1.05, ry: -0.3 }));            // 颈（东昂）
+      sE5.push(boxG(1.5, 0.7, 0.9, dx + 7.1, dy + 2.1, dz + 0.75, 0x2a3038, { ry: -0.3, rz: 0.15, jitter: 0.1 }));    // 头颅
+      sE5.push(coneG(0.34, 1.3, 6, dx + 8.1, dy + 2.05, dz + 0.95, 0x232830, { ry: -0.3, rz: 1.57 }));                // 吻部
+      sE5.push(boxG(2.6, 0.16, 1.1, dx - 0.5, dy + 1.2, dz + 0.45, 0x2d333b, { rx: 0.7, ry: 0.3, jitter: 0.1 }));     // 断翼骨（朝场一侧）
+      sE5.push(boxG(2.0, 0.14, 0.9, dx + 2.0, dy + 1.1, dz - 0.4, 0x2d333b, { rx: -0.6, ry: 0.2, jitter: 0.1 }));
+      for (let i = 0; i < 4; i++) sE5.push(boxG(0.1, 1.0, 0.5, dx - 1.6 + i * 1.3, dy + 0.85, dz + 1.0, 0x39414b, { rx: 0.35, ry: 0.15 }));  // 肋骨
+      // 冷月骨棱反光（朝场侧肋尖/断翼/脊背/颅脊的窄条微光——北壁逆光处让巨躯剪影可读）
+      for (let i = 0; i < 4; i++) coldGlowGeoms.push(boxG(0.5, 0.05, 0.1, dx - 1.6 + i * 1.3, dy + 1.38, dz + 1.16, PAL.paneMoonC));
+      coldGlowGeoms.push(boxG(0.7, 0.05, 0.12, dx - 1.2, dy + 1.56, dz + 0.78, PAL.paneMoonC, { ry: 0.3 }));
+      coldGlowGeoms.push(boxG(0.7, 0.05, 0.12, dx + 0.2, dy + 1.5, dz + 0.72, PAL.paneMoonC, { ry: 0.2 }));
+      coldGlowGeoms.push(boxG(0.9, 0.05, 0.14, dx - 2.2, dy + 1.34, dz + 0.05, PAL.paneMoonB));
+      coldGlowGeoms.push(boxG(0.9, 0.05, 0.14, dx + 1.4, dy + 1.3, dz - 0.1, PAL.paneMoonB));
+      coldGlowGeoms.push(boxG(0.55, 0.06, 0.3, dx + 7.0, dy + 2.5, dz + 0.75, PAL.paneMoonC, { ry: -0.3 }));
     }
+    // —— 接肢叙事 ①：墙上悬肢残躯（壁架+锁链+断臂/断腿低模剪影+壁血痕；合批）——
+    const hungLimb = (x: number, side: number, leg: boolean): void => {
+      const wz = side * 14.26;
+      sE5.push(boxG(0.1, 0.12, 0.5, x, 6.25, side * 14.3, PAL.metal));                          // 壁挑臂
+      for (let i = 0; i < 3; i++) sE5.push(boxG(0.06, 0.15, 0.05, x + rr(-0.02, 0.02), 6.05 - i * 0.17, wz, PAL.metal));   // 锁链
+      const flesh = pick([PAL.rot1, PAL.rot2, PAL.flesh, PAL.bone]);
+      const hy = 5.1;
+      if (leg) {
+        sE5.push(cylG(0.11, 0.13, 0.62, 7, x, hy - 0.28, wz, flesh, { rx: 0.25, jitter: 0.12 }));
+        sE5.push(cylG(0.085, 0.1, 0.55, 7, x + rr(-0.06, 0.06), hy - 0.85, wz + side * 0.08, flesh, { rx: 0.5, jitter: 0.12 }));
+        sE5.push(boxG(0.12, 0.09, 0.3, x, hy - 1.12, wz + side * 0.16, flesh, { rx: 0.9, jitter: 0.15 }));   // 足
+      } else {
+        sE5.push(cylG(0.095, 0.115, 0.55, 7, x, hy - 0.25, wz, flesh, { rx: 0.18, jitter: 0.12 }));
+        sE5.push(cylG(0.07, 0.088, 0.5, 7, x + rr(-0.08, 0.08), hy - 0.75, wz + side * 0.06, flesh, { rx: 0.55, jitter: 0.12 }));
+        sE5.push(dodG(0.09, x + rr(-0.1, 0.1), hy - 1.05, wz + side * 0.12, flesh, { ry: rnd() * 3 }));      // 手
+      }
+      sE5.push(boxG(0.05, rr(1.2, 2.0), 0.04, x, 3.6, side * 14.44, PAL.bloodA, { jitter: 0.1 }));          // 壁血垂痕
+      fE45.push(paint(new THREE.CircleGeometry(rr(0.3, 0.5), 12).rotateX(-Math.PI / 2).translate(x, 0.038, side * 13.9), PAL.bloodA, 0.14));  // 壁下血渍
+    };
+    const LIMBS: [number, number, boolean][] = [[19.4, -1, true], [21.1, 1, false], [24.3, -1, false], [26.9, 1, true], [29.7, -1, false], [32.5, 1, true], [35.1, -1, false]];
+    for (const [lx, lside, lleg] of LIMBS) hungLimb(lx, lside, lleg);
+    // 门内「迎宾」悬肢 ×2（西墙内面：一进堂先见祭仪）
+    for (const s of [-1, 1]) {
+      sE5.push(boxG(0.12, 0.4, 0.5, 15.32, 6.2, s * 6.4, PAL.metal));
+      for (let i = 0; i < 3; i++) sE5.push(boxG(0.05, 0.14, 0.06, 15.32, 5.92 - i * 0.17, s * 6.4, PAL.metal));
+      sE5.push(cylG(0.09, 0.11, 0.6, 7, 15.32, 5.2, s * 6.4, pick([PAL.rot1, PAL.flesh]), { rx: Math.PI / 2 - 0.25, jitter: 0.12 }));
+      sE5.push(dodG(0.08, 15.32, 4.82, s * 6.4, PAL.rot2, { ry: rnd() * 3 }));
+    }
+
+    // —— 接肢叙事 ②：「接肢失败」蜷躯 ×4（场缘散落，均在可走圆外）+ 血泊/拖痕 ——
+    const failedGraft = (x: number, z: number, ry: number): void => {
+      sE5.push(dodG(0.34, x, 0.32, z, pick([PAL.rot1, PAL.flesh]), { rx: rnd() * 3, ry, rz: rnd() * 3 }));                 // 蜷躯
+      sE5.push(boxG(0.24, 0.2, 0.2, x + Math.sin(ry) * 0.3, 0.28, z + Math.cos(ry) * 0.3, PAL.rot2, { ry, jitter: 0.12 })); // 头
+      sE5.push(boxG(0.42, 0.11, 0.11, x - Math.cos(ry) * 0.3, 0.22, z + Math.sin(ry) * 0.3, PAL.flesh, { ry, rz: 1.1, jitter: 0.12 }));   // 环抱臂
+      sE5.push(boxG(0.36, 0.1, 0.1, x - Math.cos(ry) * 0.1, 0.15, z - Math.sin(ry) * 0.26, PAL.rot1, { ry, rz: 1.35, jitter: 0.12 }));    // 蜷腿
+      fE45.push(paint(new THREE.CircleGeometry(rr(0.5, 0.8), 14).rotateX(-Math.PI / 2).translate(x, 0.036, z), PAL.bloodA, 0.15));
+      fE45.push(boxG(1.3, 0.012, 0.24, x - Math.cos(ry) * 0.9, 0.035, z + Math.sin(ry) * 0.9, PAL.bloodB, { ry, jitter: 0.1 }));  // 拖痕
+    };
+    failedGraft(16.6, -9.6, 2.2);
+    failedGraft(21.5, 12.7, -0.6);
+    failedGraft(31.6, -12.6, 0.9);
+    failedGraft(35.7, 11.5, 2.8);
+
+    // —— 接肢叙事 ③：金血红渍地面斑（顶点色椭圆斑；由门向坛渐密）+ 中门踩踏血径 ——
+    {
+      const stains: [number, number, number, number][] = [
+        [24.0, 2.2, 0.55, PAL.bloodA], [25.2, -2.6, 0.4, PAL.bloodB], [28.0, 3.4, 0.7, PAL.bloodC],
+        [29.5, -3.8, 0.5, PAL.bloodA], [31.5, 1.2, 0.45, PAL.bloodB], [33.0, -1.6, 0.6, PAL.bloodA],
+        [26.5, 0, 0.85, PAL.bloodC], [38.0, 1.8, 0.8, PAL.bloodB], [38.3, -2.0, 0.65, PAL.bloodA],
+      ];
+      for (const [sx, sz, sr, sc] of stains)
+        fE45.push(paint(new THREE.CircleGeometry(sr, 14).rotateX(-Math.PI / 2).scale(1, 1, rr(0.7, 1.3)).translate(sx, 0.037 + rnd() * 0.005, sz), sc, 0.18));
+    }
+    for (let i = 0; i < 15; i++) {
+      const px = 16.4 + i * 1.55;
+      fE45.push(boxG(1.4, 0.012, rr(0.6, 1.0), px, 0.034 + (i % 3) * 0.001, rr(-0.5, 0.5), pick([0x33231e, 0x3a2822, 0x2e211c]), { ry: rr(-0.2, 0.2), jitter: 0.1 }));
+    }
+
+    // —— 屋架：幸存桁架屋盖 x∈[24.5,41.8]（E4 段塌顶露天——「教堂断成两截」的天际线）——
+    // 屋盖双坡入 massGeoms（免投影：月光穿顶保 Boss 房可读，檐上剪影照读）
+    {
+      const EAVE = 12.4, RISE = 3.1, X0 = 24.5, X1 = 41.8, CX = (X0 + X1) / 2, L = X1 - X0;
+      const ra = Math.atan2(RISE, 15.6);
+      for (const s of [-1, 1]) massGeoms.push(boxG(L, 0.4, Math.hypot(15.6, RISE), CX, EAVE + RISE / 2 + 0.2, s * 7.8, PAL.roofA, { rx: s * ra, jitter: 0.08 }));
+      massGeoms.push(boxG(L + 0.4, 0.36, 1.0, CX, EAVE + RISE + 0.2, 0, PAL.roofB));                                  // 脊盖
+      for (let i = 0; i < 3; i++) massGeoms.push(boxG(1.4, 0.5, 26 - i * 9, 41.5, 12.9 + i * 0.9, 0, PAL.wall, { jitter: 0.07 }));  // 东端阶梯山墙
+      // 桁架 ×5（横梁/拱臂/中柱/上弦）+ 脊檩/檐檩——中厅的木构剪影
+      for (const bx of [25.6, 28.8, 32.0, 35.2, 38.4]) {
+        sE5.push(boxG(0.34, 0.42, 29.6, bx, 12.0, 0, PAL.wood, { jitter: 0.06 }));
+        for (const s of [-1, 1]) sE5.push(boxG(0.26, 0.26, 5.4, bx, 12.75, s * 11.0, PAL.wood, { rx: s * 0.34, jitter: 0.08 }));
+        sE5.push(boxG(0.28, 2.5, 0.3, bx, 13.2, 0, PAL.wood));
+        sE5.push(boxG(0.3, 0.32, 9.4, bx, 14.4, 0, PAL.wood));
+      }
+      sE5.push(boxG(L, 0.3, 0.34, CX, EAVE + RISE - 0.15, 0, PAL.wood));                                             // 脊檩
+      for (const s of [-1, 1]) sE5.push(boxG(L, 0.26, 0.3, CX, 13.3, s * 8.4, PAL.wood, { rx: s * ra }));            // 檐檩（贴坡）
+      // 塌口断桁（x≈24.5：半截断梁垂进室内 + 屋檐垂链）
+      sE5.push(boxG(0.32, 0.36, 7.8, 24.9, 10.6, -8.6, PAL.wood, { rx: 0.16, rz: 0.1, jitter: 0.08 }));
+      for (let i = 0; i < 3; i++) sE5.push(boxG(0.06, 0.3, 0.06, 24.9, 10.1 - i * 0.34, -5.1, PAL.metal));
+      // 梁上吊锁镣铐 ×2（高处悬空，不侵走幅）
+      for (const [cx2, cz2] of [[28.8, 2.6], [35.2, -2.8]] as const) {
+        for (let i = 0; i < 3; i++) sE5.push(boxG(0.06, 0.22, 0.06, cx2, 11.55 - i * 0.26, cz2, PAL.metal));
+        sE5.push(boxG(0.3, 0.1, 0.08, cx2, 10.55, cz2, PAL.metal, { ry: rnd() * 3 }));                                // 镣铐
+      }
+    }
+
+    // —— 氛围：尘埃光柱（北窗冷月 ×4 + 后殿暖金 + E4 塌口天光 ×2；additive 单批）——
+    {
+      const v = new THREE.Vector3(0.21, 0.8, -0.53).normalize();   // 光向：东南天顶→西北地面（stormLight 反向）
+      const tilt = Math.acos(v.y), yaw = Math.atan2(-v.z, v.x);
+      const addShaft = (tx: number, ty: number, tz: number, w: number, h: number, warm: boolean): void => {
+        const g = new THREE.PlaneGeometry(w, h, 1, 4);
+        const cA = new THREE.Color(warm ? 0xb08d52 : 0x86aede), cB = new THREE.Color(warm ? 0x2e2618 : 0x1c2a3e);
+        const p = g.attributes.position as THREE.BufferAttribute;
+        const cols = new Float32Array(p.count * 3);
+        const cc = new THREE.Color();
+        for (let i = 0; i < p.count; i++) {
+          const k = Math.min(1, Math.max(0, 0.5 - p.getY(i) / h));  // 0=顶 1=底，底端渐灭
+          cc.copy(cA).lerp(cB, k * k);
+          cols[i * 3] = cc.r; cols[i * 3 + 1] = cc.g; cols[i * 3 + 2] = cc.b;
+        }
+        g.rotateZ(-tilt);
+        g.rotateY(yaw);
+        g.translate(tx - v.x * h / 2, ty - v.y * h / 2, tz - v.z * h / 2);
+        g.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+        shaftsGeoms.push(g);
+      };
+      addShaft(20.8, 10.4, -14.0, 1.05, 9.6, false);
+      addShaft(25.4, 10.4, -14.0, 0.95, 9.4, false);
+      addShaft(30.0, 10.4, -14.0, 1.15, 9.8, false);
+      addShaft(34.6, 10.4, -14.0, 0.95, 9.6, false);
+      addShaft(40.4, 9.6, 0, 1.6, 8.6, true);                        // 后殿玫瑰暖金
+      addShaft(19.2, 6.4, -1.4, 1.4, 5.8, false);                    // E4 塌口天光
+      addShaft(22.6, 6.6, 1.2, 1.2, 6.0, false);
+    }
+
     // 圣所地面：整幅石板 + 环纹 + 接肢徽记（暗金）
     fE45.push(boxG(27.2, 0.4, 29.6, 28.2, -0.19, 0, PAL.cliff, { jitter: 0.1 }));
     fE45.push(paint(new THREE.CircleGeometry(13.7, 56).rotateX(-Math.PI / 2).translate(HC, 0.014, 0), PAL.stoneMid, 0.05));
@@ -813,14 +1139,22 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     m.matrixAutoUpdate = true;
     root.add(m);
   }
-  /** 圣坛恩泽（暖金，静稳脉动——接肢教堂的「赐福」错觉） */
-  const graceLight = new THREE.PointLight(0xe8c87c, 5, 15, 2);
+  /** 圣坛恩泽（暖金，静稳脉动——接肢教堂的「赐福」错觉；后殿 vignette 的主暖源） */
+  const graceLight = new THREE.PointLight(0xe8c87c, 6.5, 18, 2);
   graceLight.position.set(39.9, 2.8, 0);
   root.add(graceLight);
 
-  // ---------------- 自发光小批（暖窗/玫瑰窗/残烛/未燃火把） ----------------
+  // ---------------- 自发光小批（暖窗/玫瑰窗/残烛/未燃火把/烛龛暖晕/裂缝余烬） ----------------
   const emisMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, fog: false }));
   root.add(batch(emisGeoms, emisMat, "none"));
+  // 冷月窗格批（尖拱窗/玫瑰窗龛——建筑本体冷蓝，与暖批错相慢呼吸）
+  const coldGlowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.88, fog: false }));
+  root.add(batch(coldGlowGeoms, coldGlowMat, "none"));
+  // 尘埃光柱批（additive 半透明，顶亮底暗顶点色，整体缓涌）
+  const shaftMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  const shafts = batch(shaftsGeoms, shaftMat, "none");
+  shafts.renderOrder = 4;
+  root.add(shafts);
 
   // ---------------- 静态几何落批（5 空间分块 + 地面/山体，frustum 剔剪友好） ----------------
   root.add(batch(sE1, stoneMat, "both"));
@@ -893,13 +1227,13 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     const tex = softDiscTexture();
     const plane = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
     const defs = [
-      { x: -29.0, y: 0.3, z: 0.4, s: 7.0, o: 0.07 },
-      { x: -14.0, y: 0.26, z: -0.6, s: 5.5, o: 0.06 },
-      { x: 1.5, y: 0.32, z: 1.8, s: 6.5, o: 0.06 },
-      { x: 27.5, y: 0.4, z: 0, s: 9.0, o: 0.05 },
+      { x: -29.0, y: 0.3, z: 0.4, s: 7.0, o: 0.07, c: PAL.mistColor },
+      { x: -14.0, y: 0.26, z: -0.6, s: 5.5, o: 0.06, c: PAL.mistColor },
+      { x: 1.5, y: 0.32, z: 1.8, s: 6.5, o: 0.06, c: PAL.mistColor },
+      { x: 27.5, y: 0.4, z: 0, s: 9.0, o: 0.05, c: 0x34302a },      // 教堂内：微暖腐金雾
     ];
     for (const d of defs) {
-      const mat = track(new THREE.MeshBasicMaterial({ map: tex, color: PAL.mistColor, transparent: true, opacity: d.o, depthWrite: false }));
+      const mat = track(new THREE.MeshBasicMaterial({ map: tex, color: d.c, transparent: true, opacity: d.o, depthWrite: false }));
       const mesh = new THREE.Mesh(plane, mat);
       mesh.position.set(d.x, d.y, d.z);
       mesh.scale.setScalar(d.s);
@@ -939,7 +1273,7 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
       fl.light.intensity = 5.6 + Math.sin(animT * 9.5 + i * 2.4) * 1.3 + Math.sin(animT * 23 + i) * 0.7;
     }
     coalMat.emissiveIntensity = 1.35 + Math.sin(animT * 7.3) * 0.3;
-    graceLight.intensity = 4.6 + Math.sin(animT * 1.6) * 0.6 + Math.sin(animT * 4.1) * 0.25;
+    graceLight.intensity = 6.2 + Math.sin(animT * 1.6) * 0.7 + Math.sin(animT * 4.1) * 0.3;
     {                                                                                      // 风絮/枯叶：横飘 + 打旋 + wrap
       for (const w of windSys) {
         const attr = w.pts.geometry.getAttribute("position") as THREE.BufferAttribute;
@@ -971,6 +1305,14 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     winFarMat.opacity = 0.72 + Math.sin(animT * 0.8) * 0.14 + Math.sin(animT * 2.3) * 0.08;
     winTownMat.opacity = 0.66 + Math.sin(animT * 1.1 + 2) * 0.15 + Math.sin(animT * 3.1) * 0.07;
     emisMat.opacity = 0.92 + Math.sin(animT * 2.2) * 0.08;                                 // 暖窗/烛火微闪
+    coldGlowMat.opacity = 0.84 + Math.sin(animT * 1.1 + 1.9) * 0.09;                       // 冷月窗格慢呼吸（错相）
+    shaftMat.opacity = 0.52 + 0.16 * Math.sin(animT * 0.45) + 0.05 * Math.sin(animT * 1.3); // 光柱浮尘缓涌
+    {                                                                                      // 雾密度/色温室内外分层：进教堂渐透渐暖（Boss 房可读性）
+      const fk = Math.min(1, Math.max(0, (camX - 14.5) / 10));
+      const kk = fk * fk * (3 - 2 * fk);
+      (scene.fog as THREE.FogExp2).density = 0.026 - 0.007 * kk;
+      (scene.fog as THREE.FogExp2).color.copy(fogBase).lerp(fogIn, kk);
+    }
     for (const m of mists) {
       m.mesh.position.x = m.bx + Math.sin(animT * m.spx + m.ph) * m.dx;
       m.mesh.position.z = m.bz + Math.cos(animT * m.spz + m.ph * 1.7) * m.dz;
