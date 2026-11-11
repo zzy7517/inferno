@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { MOVES, MoveDef, BOSS } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
+import type { ProjDef } from "./projectile";
 
 export type BossState = "statue" | "rising" | "combat" | "stagger" | "parried" | "transform" | "dead";
 
@@ -16,6 +17,8 @@ export interface BossHost {
   onBossTransform: (point: THREE.Vector3) => void;  // 变身震波伤害判定由 game 处理
   onBossDeath: () => void;
   shake: (amp: number) => void;
+  /** 发射投射物（沙力万暗月矢等）；由 game 接到 Projectiles 池，命中自动走手感档案总线 */
+  fireProjectile?: (pos: THREE.Vector3, yaw: number, def: ProjDef) => void;
 }
 
 /** Boss 通用数值（与 config.BOSS 同构；后续 Boss 各自的配置表按此形状传入） */

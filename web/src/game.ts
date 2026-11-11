@@ -103,6 +103,7 @@ export class Game {
       onBossTransform: point => this.transformShock(point),
       onBossDeath: () => this.onBossDeath(),
       shake: a => this.shake(a),
+      fireProjectile: (pos, yaw, def) => this.projectiles.spawn(pos, yaw, def),
     });
 
     // 调校台（` 键开关）：帧数据热调 / 判定可视化 / 逐帧 / 存档
