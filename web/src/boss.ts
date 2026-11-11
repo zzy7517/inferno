@@ -1,4 +1,4 @@
-/** Boss「守烬者」：程序化石像傀儡 + FSM（docs/design/m1-demo.md 招式表）
+/** Boss「灰烬审判者古达」（DS3 官方名直接复用）：程序化石像傀儡 + FSM（docs/design/m1-demo.md 招式表）
  * 骨架全部代码驱动（时序归代码 ADR-0004），帧数据来自 config.MOVES
  */
 import * as THREE from "three";
@@ -116,7 +116,7 @@ export class Boss {
     this.armL.add(box(0.3, 0.95, 0.3, stone, 0, -0.45, 0));
     this.armL.add(box(0.34, 0.34, 0.34, stone, 0, -0.98, 0));
     this.torso.add(this.armL);
-    // 烬蛇（二阶段，从背部生长）
+    // 人性的沉淀（二阶段蛇形爆发体，从背部生长）
     for (let i = 0; i < 8; i++) {
       const s = 0.34 - i * 0.025;
       const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * 1.5), i === 7 ? this.emberMat : stone);
@@ -136,7 +136,7 @@ export class Boss {
     this.torso.rotation.set(p.lean, p.twist, 0);
     this.armR.rotation.set(-p.armLift, 0, -p.armSwing);
     this.armL.rotation.set(-p.armL, 0.2, 0);
-    // 烬蛇：从背后向 serpYaw 方向伸出
+    // 人性的沉淀：从背后向 serpYaw 方向伸出
     const n = this.serpent.length;
     const outLen = p.serpOut * 3.4;
     this.serpGlow.intensity = p.serpOut * 6;

@@ -31,10 +31,22 @@ export const BOSS = {
   parriedDur: 2.0,
   phase2At: 0.55,           // HP 比例阈值
   walkSpeed: 2.6, turnRate: 3.4,
-  name: "守烬者",
+  name: "灰烬审判者古达",
 };
 
-/** 一阶段 7 招 + 二阶段烬蛇 2 招（帧数据初值见 docs/design/m1-demo.md） */
+/** 镜头：默认全自动（触控板友好）——移动跟背 + 锁定双人取景 + 开战自动锁定；按 V 进自由视角（鼠标指针锁定） */
+export const CAM = {
+  yaw: -Math.PI / 2,     // 初始朝向：看向 +X（走廊→Boss 方向），W 即前进
+  pitch: 0.36,
+  followLerp: 2.6,       // 自动跟背缓动强度
+  manualGrace: 1.5,      // 自由视角退出后，多少秒内不自动回正
+  lockLerp: 6,           // 锁定时镜头缓动强度
+  lockPitch: 0.30,
+  lockDistBase: 4.6,     // 锁定取景基础距离
+  lockDistPerSep: 0.30,  // 距离随人/Boss 间距的增量系数
+};
+
+/** 一阶段 7 招 + 二阶段人性的沉淀 2 招（帧数据初值见 docs/design/m1-demo.md） */
 export const MOVES: Record<string, MoveDef> = {
   thrust:     { name: "thrust", label: "直戳", startup: 0.55, active: 0.16, recovery: 0.85, dmg: 22, range: 3.6, arc: 0.9, lunge: 1.2, parryable: true, cd: 1.6, chain: "thrust2" },
   thrust2:    { name: "thrust2", label: "二连戳", startup: 0.35, active: 0.14, recovery: 0.9, dmg: 20, range: 3.4, arc: 0.9, lunge: 0.8, parryable: true, cd: 1.2 },
@@ -43,8 +55,8 @@ export const MOVES: Record<string, MoveDef> = {
   jump:       { name: "jump", label: "跳劈", startup: 0.60, active: 0.15, recovery: 1.40, dmg: 38, range: 3.4, arc: 1.3, lunge: 7.0, parryable: true, cd: 6.0 },
   shoulder:   { name: "shoulder", label: "肩撞", startup: 0.40, active: 0.12, recovery: 0.70, dmg: 18, range: 2.4, arc: 1.0, lunge: 1.8, parryable: false, cd: 2.8 },
   grab:       { name: "grab", label: "抓技", startup: 0.70, active: 0.20, recovery: 1.20, dmg: 45, range: 2.0, arc: 0.8, parryable: false, grab: true, cd: 9.0 },
-  serpSweep:  { name: "serpSweep", label: "烬蛇横扫", startup: 0.80, active: 0.25, recovery: 1.00, dmg: 30, range: 5.5, arc: 3.0, parryable: true, cd: 3.8, phase2Only: true },
-  serpThrust: { name: "serpThrust", label: "烬蛇突刺", startup: 0.70, active: 0.18, recovery: 0.90, dmg: 26, range: 8.0, arc: 0.7, lunge: 2.0, parryable: true, cd: 4.6, phase2Only: true },
+  serpSweep:  { name: "serpSweep", label: "沉淀横扫", startup: 0.80, active: 0.25, recovery: 1.00, dmg: 30, range: 5.5, arc: 3.0, parryable: true, cd: 3.8, phase2Only: true },
+  serpThrust: { name: "serpThrust", label: "沉淀突刺", startup: 0.70, active: 0.18, recovery: 0.90, dmg: 26, range: 8.0, arc: 0.7, lunge: 2.0, parryable: true, cd: 4.6, phase2Only: true },
 };
 
 export const COLORS = {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Inferno · M1 垂直切片</title>
+  <title>黑暗之魂3 · M1 垂直切片</title>
   <style>
     :root { --ember: #ff8c3a; --gold: #e6c37a; --cold: #8a93a6; --blood: #9b3b32; --stam: #7a8f4a; --bg: #0d1016; }
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
@@ -82,7 +82,7 @@
   </div>
 
   <div id="bossbar">
-    <div id="bossName">守烬者<span id="bossPhase2">· 烬蛇</span></div>
+    <div id="bossName"><span id="bossTitle">灰烬审判者古达</span><span id="bossPhase2">· 人性的沉淀</span></div>
     <div class="bar boss"><i class="lag" id="bossLag"></i><i class="fill" id="bossFill"></i></div>
   </div>
 
@@ -93,16 +93,17 @@
   <div id="hint">
     <kbd>W A S D</kbd>移动 <kbd>Shift</kbd>疾跑 <kbd>空格</kbd>翻滚(无敌帧)<br/>
     <kbd>左键</kbd>轻击·按住蓄力重击 <kbd>右键</kbd>格挡 <kbd>F</kbd>弹反<br/>
-    <kbd>E</kbd>交互/处决 <kbd>Q</kbd>锁定 <kbd>R</kbd>原素瓶 <kbd>M</kbd>静音
+    <kbd>E</kbd>交互/处决 <kbd>Q</kbd>锁定 <kbd>R</kbd>原素瓶 <kbd>M</kbd>静音<br/>
+    视角默认全自动（跟背/开战锁定）；鼠标用户按 <kbd>V</kbd> 自由视角·滚轮缩放，<kbd>Esc</kbd> 退出
   </div>
-  <div id="title"><b>INFERNO</b> · M1 垂直切片</div>
+  <div id="title"><b>黑暗之魂3</b> · M1 垂直切片</div>
 
   <div class="overlay" id="overlayDeath">
     <div class="big">你死了</div>
     <div class="sub">魂尚在灰烬中回响 —— <b>R</b> 回到篝火</div>
   </div>
   <div class="overlay" id="overlayWin">
-    <div class="big">守烬者 已陨落</div>
+    <div class="big">古达 已陨落</div>
     <div class="sub">螺旋剑已入手 · 魂 +3000</div>
     <div id="winStats"></div>
     <div class="sub"><b>R</b> 再战</div>

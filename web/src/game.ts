@@ -1,6 +1,6 @@
 /** Game：世界 + onHit 总线（ADR-0004）+ Demo 流程（m1-demo.md）+ 镜头 + HUD */
 import * as THREE from "three";
-import { COLORS, P, BOSS, MoveDef } from "./config";
+import { COLORS, P, BOSS, CAM, MoveDef } from "./config";
 import { AU } from "./audio";
 import { Vfx, buildBonfire, Bonfire, FogGate } from "./vfx";
 import { Boss } from "./boss";
@@ -22,8 +22,10 @@ export class Game {
   private player!: Player;
 
   private flow: Flow = "intro";
-  private camYaw = Math.PI * 0.5;
-  private camPitch = 0.36;
+  private camYaw = CAM.yaw;
+  private camPitch = CAM.pitch;
+  private manualT = 0;                        // 自由视角宽限倒计时（>0 时不自动跟背）
+  private camPrevPos = new THREE.Vector3(-12.2, 0, 1.4);   // 上一帧玩家位置（判断是否移动，供跟背）
   private camDist = 5.6;
   private shakeAmp = 0;
   private hitstop = 0;
@@ -139,20 +141,32 @@ export class Game {
   // ---------------- 输入 ----------------
   private bindInput(): void {
     const canvas = this.renderer.domElement;
-    canvas.addEventListener("click", () => { canvas.requestPointerLock(); AU.init(); });
+    canvas.addEventListener("click", () => { AU.init(); });   // 点击仅初始化音频，不锁定指针（触控板友好）
     addEventListener("contextmenu", e => e.preventDefault());
+    // 双模式视角：默认全自动（跟背/锁定取景）；按 V 切换自由视角（鼠标指针锁定），ESC 退出后自动回正
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement !== canvas) this.manualT = CAM.manualGrace;   // 退出自由视角 → 宽限后恢复跟背
+    });
     addEventListener("mousemove", e => {
-      if (document.pointerLockElement !== canvas) return;
+      if (document.pointerLockElement !== canvas || this.player.lockOn) return;    // 锁定时镜头交给取景逻辑
       this.camYaw -= e.movementX * 0.0024;
       this.camPitch = Math.max(0.04, Math.min(0.9, this.camPitch + e.movementY * 0.002));
+      this.manualT = CAM.manualGrace;
     });
-    addEventListener("wheel", e => { this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004)); });
+    addEventListener("wheel", e => {
+      if (document.pointerLockElement !== canvas) return;    // 仅自由视角下缩放，避免触控板双指误触
+      this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004));
+    });
     addEventListener("mousedown", e => this.player.onMouse(e.button, true));
     addEventListener("mouseup", e => this.player.onMouse(e.button, false));
     addEventListener("keydown", e => {
       if (e.code === "Space") e.preventDefault();
       this.player.onKey(e.code, true);
-      if (e.code === "KeyQ") this.player.lockOn = !this.player.lockOn;
+      if (e.code === "KeyV" && !e.repeat) {                       // 自由视角开关（鼠标用户）
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+        else canvas.requestPointerLock();
+      }
+      else if (e.code === "KeyQ") this.player.lockOn = !this.player.lockOn;
       else if (e.code === "KeyE") this.interact();
       else if (e.code === "KeyT") { this.slowDebug = !this.slowDebug; }
       else if (e.code === "KeyM") AU.toggleMute();
@@ -216,15 +230,17 @@ export class Game {
     }
     this.vfx.embers.burst(point.clone().setY(1.5), 40, 6, 1.2);
     this.shake(0.8);
-    this.showMsg("烬蛇缠身", 1.6);
+    this.showMsg("人性的沉淀", 1.6);
   }
 
   private revealBoss(): void {
     $("bossbar").classList.add("on");
-    $("bossName").textContent = BOSS.name;
-    this.showMsg(`妖王 · ${BOSS.name}`, 2.2, true);
+    // 只改标题 span，勿动 #bossName.textContent——会连带销毁 #bossPhase2（曾致每帧 null.style 崩循环）
+    $("bossTitle").textContent = BOSS.name;
+    this.showMsg(BOSS.name, 2.2, true);
     AU.roar();
     this.fightStart = this.elapsed;
+    this.player.lockOn = true;   // 开战自动锁定（无鼠标方案）
   }
 
   private onBossDeath(): void {
@@ -309,24 +325,44 @@ export class Game {
 
   private updateCamera(rdt: number): void {
     const target = this.player.pos.clone().add(new THREE.Vector3(0, 1.45, 0));
-    if (this.player.lockOn && this.boss.awake && this.boss.state !== "dead") {
-      const toBoss = Math.atan2(this.boss.root.position.x - this.player.pos.x, this.boss.root.position.z - this.player.pos.z);
-      let d = toBoss + Math.PI - this.camYaw;
+    let dist = this.camDist;
+    let lookAt = target;
+
+    const locked = this.player.lockOn && this.boss.awake && this.boss.state !== "dead";
+    if (locked) {
+      // 锁定取景：镜头在玩家背侧、看向两人中点，距离随间距自适应
+      const toBoss = this.boss.root.position.clone().sub(this.player.pos);
+      const sep = toBoss.length();
+      lookAt = this.player.pos.clone().lerp(this.boss.root.position, 0.32).setY(target.y);
+      const wantYaw = Math.atan2(toBoss.x, toBoss.z) + Math.PI;
+      let d = wantYaw - this.camYaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.camYaw += d * Math.min(1, rdt * 6);
-      this.camPitch += (0.3 - this.camPitch) * Math.min(1, rdt * 4);
+      this.camYaw += d * Math.min(1, rdt * CAM.lockLerp);
+      this.camPitch += (CAM.lockPitch - this.camPitch) * Math.min(1, rdt * 4);
+      dist = Math.max(this.camDist, CAM.lockDistBase + sep * CAM.lockDistPerSep);
+    } else {
+      // 自动跟背：自由视角宽限期外且正在移动 → 缓动到角色背后（黑神话式）
+      this.manualT = Math.max(0, this.manualT - rdt);
+      const moved = this.player.pos.distanceToSquared(this.camPrevPos) > 1e-6;
+      this.camPrevPos.copy(this.player.pos);
+      if (this.manualT <= 0 && moved) {
+        const wantYaw = this.player.yaw + Math.PI;
+        let d = wantYaw - this.camYaw;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        this.camYaw += d * Math.min(1, rdt * CAM.followLerp);
+        this.camPitch += (CAM.pitch - this.camPitch) * Math.min(1, rdt * 1.5);
+      }
     }
-    const dist = this.camDist;
     this.camera.position.set(
-      target.x + Math.sin(this.camYaw) * Math.cos(this.camPitch) * dist,
-      target.y + Math.sin(this.camPitch) * dist,
-      target.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist,
+      lookAt.x + Math.sin(this.camYaw) * Math.cos(this.camPitch) * dist,
+      lookAt.y + Math.sin(this.camPitch) * dist,
+      lookAt.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist,
     );
     if (this.shakeAmp > 0.001) {
       this.camera.position.add(new THREE.Vector3((Math.random() - 0.5) * this.shakeAmp * 0.3, (Math.random() - 0.5) * this.shakeAmp * 0.22, (Math.random() - 0.5) * this.shakeAmp * 0.3));
       this.shakeAmp *= Math.exp(-7 * rdt);
     }
-    this.camera.lookAt(target);
+    this.camera.lookAt(lookAt);
   }
 
   private updateHud(): void {
