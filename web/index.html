@@ -91,6 +91,16 @@
 
     /* ---- 篝火菜单（M2：休息/传送/再战） ---- */
     #bonfireMenu { z-index: 35; }
+
+    /* ---- 传送演出（M4 T9：黑场渐隐 + 区域题字卡） ---- */
+    #fade { position: fixed; inset: 0; background: #050608; opacity: 0; pointer-events: none; z-index: 60;
+      transition: opacity 0.3s ease; }
+    #fade.on { opacity: 1; }
+    #zoneCard { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); z-index: 61; pointer-events: none;
+      font-size: clamp(30px, 4.6vw, 44px); letter-spacing: 18px; text-indent: 18px; color: #d8dee8;
+      text-shadow: 0 2px 14px rgba(0,0,0,0.9), 0 0 38px rgba(230,195,122,0.18);
+      opacity: 0; transition: opacity 0.9s ease 0.15s; white-space: nowrap; }
+    #zoneCard.on { opacity: 1; }
     #bonfireMenu .fire { font-size: 30px; letter-spacing: 12px; color: var(--gold); text-shadow: 0 0 26px rgba(230,195,122,0.45); margin-bottom: 34px; }
     #menuItems { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     #menuItems .mi { font-size: 19px; letter-spacing: 7px; text-indent: 7px; color: #8a93a6; padding: 7px 34px;
@@ -103,6 +113,8 @@
 <body>
   <div id="vig"></div>
   <div id="flash"></div>
+  <div id="fade"></div>
+  <div id="zoneCard"></div>
 
   <div class="hud-bl">
     <div class="bar hp"><i id="hpFl"></i></div>

@@ -243,9 +243,26 @@ export class Game {
     o.removeFromParent();
   }
 
-  /** 篝火旅行：销毁旧场景与 Boss → 重建目标场景 → 玩家置新篝火（restart 也走此路） */
+  /** 篝火旅行（M4 T9 演出：黑场渐隐 0.3s → 换场景 → 渐显 + 区域题字卡；restart 也走此路） */
   private travelTo(target: SceneId): void {
     this.closeMenu();
+    $("fade").classList.add("on");
+    setTimeout(() => {
+      this.rebuildScene(target);
+      $("fade").classList.remove("on");
+      this.showZoneCard(SCENE_NAME[target]);
+    }, 340);
+  }
+
+  /** 区域题字卡（DS3 风格：大字距 + 缓入缓出） */
+  private showZoneCard(text: string): void {
+    const el = $("zoneCard");
+    el.textContent = text;
+    el.classList.add("on");
+    setTimeout(() => el.classList.remove("on"), 2100);
+  }
+
+  private rebuildScene(target: SceneId): void {
     this.boss.dispose();
     this.disposeObj(this.bonfire.group);
     this.disposeObj(this.fog.group);
@@ -267,7 +284,6 @@ export class Game {
     if (this.progress.bloodstain && this.progress.bloodstain.scene === target) {
       this.bloodstain = buildSoulSign(this.scene, new THREE.Vector3(this.progress.bloodstain.x, 0, this.progress.bloodstain.z));
     }
-    this.showMsg(SCENE_NAME[target], 2.2, true);
   }
 
   private saveState(): void {
