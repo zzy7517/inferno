@@ -162,6 +162,7 @@ export class Game {
     } else {
       const cm = buildCemetery(this.scene);
       this.anchors = cm.anchors;
+      this.sceneUpdate = cm.update;   // 飘灰/火焰/流云动态
       this.sceneDispose = cm.dispose;
     }
     this.bonfire = buildBonfire(this.scene, this.anchors.bonfire);
