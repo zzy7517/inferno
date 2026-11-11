@@ -20,36 +20,41 @@ class AudioSys {
   }
 
   private tone(f0: number, f1: number, dur: number, type: OscillatorType, vol: number, delay = 0): void {
-    if (!this.ctx || !this.master) return;
-    const t = this.ctx.currentTime + delay;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g).connect(this.master);
-    o.start(t); o.stop(t + dur + 0.05);
+    if (!this.ctx || !this.master || dur <= 0) return;
+    try {
+      const t = this.ctx.currentTime + delay;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(Math.max(20, f0), t);
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+      // 指数坡不能从 0 起，否则 Chrome 抛 InvalidStateError，渲染帧被掐死
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t + Math.min(0.008, dur * 0.25));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + dur + 0.05);
+    } catch (err) { console.error(err); }
   }
 
   private noise(dur: number, freq: number, vol: number, type: BiquadFilterType = "lowpass", delay = 0, q = 1): void {
-    if (!this.ctx || !this.master) return;
-    const t = this.ctx.currentTime + delay;
-    const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const f = this.ctx.createBiquadFilter();
-    f.type = type; f.frequency.value = freq; f.Q.value = q;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(f).connect(g).connect(this.master);
-    src.start(t);
+    if (!this.ctx || !this.master || dur <= 0) return;
+    try {
+      const t = this.ctx.currentTime + delay;
+      const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const f = this.ctx.createBiquadFilter();
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(Math.max(0.0001, vol), t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f).connect(g).connect(this.master);
+      src.start(t);
+    } catch (err) { console.error(err); }
   }
 
   // ---- 战斗 ----

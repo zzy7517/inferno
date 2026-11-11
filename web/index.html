@@ -7,9 +7,9 @@
   <style>
     :root { --ember: #ff8c3a; --gold: #e6c37a; --cold: #8a93a6; --blood: #9b3b32; --stam: #7a8f4a; --bg: #0d1016; }
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-    html, body { height: 100%; overflow: hidden; background: var(--bg); }
+    html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; background: var(--bg); }
     body { font-family: "Noto Serif SC", "Songti SC", serif; color: #c9cdd4; }
-    canvas { display: block; cursor: crosshair; }
+    canvas { display: block; cursor: crosshair; touch-action: none; }
 
     #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 40; }
     #vig { position: fixed; inset: 0; pointer-events: none; z-index: 5;

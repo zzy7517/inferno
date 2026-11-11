@@ -233,6 +233,7 @@ export class Game {
   private bindInput(): void {
     const canvas = this.renderer.domElement;
     canvas.addEventListener("click", () => { AU.init(); });   // 点击仅初始化音频，不锁定指针（触控板友好）
+    canvas.addEventListener("dragstart", e => e.preventDefault()); // 点按被当成拖拽时，浏览器会停住页面绘制
     addEventListener("contextmenu", e => e.preventDefault());
     // 双模式视角：默认全自动（跟背/锁定取景）；按 V 切换自由视角（鼠标指针锁定），ESC 退出后自动回正
     document.addEventListener("pointerlockchange", () => {
@@ -247,10 +248,13 @@ export class Game {
       this.camPitch = Math.max(0.04, Math.min(0.9, this.camPitch + e.movementY * 0.002));
       this.manualT = CAM.manualGrace;
     });
+    // passive:false 才能 preventDefault。不拦的话，触控板横滑会走浏览器返回手势：
+    // 页面被拍成快照，WebGL 不再刷新，看起来就是屏幕卡死。
     addEventListener("wheel", e => {
-      if (document.pointerLockElement !== canvas) return;    // 仅自由视角下缩放，避免触控板双指误触
+      e.preventDefault();
+      if (e.ctrlKey || document.pointerLockElement !== canvas) return; // 捏合只禁缩放；双指不推动镜头
       this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004));
-    });
+    }, { passive: false });
     addEventListener("mousedown", e => {
       if (this.menuOpen || e.target !== canvas) return;   // 点 HUD/调校台不挥刀
       this.player.onMouse(e.button, true);
@@ -657,64 +661,69 @@ export class Game {
 
   start(): void {
     let last = performance.now();
+    // three.js 在回调返回之后才 requestAnimationFrame。回调里一旦抛错，下一帧不会再约，画面就停在最后一帧。
     this.renderer.setAnimationLoop(() => {
-      const now = performance.now();
-      const rdt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.elapsed += rdt;
-      this.tune.frameTick(rdt);
+      try {
+        const now = performance.now();
+        const rdt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        this.elapsed += rdt;
+        this.tune.frameTick(rdt);
 
-      // 时间控制：调校台暂停/逐帧 > 篝火菜单冻结 > 顿帧 > 慢动作 > 调校台慢放
-      let dt = rdt;
-      if (this.tune.paused) {
-        if (this.tune.steps > 0) { this.tune.steps--; dt = (1 / 60) * (this.tune.slowOn ? this.tune.timeScale : 1); }
-        else dt = 0;
-      } else if (this.menuOpen) dt = 0;
-      else if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
-      else if (this.slowT > 0) { this.slowT -= rdt; dt *= this.slowScale; }
-      else if (this.tune.slowOn) dt *= this.tune.timeScale;
+        // 时间控制：调校台暂停/逐帧 > 篝火菜单冻结 > 顿帧 > 慢动作 > 调校台慢放
+        let dt = rdt;
+        if (this.tune.paused) {
+          if (this.tune.steps > 0) { this.tune.steps--; dt = (1 / 60) * (this.tune.slowOn ? this.tune.timeScale : 1); }
+          else dt = 0;
+        } else if (this.menuOpen) dt = 0;
+        else if (this.hitstop > 0) { this.hitstop -= rdt; dt = 0; }
+        else if (this.slowT > 0) { this.slowT -= rdt; dt *= this.slowScale; }
+        else if (this.tune.slowOn) dt *= this.tune.timeScale;
 
-      // 战斗更新
-      if (this.flow === "fight") this.boss.update(dt, this.player.pos, this.player.isIframed);
-      else if (this.boss.state === "rising" || this.boss.state === "dead" || this.boss.state === "transform") this.boss.update(dt, this.player.pos, this.player.isIframed);
-      this.player.update(dt, this.camYaw);
-      this.clampWorld();
-      this.vfx.update(dt);
-      // 投射物（沙力万矢）：命中走 applyHit → onPlayerHurt 手感档案扇出，可格挡
-      this.projectiles.update(dt, this.player.pos, this.player.isIframed, (def, point, dir) => {
-        void point;
-        this.player.applyHit(def.dmg, dir, null, def.feelKey);
-      });
-      this.fog.update(this.elapsed);
-      this.bloodstain?.update(this.elapsed);
-      this.sceneUpdate?.(this.elapsed, dt);
-      this.tune.updateViz();
+        // 战斗更新
+        if (this.flow === "fight") this.boss.update(dt, this.player.pos, this.player.isIframed);
+        else if (this.boss.state === "rising" || this.boss.state === "dead" || this.boss.state === "transform") this.boss.update(dt, this.player.pos, this.player.isIframed);
+        this.player.update(dt, this.camYaw);
+        this.clampWorld();
+        this.vfx.update(dt);
+        // 投射物（沙力万矢）：命中走 applyHit → onPlayerHurt 手感档案扇出，可格挡
+        this.projectiles.update(dt, this.player.pos, this.player.isIframed, (def, point, dir) => {
+          void point;
+          this.player.applyHit(def.dmg, dir, null, def.feelKey);
+        });
+        this.fog.update(this.elapsed);
+        this.bloodstain?.update(this.elapsed);
+        this.sceneUpdate?.(this.elapsed, dt);
+        this.tune.updateViz();
 
-      // 篝火粒子
-      this.bonfire.light.intensity = 9 + Math.sin(this.elapsed * 13) * 1.6 + Math.sin(this.elapsed * 31) * 0.8;
-      if (Math.random() < rdt * 8) this.vfx.embers.spawn(this.bonfire.pos.x + (Math.random() - 0.5) * 0.3, 0.5, this.bonfire.pos.z + (Math.random() - 0.5) * 0.3, 0, 1 + Math.random(), 0, 1.4);
+        // 篝火粒子
+        this.bonfire.light.intensity = 9 + Math.sin(this.elapsed * 13) * 1.6 + Math.sin(this.elapsed * 31) * 0.8;
+        if (Math.random() < rdt * 8) this.vfx.embers.spawn(this.bonfire.pos.x + (Math.random() - 0.5) * 0.3, 0.5, this.bonfire.pos.z + (Math.random() - 0.5) * 0.3, 0, 1 + Math.random(), 0, 1.4);
 
-      // 流程结算
-      if (this.flow === "dead" && (this.deathDelay -= rdt) <= 0) {
-        $("overlayDeath").classList.add("show");
-        this.deathDelay = 999;
+        // 流程结算
+        if (this.flow === "dead" && (this.deathDelay -= rdt) <= 0) {
+          $("overlayDeath").classList.add("show");
+          this.deathDelay = 999;
+        }
+        if (this.flow === "victory" && (this.victoryDelay -= rdt) <= 0) {
+          const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
+          $("winStats").textContent =
+            `用时 ${this.fmtTime(this.elapsed - this.fightStart)} · 受击 ${this.stats.hitsTaken} · 弹反 ${this.stats.parries} · 处决 ${this.stats.ripostes}`
+            + (allClear ? ` · 身陨合计 ${this.progress.stats.deaths} · 拾回魂 ${this.progress.stats.soulRegains} 次` : "");
+          $("overlayWin").classList.add("show");
+          AU.victoryBell();
+          AU.soulGain();
+          this.victoryDelay = 999;
+        }
+
+        if (this.hintT > 0 && (this.hintT -= rdt) <= 0) $("hint").classList.add("off");
+
+        this.updateCamera(rdt);
+        this.updateHud();
+        this.renderer.render(this.scene, this.camera);
+      } catch (err) {
+        console.error(err);
       }
-      if (this.flow === "victory" && (this.victoryDelay -= rdt) <= 0) {
-        const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
-        $("winStats").textContent =
-          `用时 ${this.fmtTime(this.elapsed - this.fightStart)} · 受击 ${this.stats.hitsTaken} · 弹反 ${this.stats.parries} · 处决 ${this.stats.ripostes}`
-          + (allClear ? ` · 身陨合计 ${this.progress.stats.deaths} · 拾回魂 ${this.progress.stats.soulRegains} 次` : "");
-        $("overlayWin").classList.add("show");
-        AU.victoryBell();
-        AU.soulGain();
-        this.victoryDelay = 999;
-      }
-
-      if (this.hintT > 0 && (this.hintT -= rdt) <= 0) $("hint").classList.add("off");
-
-      this.updateCamera(rdt);
-      this.updateHud();
-      this.renderer.render(this.scene, this.camera);
     });
   }
 }
