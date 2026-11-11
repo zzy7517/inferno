@@ -13,13 +13,20 @@ import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
 import { buildHighWall, SceneAnchors } from "./scene-highwall";
 import { buildCemetery } from "./scene-cemetery";
+import { buildStormveil } from "./scene-stormveil";
+import { Margit, MARGIT_STATS } from "./boss-margit";
+import { Godrick, GODRICK_STATS } from "./boss-godrick";
+import { EnemyManager } from "./enemy";
+import { ENEMY_PRESETS } from "./enemies-config";
 import { BOSS_ORDER, SCENE_NAME, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene } from "./progress";
 import type { SceneId, BossId, Progress } from "./progress";
 import { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Flow = "intro" | "statue" | "fight" | "dead" | "victory";
 
-/** Boss 注册表：场景×Boss 组合与直选入口（M2 进度线：古达→玻尔多→监视者→沙力万） */
+/** Boss 注册表：场景×Boss 组合与直选入口
+ * 进度线 v1.1（m4）：古达→玻尔多→玛尔基特(城垣E)→葛瑞克(城垣E4)→监视者(墓地C)→沙力万(高墙D)
+ * margit/godrick 暂为金色幽灵占位（boss-stub.ts），正式实现落地后替换 create 即可 */
 interface BossEntry {
   name: string;
   radius: number;
@@ -30,8 +37,10 @@ interface BossEntry {
 const BOSSES: Record<string, BossEntry> = {
   gundyr:    { name: "灰烬审判者古达", radius: BOSS.radius, arena: "cemetery", souls: 3000, create: (s, v, p, h) => new Boss(s, v, p, h) },
   vordt:     { name: VORDT_STATS.name, radius: VORDT_STATS.radius, arena: "highwall", souls: 4000, create: (s, v, p, h) => new Vordt(s, v, p, h) },
+  margit:    { name: MARGIT_STATS.name, radius: MARGIT_STATS.radius, arena: "stormveil", souls: 12000, create: (s, v, p, h) => new Margit(s, v, p, h) },
+  godrick:   { name: GODRICK_STATS.name, radius: GODRICK_STATS.radius, arena: "stormveil", souls: 20000, create: (s, v, p, h) => new Godrick(s, v, p, h) },
   watchers:  { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", souls: 6000, create: (s, v, p, h) => new Watchers(s, v, p, h) },
-  sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "cemetery", souls: 9000, create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
+  sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "highwall", souls: 9000, create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
 };
 /** Boss→场景映射（进度线推导用） */
 const ARENAS: Record<string, SceneId> = Object.fromEntries(Object.entries(BOSSES).map(([k, v]) => [k, v.arena]));
@@ -75,6 +84,7 @@ export class Game {
   private bloodstain: SoulSign | null = null;  // 场上血渍（掉魂点）
   private sceneDispose: (() => void) | null = null;
   private bossOverride: string | null = null;  // 再战直选（一次性，spawnBoss 消费）
+  private enemies!: EnemyManager;              // M3 小怪系统（构造后即置）
   private tryN = 0;                            // 当前 Boss 累计挑战次数
   private menuOpen = false;
   private menuIdx = 0;
@@ -112,6 +122,7 @@ export class Game {
 
     this.player = new Player(gltf.scene, frames, {
       hitBoss: (dmg, poise, feelKey, point) => this.hitBoss(dmg, poise, feelKey, point),
+      hitEnemies: (dmg, poise, feelKey) => { this.enemies.tryHit(this.player.pos, this.player.yaw, dmg, poise, feelKey); },
       onPlayerHurt: (dmg, point, feelKey) => this.onPlayerHurt(dmg, point, feelKey),
       onParrySuccess: point => this.onParry(point),
       onDeath: () => this.onPlayerDeath(),
@@ -120,10 +131,24 @@ export class Game {
       bossPos: () => this.boss.root.position,
       shake: a => this.shake(a),
     });
-    this.player.bind(actions);
+    this.player.bind(actions, mixer);
     this.player.pos.copy(this.anchors.spawn);
     this.player.souls = this.progress.souls;     // 魂量随存档恢复
     this.scene.add(this.player.root);
+
+    // 小怪系统（M3）：布怪在 spawnEnemies（按场景预设表，篝火休息/旅行重刷）
+    this.enemies = new EnemyManager(this.scene, this.vfx, {
+      onHit: (feelKey, point) => {                // 敌人被玩家命中：六通道扇出（同 hitBoss 反馈段）
+        const f = FEEL[feelKey] ?? FEEL.pR1a;
+        this.vfx.sparks.burst(point, f.sparks, f.sparkSpeed, 0.35);
+        this.hitstopFor(f.hitstop); this.shake(f.shake);
+        this.sfx(f.sfx); PAD.rumble(f.shake * 0.5, f.shake, 90 + f.hitstop * 600);
+      },
+      onHitPlayer: (dmg, dir, move) => this.player.applyHit(dmg, dir, move),
+      onDeath: souls => { this.player.souls += souls; this.showMsg(`魂 +${souls}`, 1.2, true); this.saveState(); },
+      shake: a => this.shake(a),
+    });
+    this.spawnEnemies();
 
     // Boss 选择：?boss= 直选（调试/再战入口，一次性），否则按进度线推导本场雾门 Boss
     const bossParam = params.get("boss");
@@ -159,6 +184,11 @@ export class Game {
       this.anchors = hw.anchors;
       this.sceneUpdate = hw.update;
       this.sceneDispose = hw.dispose;
+    } else if (this.sceneId === "stormveil") {
+      const sv = buildStormveil(this.scene);
+      this.anchors = sv.anchors;
+      this.sceneUpdate = sv.update ?? null;   // 风雾漂移动态（T1 灰盒）
+      this.sceneDispose = sv.dispose;
     } else {
       const cm = buildCemetery(this.scene);
       this.anchors = cm.anchors;
@@ -170,6 +200,21 @@ export class Game {
   }
 
   // ---------------- Boss 生命周期（M2：进度线选人 / 旅行销毁重建） ----------------
+  /** 按场景预设布怪（旅行/篝火休息/构造时重刷；T8 将迁入关卡表） */
+  private spawnEnemies(): void {
+    this.enemies.clear();
+    const specs = ENEMY_PRESETS[this.sceneId];
+    if (!specs?.length) return;
+    const spots: Record<string, THREE.Vector3[]> = {
+      cemetery: [new THREE.Vector3(-9.2, 0, 1.1), new THREE.Vector3(-7.0, 0, -1.1)],
+      highwall: [new THREE.Vector3(-8.5, 0, 0.4), new THREE.Vector3(-10.2, 0, 2.2), new THREE.Vector3(-6.6, 0, -1.2)],
+      stormveil: [],
+    };
+    for (const [i, p] of (spots[this.sceneId] ?? []).entries()) {
+      if (i < specs.length) this.enemies.spawn(specs[i], p);
+    }
+  }
+
   private spawnBoss(): void {
     const pick = this.bossOverride && BOSSES[this.bossOverride] ? this.bossOverride : bossForScene(this.progress, this.sceneId, ARENAS);
     this.bossOverride = null;
@@ -209,6 +254,7 @@ export class Game {
     this.projectiles.clear();
     this.sceneId = target;
     this.setupScene();
+    this.spawnEnemies();
     this.spawnBoss();
     this.tune.retarget(this.boss);
     this.player.reset(this.anchors.spawn);
@@ -389,7 +435,9 @@ export class Game {
     this.player.souls += award;
     onDefeat(this.progress, this.bossId as BossId, ARENAS);   // 记 defeated + 解锁下一位场景/点篝火
     const allClear = this.progress.defeated.length >= BOSS_ORDER.length;
-    $("winSub").textContent = allClear ? "薪火的巡礼告一段落 —— 四位 Boss 尽数陨落" : `魂 +${award}`;
+    $("winSub").textContent = allClear
+      ? `薪火的巡礼告一段落 —— ${BOSS_ORDER.length} 位 Boss 尽数陨落`
+      : `魂 +${award}`;
     this.player.lockOn = false;
     this.saveState();
   }
@@ -422,6 +470,7 @@ export class Game {
   // ---------------- 交互 ----------------
   private interact(): void {
     if (this.menuOpen) { this.menuConfirm(); return; }
+    if (this.enemies.tryBackstab(this.player.pos, this.player.yaw)) { this.stats.ripostes++; return; }   // 敌人背刺（pRip 处决级手感在 manager 内扇出）
     if (this.flow === "fight" && this.player.tryRiposte()) { this.stats.ripostes++; return; }
     // 血渍拾回（任何非菜单时刻，含战斗中——DS3 规则）
     if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) {
@@ -462,7 +511,7 @@ export class Game {
   private openBonfireMenu(): void {
     const items: { label: string; off?: boolean; act: () => void }[] = [];
     items.push({ label: "休息", act: () => { this.closeMenu(); this.restAtBonfire(); } });
-    for (const sc of ["cemetery", "highwall"] as SceneId[]) {
+    for (const sc of ["cemetery", "highwall", "stormveil"] as SceneId[]) {
       const unlocked = this.progress.unlockedScenes.includes(sc);
       items.push({
         label: `传送 · ${SCENE_NAME[sc]}`,
@@ -523,6 +572,7 @@ export class Game {
     this.player.estus = P.estusMax;
     this.progress.lastBonfire = this.sceneId;           // 重生点设为此篝火
     this.boss.reset();                                   // 敌人重置
+    this.spawnEnemies();                                 // 小怪重刷（DS3 篝火规则）
     this.projectiles.clear();
     AU.bonfireRest();
     this.showMsg("在篝火旁稍作休息", 1.6);
@@ -679,6 +729,7 @@ export class Game {
         if (this.flow === "fight") this.boss.update(dt, this.player.pos, this.player.isIframed);
         else if (this.boss.state === "rising" || this.boss.state === "dead" || this.boss.state === "transform") this.boss.update(dt, this.player.pos, this.player.isIframed);
         this.player.update(dt, this.camYaw);
+        this.enemies.update(dt, this.player.pos, this.player.isIframed);   // M3 小怪（推挤/尸清在 manager 内）
         this.clampWorld();
         this.vfx.update(dt);
         // 投射物（沙力万矢）：命中走 applyHit → onPlayerHurt 手感档案扇出，可格挡

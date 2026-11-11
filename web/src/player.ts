@@ -7,6 +7,8 @@ export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "blo
 
 export interface PlayerHost {
   hitBoss: (dmg: number, poise: number, feelKey: string, point: THREE.Vector3) => void;
+  /** 攻击判定帧的敌人扇面（每挥一次；M3 小怪系统，几何在 EnemyManager 内） */
+  hitEnemies?: (dmg: number, poise: number, feelKey: string) => void;
   onPlayerHurt: (dmg: number, point: THREE.Vector3, feelKey: string) => void;
   onParrySuccess: (point: THREE.Vector3) => void;
   onDeath: () => void;
@@ -68,7 +70,10 @@ export class Player {
     };
   }
 
-  bind(actions: Record<string, THREE.AnimationAction>): void {
+  bind(actions: Record<string, THREE.AnimationAction>, mixer?: THREE.AnimationMixer): void {
+    // actions 必须与其所属 mixer 同源（动画步进权在本类 update 内）；
+    // 若外部用独立 mixer 生成 actions（game.ts GLTF 装载路径），此处接管该实例，否则动画冻在帧 0
+    if (mixer) this.mixer = mixer;
     this.actions = actions;
     this.play("idle", 0, true);
   }
@@ -374,6 +379,7 @@ export class Player {
   }
 
   private tryHitBoss(dmg: number, poise: number, feelKey: string): void {
+    this.host.hitEnemies?.(dmg, poise, feelKey);   // 小怪扇面与 Boss 判定同拍（每挥一次）
     const bossPos = this.host.bossPos();
     const to = bossPos.clone().sub(this.pos); to.y = 0;
     const dYaw = Math.atan2(to.x, to.z);
