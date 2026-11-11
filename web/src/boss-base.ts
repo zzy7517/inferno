@@ -123,6 +123,10 @@ export abstract class BossBase {
 
   get awake(): boolean { return this.state !== "statue"; }
   get inCombat(): boolean { return this.state === "combat"; }
+  /** 血量上限（HUD 比率用——各 Boss 数值表不同） */
+  get maxHp(): number { return this.cfg.hp; }
+  /** 数值表引用（调校台热调用；原地改写即时生效） */
+  get stats(): BossStats { return this.cfg; }
 
   chestWorld(out = new THREE.Vector3()): THREE.Vector3 {
     return this.chestPart().getWorldPosition(out).add(CHEST_OFF);
