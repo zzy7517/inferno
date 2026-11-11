@@ -108,11 +108,11 @@ export class Vfx {
     mesh.userData.target = radius;
   }
 
-  /** 火痕：地面残留灼烧圆斑 */
-  scorch(pos: THREE.Vector3, r = 1.2): void {
+  /** 地面残留斑（火痕默认橙；冰霜面传冷色） */
+  scorch(pos: THREE.Vector3, r = 1.2, color = 0xff6a20): void {
     const mesh = new THREE.Mesh(
       new THREE.CircleGeometry(r, 18),
-      new THREE.MeshBasicMaterial({ color: 0xff6a20, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }),
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(pos.x, 0.035, pos.z);

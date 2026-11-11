@@ -16,6 +16,7 @@ export interface MoveDef {
   hitInterval?: number;                      // 段间隔 s（默认 0.45）
   knockUp?: number;                          // 击飞初速 m/s（监视者上挑）
   proj?: { speed: number; radius: number; life?: number };  // 投射物（沙力万暗月矢）
+  frost?: { mul: number; dur: number };      // 命中附带冰霜减速（玻尔多冰息/践踏）
 }
 
 /** 手感档案（combat-feel.md 五层级）：一次命中的多通道反馈参数，调校台热调 */

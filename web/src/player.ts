@@ -49,6 +49,8 @@ export class Player {
   private elapsed = 0;
   private yVel = 0;          // 击飞垂直速度
   private airborne = false;  // 空中（上挑）：锁输入，落地回 hurt
+  private slowT = 0;         // 冰霜减速剩余时间
+  private slowMul = 1;       // 冰霜减速倍率
 
   constructor(private model: THREE.Group, frames: Record<string, Record<string, unknown>>, private host: PlayerHost) {
     this.root.add(model);
@@ -172,6 +174,7 @@ export class Player {
     } else {
       this.hp -= dmg;
       this.host.onPlayerHurt(dmg, point, feelKey);
+      if (move?.frost) this.applySlow(move.frost.mul, move.frost.dur);
       if (this.state !== "riposte") this.enter("hurt");
       this.pos.addScaledVector(dir, FEEL[feelKey]?.knockback ?? 0.5);   // 击退
       if (move?.knockUp) {                                               // 击飞（监视者上挑）
@@ -186,6 +189,12 @@ export class Player {
   heal(): void {
     this.hp = Math.min(P.hp, this.hp + P.hp * P.estusHeal);
     AU.estus();
+  }
+
+  /** 冰霜减速（玻尔多）：取更狠的倍率、更长的时长 */
+  applySlow(mul: number, dur: number): void {
+    this.slowMul = Math.min(this.slowMul, mul);
+    this.slowT = Math.max(this.slowT, dur);
   }
 
   reset(pos: THREE.Vector3): void {
@@ -217,6 +226,8 @@ export class Player {
     // 精力回复
     const regenRate = this.state === "block" ? P.regenBlock : P.staminaRegen;
     if (this.elapsed - this.spendAt > P.regenDelay) this.stamina = Math.min(P.stamina, this.stamina + regenRate * dt);
+    if (this.slowT > 0) { this.slowT -= dt; if (this.slowT <= 0) { this.slowT = 0; this.slowMul = 1; } }
+    const slowK = this.slowT > 0 ? this.slowMul : 1;
 
     const inputDir = this.inputDir(camYaw);
     const moving = inputDir.lengthSq() > 0.01;
@@ -248,7 +259,7 @@ export class Player {
         // 移动
         if (moving) {
           const sprint = this.keys.has("ShiftLeft") && this.canSpend(1);
-          const speed = sprint ? P.sprint : P.walk;
+          const speed = (sprint ? P.sprint : P.walk) * slowK;
           if (sprint) this.spend(11 * dt);
           this.pos.addScaledVector(inputDir, speed * dt);
           if (!wantLock) this.yaw = angDamp(this.yaw, Math.atan2(inputDir.x, inputDir.z), 12, dt);
@@ -261,7 +272,7 @@ export class Player {
       }
       case "block": {
         if (!this.rmbDown) { this.enter("idle"); break; }
-        if (moving) this.pos.addScaledVector(inputDir, P.walk * 0.42 * dt);
+        if (moving) this.pos.addScaledVector(inputDir, P.walk * 0.42 * slowK * dt);
         break;
       }
       case "attack": {
