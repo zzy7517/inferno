@@ -40,4 +40,6 @@
 
 ## 当前状态
 
-**M0 管线验证完成，M1 战斗垂直切片进行中**（进度见 [ROADMAP](docs/ROADMAP.md)）。已定：DS3 同人定位（ADR-0009）、命名直接复用 DS3 官方名（作品名「黑暗之魂3」，规范词见 [GLOSSARY](GLOSSARY.md)）、美术（ADR-0006）、单机+桌面（ADR-0007）、业余排期、精力制+剑盾（ADR-0008）。
+**M0 ✅ / M1 战斗垂直切片 ✅（2026-11-11），M3 铺量进行中**（AI 持续开发循环 + 用户并行开发；进度见 [ROADMAP](docs/ROADMAP.md)）。
+已定：DS3 同人定位（ADR-0009）、命名直接复用 DS3 官方名（作品名「黑暗之魂3」，规范词见 [GLOSSARY](GLOSSARY.md)）、美术（ADR-0006）、单机+桌面（ADR-0007）、业余排期、精力制+剑盾（ADR-0008）。
+当前增量：BossBase 基类、战斗引擎扩展（多段判定/击飞/投射物/冰霜）、场景#2「洛斯里克的高墙」（`?scene=highwall`）、调校台（` 键）。Boss #2-#4 招式表见 [design/m3-bosses.md](docs/design/m3-bosses.md)，魂循环见 [design/m2-soul-loop.md](docs/design/m2-soul-loop.md)。
