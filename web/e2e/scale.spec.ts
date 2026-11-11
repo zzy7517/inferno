@@ -28,7 +28,7 @@ const SIM_HZ = 60;
 /** DC/三角形采样帧数：取中位数抗偶发抖动，最大值对预算红线 */
 const RENDER_SAMPLE_FRAMES = 30;
 
-const SCENES = ["cemetery", "highwall"] as const;
+const SCENES = ["cemetery", "highwall", "stormveil"] as const;
 type SceneId = (typeof SCENES)[number];
 
 interface SceneBaseline {
@@ -90,8 +90,28 @@ const median = (xs: number[]): number => {
 
 for (const scene of SCENES) {
   test(`尺度基线：${scene}`, async ({ page }) => {
-    await page.goto(`/?scene=${scene}`);
-    await waitForGame(page);
+    if (scene === "stormveil") {
+      // game.ts 的 ?scene= 仅注册 highwall：城垣经注入旧档（vordt 败→迁移解锁城垣与 stormveil:E）
+      // 后篝火旅行直达（T7 验收同路径；步程/面积为 anchors 直线口径，之字坡实走见 T7 探针）
+      await page.addInitScript(() => {
+        localStorage.setItem("inferno.progress.v1", JSON.stringify({
+          defeated: ["gundyr", "vordt"],
+          unlockedScenes: ["cemetery", "highwall"],
+          zoneUnlocks: ["cemetery:A", "highwall:B"],
+          shortcuts: [], litBonfires: ["cemetery", "highwall"], lastBonfire: "highwall",
+          souls: 0, attempts: {}, bloodstain: null,
+          stats: { deaths: 1, soulRegains: 0, parries: 0, ripostes: 0 },
+        }));
+      });
+      await page.goto("/");
+      await waitForGame(page);
+      await page.evaluate(() => {
+        (window as unknown as { __game: { travelTo: (s: "cemetery" | "highwall" | "stormveil") => void } }).__game.travelTo("stormveil");
+      });
+    } else {
+      await page.goto(`/?scene=${scene}`);
+      await waitForGame(page);
+    }
 
     // ---- 1) 步程计时：spawn → 雾门 → Boss 房中心，直驱 player.pos 逐帧 6.2 m/s ----
     const walk = await page.evaluate(({ speed, hz }) => {
@@ -276,7 +296,7 @@ test.afterAll(() => {
   const out = join(e2eDir(), "scale-baseline.json");
   const payload = {
     generatedAt: new Date().toISOString(),
-    note: "T5 尺度探针基线：T3/T4 扩建前的现状实测。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
+    note: "T5 尺度探针基线。步程=60Hz 固定步长驱动 player.pos @6.2m/s（spawn→雾门→Boss房中心）；DC/三角形=renderer.info 30帧采样（整机口径）；面积=anchors 推导（clampWorld 口径）。stormveil 自 T7 起纳入（旧档注入+篝火旅行；直线口径，之字坡实走 132.5m≈21.4s 见 T7 探针）。扩建后据此对比回归，CI 预算断言见 scale.spec.ts 内 TODO。",
     walkSpeedMs: WALK_SPEED,
     scenes: results,
   };
