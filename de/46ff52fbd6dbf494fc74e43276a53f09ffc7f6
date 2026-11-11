@@ -1,0 +1,35 @@
+web/src/game.ts
+  s_6adfea1a8382d2::t_1d1f43388c1e2c 134
+  s_6adfea1a8382d2::t_45cf573cb4a3f1 124-125
+web/index.html
+  s_6adfea1a8382d2::t_0e6f2695abc3e0 139-142
+web/src/player.ts
+  s_6adfea1a8382d2::t_9cc8a6e9c794d4 467
+  s_6adfea1a8382d2::t_4d01905d1c6d48 540
+  s_6adfea1a8382d2::t_fbcf23b61a4a8f 1-3,5,8-11,14,48,61-69,71,85-86,89-94,101-108,115-119,124-125,131-132,165-167,190-220,273,319-322,327-344,398,400-406,417-440,445-466,468-482,518-524,539,546-549
+  s_6adfea1a8382d2::t_991d9c2332be0d 15-16
+  s_6adfea1a8382d2::t_45663c6346f526 408
+  s_6adfea1a8382d2::t_85bfaf93f5c35e 384-385
+tools/blender/build_character.py
+  s_6adfea1a8382d2::t_fbcf23b61a4a8f 47-76,338-340,483-708,712-728,731,737-738,746-748,761-768
+web/public/assets/character_frames.json
+  s_6adfea1a8382d2::t_fbcf23b61a4a8f 45-98
+web/src/config.ts
+  s_6adfea1a8382d2::t_fbcf23b61a4a8f 36-39,41-44,85-109,122-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "de46ff52fbd6dbf494fc74e43276a53f09ffc7f6",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
