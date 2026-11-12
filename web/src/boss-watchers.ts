@@ -9,7 +9,7 @@ import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -117,6 +117,8 @@ export class Watchers extends BossBase {
   private eyeMat!: THREE.MeshStandardMaterial;
   private bladeMat!: THREE.MeshStandardMaterial;
   private swordLight!: THREE.PointLight;
+  private swordHilt = new THREE.Object3D();
+  private swordTip = new THREE.Object3D();
   private cape: THREE.Mesh[] = [];
 
   private pose: WPose = { ...STATUE_W };
@@ -219,6 +221,9 @@ export class Watchers extends BossBase {
     sword.add(box(0.04, 0.26, 0.014, this.bladeMat, 0.038, -1.6, 0));
     sword.add(box(0.032, 0.16, 0.02, this.bladeMat, 0, -1.74, 0));         // 尖
     sword.add(box(0.014, 0.08, 0.01, this.bladeMat, 0, -1.81, 0));         // 剑尖，末端 y=-1.85
+    this.swordHilt.position.set(0, -0.06, 0);
+    this.swordTip.position.set(0, -1.85, 0);
+    sword.add(this.swordHilt, this.swordTip);
     this.swordLight = new THREE.PointLight(0xff5a20, 0, 5, 2);
     this.swordLight.position.set(0, -1.05, 0);
     sword.add(this.swordLight);
@@ -255,6 +260,17 @@ export class Watchers extends BossBase {
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
+
+  /** 斩击贴着大剑。火焰旋风是身边那圈火，半径用已经在画的冲击环。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    if (m.name === "watcherFirenova") {
+      return { kind: "disk", x: this.root.position.x, z: this.root.position.z, r: m.shock ?? m.range };
+    }
+    if (m.name.startsWith("watcher")) {
+      return { kind: "blade", hilt: this.swordHilt, tip: this.swordTip, pad: 0.12 };
+    }
+    return null;
+  }
   protected override headPart(): THREE.Object3D { return this.head; }
 
   // ---------------- 姿态应用 ----------------
