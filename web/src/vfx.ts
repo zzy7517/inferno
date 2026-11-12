@@ -193,10 +193,12 @@ export function buildBonfire(scene: THREE.Scene, pos: THREE.Vector3): Bonfire {
   return { group: g, light, pos: pos.clone() };
 }
 
-/** 雾门：竖立的白雾墙 */
+/** 雾门：冷灰雾墙；门缘一圈余烬（关上才清楚，打开收掉）。不加点光。 */
 export class FogGate {
   readonly group = new THREE.Group();
   solid = true;
+  private readonly sheets: THREE.Mesh[] = [];
+  private readonly emberMat: THREE.MeshBasicMaterial;
 
   constructor(scene: THREE.Scene, pos: THREE.Vector3) {
     this.group.position.copy(pos);
@@ -206,7 +208,27 @@ export class FogGate {
       p.position.set((i - 1) * 0.12, 1.7, 0);
       p.rotation.y = Math.PI / 2;
       p.userData.phase = i * 2.1;
+      this.sheets.push(p);
       this.group.add(p);
+    }
+    // 贴在雾片外缘的细框。冷灰雾不动；余烬只勾轮廓，亮度压得很低。
+    this.emberMat = new THREE.MeshBasicMaterial({
+      color: COLORS.ember, transparent: true, opacity: 0.4,
+      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const t = 0.1;
+    const y0 = 0.06;
+    const y1 = 3.4;
+    const sideH = y1 - y0;
+    const vGeo = new THREE.BoxGeometry(0.02, sideH, t);
+    const hGeo = new THREE.BoxGeometry(0.02, t, 3.6 - t);
+    const midY = (y0 + y1) / 2;
+    const x = -0.05; // 略偏走廊侧，避免和中间那片雾共面
+    for (const [geo, y, z] of [[vGeo, midY, -1.8], [vGeo, midY, 1.8], [hGeo, y1, 0], [hGeo, y0, 0]] as const) {
+      const rim = new THREE.Mesh(geo, this.emberMat);
+      rim.position.set(x, y, z);
+      rim.renderOrder = 1;
+      this.group.add(rim);
     }
     scene.add(this.group);
   }
@@ -215,13 +237,13 @@ export class FogGate {
   close(): void { this.solid = true; }
 
   update(t: number): void {
-    let o = this.solid ? 0.16 : 0.02;
-    for (const child of this.group.children) {
-      const p = child as THREE.Mesh;
+    const o = this.solid ? 0.16 : 0.02;
+    for (const p of this.sheets) {
       const ph = p.userData.phase as number;
       (p.material as THREE.MeshBasicMaterial).opacity = o + Math.sin(t * 1.7 + ph) * 0.05;
       p.position.y = 1.7 + Math.sin(t * 0.8 + ph) * 0.08;
     }
+    this.emberMat.opacity = this.solid ? 0.4 + Math.sin(t * 0.85) * 0.05 : 0;
     this.group.visible = o > 0.03 || this.solid;
   }
 }
