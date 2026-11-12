@@ -1,0 +1,28 @@
+web/src/boss-radahn.ts
+  s_a28d7050921dbd::t_5ee97fa3d051cb 36-37
+  s_a28d7050921dbd::t_274951fe66a643 190-194
+  s_a28d7050921dbd::t_a75098d061e714 393
+  s_a28d7050921dbd::t_bdaf687f9cfc84 188
+  s_a28d7050921dbd::t_c1f10c7d447fdf 350-352,354-356,358-375
+  s_a28d7050921dbd::t_9a2cda99933cc7 385
+  s_a28d7050921dbd::t_0f08cb46e88471 684-688
+  s_a28d7050921dbd::t_119b19e2a160f9 694
+  s_a28d7050921dbd::t_a5017294360c95 702
+  s_a28d7050921dbd::t_d7f77130931001 422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b4639fd7150c9c07c0a88866091b7e3bfa800536",
+  "prompts": {},
+  "sessions": {
+    "s_a28d7050921dbd": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "80668d92-32ce-470b-ab6f-db0eec827fd1",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
