@@ -1,0 +1,19 @@
+web/src/audio.ts
+  s_86e3b32ae5e7f3::t_b493c3cc64bbe2 91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d057be337830a8072609f19f55168dea9ea1544e",
+  "prompts": {},
+  "sessions": {
+    "s_86e3b32ae5e7f3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ca4a9338-0347-4029-a438-fef9e4e01cbc",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
