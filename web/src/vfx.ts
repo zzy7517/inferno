@@ -78,22 +78,64 @@ export class Vfx {
     this.dust = new Particles(scene, 160, { size: 0.14, color: 0x555a60, gravity: 2 });
   }
 
+  /** 水平扇形。截面是刃：内缘有厚度，向外收到薄刃口。外径 1，由 slash 按 radius 缩放。 */
   private static arcGeo(wide: boolean): THREE.BufferGeometry {
-    const t0 = Math.PI / 2 - (wide ? 1.4 : 0.7), tl = wide ? 2.8 : 1.4;
-    const g = new THREE.RingGeometry(0.5, 1, 24, 1, t0, tl).toNonIndexed();
-    const p = g.attributes.position as THREE.BufferAttribute;
-    const arr = new Float32Array(p.count * 3);
-    for (let i = 0; i < p.count; i++) {
-      const t = Math.min(1, Math.max(0, ((Math.atan2(p.getY(i), p.getX(i)) - t0 + Math.PI * 4) % (Math.PI * 2)) / tl));
-      const k = Math.sin(Math.PI * t);                     // 弧中亮、两端淡出的辉迹
-      arr[i * 3] = k; arr[i * 3 + 1] = k * 0.94; arr[i * 3 + 2] = k * 0.82;
+    const span = wide ? 2.8 : 1.4;
+    const t0 = Math.PI / 2 - span / 2;
+    const seg = 24;
+    // r 半径，z 厚度（rotateX 后成高度），b 这条边上的亮度。弧向仍是中段亮、两端淡。
+    const section = [
+      [0.50, -0.034, 0.70], // 内缘下沿
+      [0.50,  0.048, 0.84], // 内缘上沿
+      [0.58,  0.054, 0.48], // 脊棱，把内缘从刃面上抬出来
+      [0.78,  0.026, 0.32], // 刃面
+      [0.92,  0.018, 0.58], // 收到刃口
+      [1.00,  0.012, 1.00], // 刃口上
+      [1.00, -0.012, 1.00], // 刃口下，薄而最亮
+      [0.92, -0.010, 0.46],
+      [0.78, -0.014, 0.28],
+      [0.58, -0.022, 0.38],
+    ];
+    const n = section.length;
+    const cols = seg + 1;
+    const pos = new Float32Array(cols * n * 3);
+    const col = new Float32Array(cols * n * 3);
+    for (let i = 0; i < cols; i++) {
+      const t = i / seg;
+      const ang = t0 + span * t;
+      const taper = 0.45 + 0.55 * Math.sin(Math.PI * t);
+      const fade = Math.sin(Math.PI * t);
+      const c = Math.cos(ang), s = Math.sin(ang);
+      for (let j = 0; j < n; j++) {
+        const [r, z, b] = section[j];
+        const o = (i * n + j) * 3;
+        pos[o] = c * r; pos[o + 1] = s * r; pos[o + 2] = z * taper;
+        const k = fade * b;
+        col[o] = k; col[o + 1] = k * 0.94; col[o + 2] = k * 0.82;
+      }
     }
-    g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+    const idx = new Uint16Array(seg * n * 6);
+    let w = 0;
+    for (let i = 0; i < seg; i++) {
+      for (let j = 0; j < n; j++) {
+        const j2 = (j + 1) % n;
+        const a = i * n + j;
+        const b = (i + 1) * n + j;
+        const c = (i + 1) * n + j2;
+        const d = i * n + j2;
+        idx[w++] = a; idx[w++] = b; idx[w++] = c;
+        idx[w++] = a; idx[w++] = c; idx[w++] = d;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.Uint16BufferAttribute(idx, 1));
     g.rotateX(-Math.PI / 2);
     return g;
   }
 
-  /** 刀光弧：沿 yaw 方向的水平扇形（辉迹渐变 + 挥出时轻微扩张） */
+  /** 刀光弧：沿 yaw 的水平扇形，截面是有内缘的刃（辉迹渐变 + 挥出时轻微扩张） */
   slash(pos: THREE.Vector3, yaw: number, radius: number, wide: boolean, color = 0xffd9a0): void {
     const geo = Vfx.arcGeo(wide);
     const mat = new THREE.MeshBasicMaterial({ color, vertexColors: true, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
