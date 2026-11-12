@@ -1,0 +1,23 @@
+web/src/player.ts
+  s_a98a0b34b732af::t_0340b3b24ac28a 543-546
+  s_a98a0b34b732af::t_f9d688ae9d2b88 34
+  s_a98a0b34b732af::t_af6b80f7ba852f 511
+  s_a98a0b34b732af::t_bf4fc3be2b3204 231-235
+  s_a98a0b34b732af::t_38ddbc8e2b967c 547-548
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "67202f069376df5e5626c93a88a7a3f0c5ee0cf2",
+  "prompts": {},
+  "sessions": {
+    "s_a98a0b34b732af": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e663793b-df9f-4fc7-8a02-0762adbf823a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
