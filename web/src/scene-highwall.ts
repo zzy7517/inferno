@@ -17,6 +17,7 @@
  *   纵向双层墙（粗石基座+檐线+上段城齿剪影）+ 四处地标认路锚（-200 断桥拱影 / -120 绞刑架鸟群 /
  *   -60 城门楼过洞 / -21 龙骨翼残像）+ D 月坛前导（幽蓝箭缝/月尘缓升/封印符文环）+
  *   氛围（远雷双闪、雾色沿 x 暖→冷渐变）；新增 emissive 一批 + 月尘一档 dc。
+ *   Boss 房外圈地面（场心半径 6m 留空）：断剑 / 石碎 / 残旗 / 裂纹。玻尔多沿用冷石色，沙力万沿用月石色。
  * 预算：纯几何 + 顶点色（paint 统一上色），静态几何按 5 个空间分块 merge 合批（frustum 剔剪），
  *   场景本体 ≤45 draw call；火光 PointLight ≤5（挂火×2 + 火盆×1 + 月坛烛台×2）；
  *   不加载任何外部资源（光晕/雾片贴图为运行时 Canvas 生成）。
@@ -95,6 +96,116 @@ const hashXZ = (x: number, z: number, ch: number): number =>
 
 /** 与另外两个场景同一份实现；jitter 仍消耗本文件的 rnd。 */
 const { paint, boxG, cylG, coneG, dodG, batch } = createSceneGeom(rnd);
+
+/** 两间 Boss 房地面废墟的色板。只引用本文件已有冷石 / 月石，不新开色。 */
+interface ArenaLitterTone {
+  stone: number[];
+  crack: number;
+  metal: number;
+  cloth: number;
+  clothB: number;
+  pole: number;
+}
+
+/** 人尺度地面废墟（约 1–3m）：断剑、石碎、残旗、裂纹。
+ *  件心落在 [8.15, r−2.9]，半长 ≤1.35，故场心 6m 与可走圆外都不被占。
+ *  传入的门口各留约 0.5rad，进门视线不被废墟切开 Boss 轮廓。纯视觉。 */
+function addArenaLitter(G: THREE.BufferGeometry[], cx: number, r: number, doors: readonly number[], tone: ArenaLitterTone): void {
+  const inner = 8.15;
+  const outer = r - 2.9;
+  const reach = 1.35;
+  const doorClear = 0.5;
+  const blocked = (a: number): boolean => doors.some((d) => Math.abs(Math.atan2(Math.sin(a - d), Math.cos(a - d))) < doorClear);
+  const along = (x: number, z: number, yaw: number, d: number): [number, number] => [x + Math.sin(yaw) * d, z + Math.cos(yaw) * d];
+  const guardCol = tone.stone[tone.stone.length - 1];
+
+  const sword = (x: number, z: number, yaw: number): void => {
+    const len = rr(1.6, 2.2);
+    const tilt = rr(0.04, 0.08);
+    const [bx, bz] = along(x, z, yaw, -len * 0.06);
+    G.push(boxG(0.09, 0.04, len * 0.56, bx, 0.09, bz, tone.metal, { ry: yaw, rx: tilt, jitter: 0.06 }));
+    const [tx, tz] = along(x, z, yaw, len * 0.46);
+    G.push(boxG(0.07, 0.035, len * 0.26, tx, 0.072, tz, tone.metal, { ry: yaw + rr(0.35, 0.8), rx: -tilt, jitter: 0.08 }));
+    const [hx, hz] = along(x, z, yaw, -len * 0.34);
+    G.push(boxG(0.4, 0.045, 0.08, hx, 0.1, hz, guardCol, { ry: yaw }));
+    const [gx, gz] = along(hx, hz, yaw, -0.15);
+    G.push(cylG(0.03, 0.036, 0.26, 6, gx, 0.09, gz, tone.pole, { rx: Math.PI / 2, ry: yaw }));
+  };
+
+  const rubble = (x: number, z: number): void => {
+    const n = 3 + Math.floor(rnd() * 3);
+    for (let k = 0; k < n; k++) {
+      const w = rr(0.45, 1.05);
+      const d = rr(0.4, 0.95);
+      const h = rr(0.1, 0.34);
+      G.push(boxG(w, h, d, x + rr(-0.5, 0.5), h * 0.5 + 0.05, z + rr(-0.5, 0.5), pick(tone.stone), {
+        rx: rr(-0.08, 0.08), ry: rnd() * Math.PI, rz: rr(-0.07, 0.07), jitter: 0.12,
+      }));
+    }
+    const sw = rr(1.4, 2.15);
+    const sd = rr(0.7, 1.15);
+    const sh = rr(0.12, 0.22);
+    G.push(boxG(sw, sh, sd, x + rr(-0.18, 0.18), sh * 0.5 + 0.05, z + rr(-0.18, 0.18), pick(tone.stone), {
+      ry: rnd() * Math.PI, rz: rr(-0.04, 0.04), jitter: 0.1,
+    }));
+  };
+
+  const flag = (x: number, z: number, yaw: number): void => {
+    const poleL = rr(1.3, 1.85);
+    G.push(cylG(0.03, 0.04, poleL, 5, x, 0.08, z, tone.pole, { rx: Math.PI / 2, ry: yaw }));
+    const clothW = rr(0.62, 0.9);
+    const clothH = rr(1.15, 1.6);
+    const g = new THREE.PlaneGeometry(clothW, clothH, 4, 5);
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      if (py < -clothH * 0.18 && i % 3 === 0) pos.setY(i, py + clothH * rr(0.08, 0.2));
+      if (Math.abs(px) > clothW * 0.32) pos.setX(i, px - Math.sign(px) * rr(0.02, 0.06));
+    }
+    g.computeVertexNormals();
+    const ox = Math.sin(yaw) * rr(0.16, 0.32);
+    const oz = Math.cos(yaw) * rr(0.16, 0.32);
+    g.rotateX(-Math.PI / 2 + rr(-0.04, 0.04));
+    g.rotateY(yaw + rr(-0.2, 0.2));
+    g.translate(x + ox, 0.075, z + oz);
+    G.push(paint(g, tone.cloth, 0.08));
+    G.push(boxG(clothW * 0.4, 0.022, clothH * 0.3, x + ox * 0.4 + Math.cos(yaw) * 0.1, 0.09, z + oz * 0.4 - Math.sin(yaw) * 0.1, tone.clothB, {
+      ry: yaw + rr(0.3, 0.7), rx: rr(-0.06, 0.06),
+    }));
+  };
+
+  const crack = (x: number, z: number, yaw: number): void => {
+    const len = rr(1.55, 2.5);
+    G.push(boxG(rr(0.07, 0.13), 0.02, len, x, 0.058, z, tone.crack, { ry: yaw }));
+    const fd = len * 0.15;
+    const fork = len * rr(0.32, 0.46);
+    G.push(boxG(rr(0.05, 0.09), 0.018, fork, x + Math.sin(yaw) * fd, 0.06, z + Math.cos(yaw) * fd, tone.crack, { ry: yaw + rr(0.4, 0.85) }));
+    G.push(boxG(rr(0.045, 0.08), 0.018, fork * 0.62, x - Math.sin(yaw) * fd * 0.45, 0.059, z - Math.cos(yaw) * fd * 0.45, tone.crack, { ry: yaw - rr(0.35, 0.7) }));
+  };
+
+  const slots = 20;
+  const order = ["rubble", "sword", "crack", "flag", "rubble", "crack", "sword", "rubble", "flag", "crack", "rubble", "sword", "flag", "rubble", "crack", "sword"] as const;
+  let placed = 0;
+  for (let i = 0; i < slots; i++) {
+    const a = ((i + 0.5) / slots) * Math.PI * 2 + rr(-0.04, 0.04);
+    if (blocked(a)) continue;
+    const band = (placed % 3) / 2;
+    const rad = Math.min(outer, Math.max(inner, inner + (outer - inner) * band + rr(-0.22, 0.22)));
+    const tang = rr(-0.3, 0.3);
+    const x = cx + Math.cos(a) * rad - Math.sin(a) * tang;
+    const z = Math.sin(a) * rad + Math.cos(a) * tang;
+    const dist = Math.hypot(x - cx, z);
+    if (dist - reach < 6 || dist + reach > r - 0.9) continue;
+    const yaw = a + rr(-0.8, 0.8);
+    const kind = order[placed % order.length];
+    if (kind === "sword") sword(x, z, yaw);
+    else if (kind === "rubble") rubble(x, z);
+    else if (kind === "flag") flag(x, z, yaw);
+    else crack(x, z, yaw);
+    placed++;
+  }
+}
 
 /** 运行时 Canvas 径向柔光贴图（月亮光晕 / 地面雾片共用，非外部资源） */
 function softDiscTexture(): THREE.Texture {
@@ -1062,6 +1173,39 @@ export function buildHighWall(scene: THREE.Scene): {
       root.add(mesh);
       mists.push({ mesh, mat, bx: d.x, bz: d.z, dx: rr(1.2, 2.6), dz: rr(1.2, 2.6), ph: rnd() * 6.28, spx: rr(0.04, 0.09), spz: rr(0.03, 0.08), o: d.o });
     }
+  }
+
+  // 房间按旧 r=12 拉大后，环纹之间的地面在人的尺度上是空的。
+  // 废墟接在全部既有 rnd() 之后：只追加随机、不改种子，走廊与环墙的既有摆放不变。
+  // 两间房各一块合批，按房间剔剪。无碰撞、无新灯。
+  {
+    const cold: ArenaLitterTone = {
+      stone: [PAL.stoneHi, PAL.stone, PAL.stoneMid, PAL.stoneDark, PAL.stoneDeep],
+      crack: PAL.dark,
+      metal: COLORS.steel,
+      cloth: PAL.flagBlue,
+      clothB: PAL.flagBlueB,
+      pole: PAL.metal,
+    };
+    // 沙力万色全部取自本房环墙 / 月纹环已有字面值，不新开一支色。
+    const moon: ArenaLitterTone = {
+      stone: [PAL.moonPale, 0x3a3f47, 0x3f444d, 0x2e3440, PAL.moonDeep],
+      crack: PAL.moonDeep,
+      metal: 0x465062,
+      cloth: PAL.moonPale,
+      clothB: 0x2e3440,
+      pole: 0x3f444d,
+    };
+    const litterB: THREE.BufferGeometry[] = [];
+    addArenaLitter(litterB, ARENA_B.cx, ARENA_B.r, [Math.PI, 0], cold);
+    const meshB = batch(litterB, stoneMat, "both");
+    meshB.name = "litter-b";
+    root.add(meshB);
+    const litterD: THREE.BufferGeometry[] = [];
+    addArenaLitter(litterD, ARENA_D.cx, ARENA_D.r, [Math.PI], moon);
+    const meshD = batch(litterD, stoneMat, "both");
+    meshD.name = "litter-d";
+    root.add(meshD);
   }
 
   // ---------------- update：旗面摆动 / 火光闪烁 / 窗火 / 星光 / 雾片漂移 ----------------

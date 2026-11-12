@@ -18,6 +18,8 @@
  *   A1 出生台地(-142..-130) → A2 墓园径三段+袋形墓苑×2 → A3 古达房 r17(c=3.5，可走 32.2)
  *   → 门 B(19.6) → C1 法兰哨路 36m → C2 监视者房 r19(c=74，可走 36.2)
  *   → D1 碎星径 → D2 拉塔恩战场 r91(c=195，可走 180.2)
+ *   人尺度：三间房另铺 1–3m 石碎（不乘 A3k/C2k/D2k）。古达是墓石和断柱，监视者是冷灰石碎，
+ *   拉塔恩外圈是短剑和焦黑石块；场心约 6m 留空，用来在加大后的空地上读出远近。
  *   直跑 spawn→雾门 130.5m ≈ 21s @6.2m/s（教学区 20-30s 预算内）
  * 预算：静态几何按顶点色 mergeGeometries 合批（6 空间分块），场景本体 ~16 draw call；
  *   火光 PointLight ×3（雾门火盆 ×2 + A1 烛龛），C 区灯笼/烛台/门 B 幽光全 emissive 呼吸
@@ -883,6 +885,100 @@ export function buildCemetery(scene: THREE.Scene): {
     // 路缘碎石（D1 荒径，整段东移）
     for (const [rx2, rz2] of [[72 + D_DX, -2.6], [76 + D_DX, 2.7], [79 + D_DX, -2.5]] as const) rubble(D, rx2, rz2, 0.4, 3);
   }
+  // —— 人尺度地面（1–3m，不乘 A3k / C2k / D2k）——
+  // 房间加大后剑冢、陨坑、环纹都贴到外环，场地中间没有可用来估距离的东西。
+  // 场心约 6m 留空。这一段把 rnd 旁路用完即拨回，后面的雾斑和飘灰序列不变。
+  {
+    const seedAt = seed;
+    const CLEAR = 6;
+    const slot = (
+      cx: number, n: number, r0: number, r1: number,
+      skip?: (dx: number, dz: number) => boolean,
+    ): Array<[number, number]> => {
+      const pts: Array<[number, number]> = [];
+      const step = (Math.PI * 2) / n;
+      const spin = rnd() * step;
+      const inner = Math.max(r0, CLEAR + 0.35);
+      const outer = Math.max(r1, inner);
+      for (let i = 0; i < n; i++) {
+        const a = spin + i * step + rr(-step * 0.28, step * 0.28);
+        const rad = rr(inner, outer);
+        const dx = Math.cos(a) * rad, dz = Math.sin(a) * rad;
+        if (Math.hypot(dx, dz) < CLEAR || (skip && skip(dx, dz))) continue;
+        pts.push([cx + dx, dz]);
+      }
+      return pts;
+    };
+    const tomb = (dst: THREE.BufferGeometry[], x: number, z: number): void => {
+      const ry = rnd() * Math.PI * 2;
+      const lean = { rx: rr(-0.08, 0.08), rz: rr(-0.1, 0.1) };
+      dst.push(boxG(0.64, 0.16, 0.5, x, 0.08, z, PAL.stoneDeep, { ry, jitter: 0.08 }));
+      if (rnd() < 0.58) {
+        const h = rr(1.05, 1.7);
+        dst.push(boxG(rr(0.48, 0.66), h, 0.16, x, 0.16 + h / 2, z, pick([PAL.stone, PAL.stoneMid, PAL.stoneDark]), { ry, ...lean, jitter: 0.1 }));
+        if (rnd() < 0.5) dst.push(boxG(0.6, 0.12, 0.22, x, 0.2 + h, z, PAL.stoneMid, { ry, ...lean }));
+      } else {
+        const h = rr(1.15, 1.85);
+        dst.push(boxG(0.16, h, 0.16, x, 0.16 + h / 2, z, pick([PAL.stoneMid, PAL.stoneDark]), { ry, ...lean, jitter: 0.1 }));
+        dst.push(boxG(0.54, 0.13, 0.15, x, 0.16 + h * 0.68, z, PAL.stoneMid, { ry, ...lean }));
+      }
+    };
+    const pillarStub = (dst: THREE.BufferGeometry[], x: number, z: number): void => {
+      const h = rr(1.2, 2.45);
+      const lean = rr(-0.06, 0.06);
+      dst.push(boxG(0.82, 0.18, 0.82, x, 0.09, z, PAL.stoneDeep, { ry: rnd() * 0.6, jitter: 0.08 }));
+      dst.push(cylG(0.28, 0.34, h, 8, x, 0.18 + h / 2, z, pick([PAL.stone, PAL.stoneMid]), { rx: rr(-0.04, 0.04), rz: lean, jitter: 0.1 }));
+      if (rnd() < 0.75) {
+        const a = rnd() * Math.PI * 2;
+        const dist = rr(0.55, 1.05);
+        const drum = rr(0.38, 0.62);
+        dst.push(cylG(0.26, 0.26, drum, 8, x + Math.cos(a) * dist, 0.2, z + Math.sin(a) * dist, PAL.stoneDark, { rx: Math.PI / 2 + rr(-0.3, 0.3), ry: a, jitter: 0.1 }));
+      }
+    };
+    // 古达：墓石 + 断柱，停在柱环内侧；雾门和门 B 的东西口让开
+    const a3Mouth = (dx: number, dz: number): boolean => dx < -11.2 || dx > 12 || (Math.abs(dx) > 10.5 && Math.abs(dz) < 2.2);
+    for (const [x, z] of slot(A3C, 12, 7.0, 13.4, a3Mouth)) tomb(structE, x, z);
+    for (const [x, z] of slot(A3C, 8, 8.2, 12.6, a3Mouth)) pillarStub(structE, x, z);
+
+    // 监视者：已有冷灰石碎（rubble 的 dodG + stone 阶），簇径约 1–3m，不进断王座
+    const coldShard = (x: number, z: number): void => {
+      const s = rr(0.5, 0.95);
+      structC.push(dodG(s, x, s * 0.58, z, pick([PAL.stoneDark, PAL.stoneMid, PAL.stoneDeep]), { rx: rnd() * 2.4, ry: rnd() * 3, rz: rnd() * 2.4, jitter: 0.16 }));
+      const len = rr(1.05, 2.2), bh = rr(0.3, 0.66);
+      structC.push(boxG(len, bh, rr(0.55, 1.05), x + rr(-0.2, 0.2), bh * 0.42, z + rr(-0.2, 0.2), pick([PAL.stoneDark, PAL.stoneDeep, PAL.mortar]), { ry: rnd() * Math.PI, rx: rr(-0.16, 0.16), rz: rr(-0.12, 0.12), jitter: 0.12 }));
+      rubble(structC, x, z, rr(0.45, 0.85), 4);
+    };
+    for (const [x, z] of slot(C2C, 13, 8.0, 14.6, (dx, dz) => dx > 10.6 && Math.abs(dz) < 5)) coldShard(x, z);
+
+    // 拉塔恩外圈：短剑 + 焦黑石块，三层半径，180m 地上能同时看见近处和远处。西口中线让开。
+    const shortSword = (x: number, z: number): void => {
+      const len = rr(1.12, 1.6);
+      const tilt = rr(0.1, 0.4);
+      const ry = rnd() * Math.PI * 2;
+      const leanX = rnd() < 0.5;
+      const dx = leanX ? -Math.sin(tilt) * len / 2 : 0;
+      const dz = leanX ? 0 : Math.sin(tilt) * len / 2;
+      const opt = { ry, rz: leanX ? tilt : 0, rx: leanX ? 0 : tilt };
+      structD.push(boxG(0.042, len, 0.016, x + dx, Math.cos(tilt) * len / 2, z + dz, PAL.steel, opt));
+      structD.push(boxG(0.18, 0.038, 0.046, x + dx * 1.55, Math.cos(tilt) * len * 0.72, z + dz * 1.55, PAL.steel, opt));
+    };
+    const charred = (x: number, z: number): void => {
+      const tone = pick([0x121014, 0x1b181c, 0x1e1a1c, 0x241d20, PAL.ash]);
+      if (rnd() < 0.55) {
+        const w = rr(1.1, 2.5), h = rr(0.38, 1.05), d = rr(0.75, 1.65);
+        structD.push(boxG(w, h, d, x, h * 0.42, z, tone, { ry: rnd() * Math.PI, rx: rr(-0.1, 0.1), rz: rr(-0.12, 0.12), jitter: 0.12 }));
+      } else {
+        const s = rr(0.55, 1.15);
+        structD.push(dodG(s, x, s * 0.6, z, tone, { rx: rnd() * 2, ry: rnd() * 3, rz: rnd() * 2, jitter: 0.14 }));
+      }
+    };
+    const westGate = (dx: number, dz: number): boolean => dx < -76 && Math.abs(dz) < 3.2;
+    for (const [r0, r1, n] of [[36, 50, 20], [54, 70, 26], [76, 87.5, 28]] as const) {
+      for (const [x, z] of slot(D2C, n, r0, r1, westGate)) (rnd() < 0.46 ? shortSword : charred)(x, z);
+    }
+    seed = seedAt;
+  }
+
   root.add(batch(structW, stoneMat, "both"));
   root.add(batch(structE, stoneMat, "both"));
   root.add(batch(structC, stoneMat, "both"));
