@@ -15,7 +15,7 @@ import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
@@ -236,6 +236,8 @@ export class Radahn extends BossBase {
   private legR = new THREE.Group();
   private legL = new THREE.Group();
   private armR = new THREE.Group();
+  private swordR = { hilt: new THREE.Object3D(), tip: new THREE.Object3D() };
+  private swordL = { hilt: new THREE.Object3D(), tip: new THREE.Object3D() };
   private armL = new THREE.Group();
   private bow = new THREE.Group();                 // 召唤碎星大弓（snipe 显形，bowShow 缓动）
   private eyeMat!: THREE.MeshBasicMaterial;        // 双瞳（重力紫辉·加色）
@@ -374,6 +376,10 @@ export class Radahn extends BossBase {
         boxG(0.16, 0.42, 0.016, x(0.25), -3.32, 0.045, GRAVITY_GLOW, { rz: x(0.1) }),
         boxG(0.16, 0.42, 0.016, x(0.25), -3.32, -0.02, GRAVITY_GLOW, { rz: x(0.1) }),
       ], this.swordMat));
+      const mark = side === 1 ? this.swordR : this.swordL;
+      mark.hilt.position.set(0, 0.02, 0);
+      mark.tip.position.set(x(0.28), -3.91, 0.01);
+      g.add(mark.hilt, mark.tip);
       return g;
     };
     this.armR.position.set(1.06, 1.06, 0);
@@ -409,6 +415,24 @@ export class Radahn extends BossBase {
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
+
+  /** 挥砍贴着剑。三连先右、再左、最后两把一起。拉动和陨石是身边的圆。箭、岩石、重力波只算飞行物。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    const right = { hilt: this.swordR.hilt, tip: this.swordR.tip, pad: 0.45 };
+    const left = { hilt: this.swordL.hilt, tip: this.swordL.tip, pad: 0.45 };
+    const both: AttackVolume = { kind: "blade", ...right, also: [left] };
+    if (m.name === "radahnCross" || m.name === "radahnVortex") return both;
+    if (m.name === "radahnTriple") {
+      if (this.hitFired <= 0) return { kind: "blade", ...right };
+      if (this.hitFired === 1) return { kind: "blade", ...left };
+      return both;
+    }
+    if (m.name === "radahnPull" || m.name === "radahnMeteor") {
+      return { kind: "disk", x: this.root.position.x, z: this.root.position.z, r: m.range };
+    }
+    if (m.proj) return { kind: "none" };
+    return null;
+  }
   protected override headPart(): THREE.Object3D { return this.head; }
 
   // ---------------- 姿态应用 ----------------

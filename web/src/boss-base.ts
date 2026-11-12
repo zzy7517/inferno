@@ -13,7 +13,7 @@ import { Seg, Strike, strikeContact } from "./weapon-hit";
 
 /** 这一招打到人的形状。武器用刃；不是武器的用圆、锥，或交给飞行物。 */
 export type AttackVolume =
-  | { kind: "blade"; hilt: THREE.Object3D; tip: THREE.Object3D; pad: number }
+  | { kind: "blade"; hilt: THREE.Object3D; tip: THREE.Object3D; pad: number; also?: { hilt: THREE.Object3D; tip: THREE.Object3D; pad: number }[] }
   | { kind: "disk"; x: number; z: number; r: number }
   | { kind: "cone"; x: number; z: number; yaw: number; range: number; arc: number }
   | { kind: "none" };
@@ -56,7 +56,8 @@ export abstract class BossBase {
   protected cds: Record<string, number> = {};
   protected hitDone = false;
   protected hitFired = 0;              // 多段判定已触发段数
-  private prevBlade: Seg | null = null;
+  private prevByTip = new Map<THREE.Object3D, Seg>();
+  private prevTips = new Set<THREE.Object3D>();
   private readonly bladeA = new THREE.Vector3();
   private readonly bladeB = new THREE.Vector3();
   protected deathT = 0;
@@ -208,7 +209,7 @@ export abstract class BossBase {
   reset(): void {
     this.state = "statue"; this.sub = "idle"; this.move = null; this.t = 0;
     this.hp = this.cfg.hp; this.phase = 1; this.poise = 0; this.yaw = this.facing0;
-    this.cds = {}; this.hitDone = false; this.hitFired = 0; this.prevBlade = null; this.deathT = 0;
+    this.cds = {}; this.hitDone = false; this.hitFired = 0; this.prevByTip.clear(); this.prevTips.clear(); this.deathT = 0;
     this.resetVisuals();
     this.applyPose();
   }
@@ -307,7 +308,7 @@ export abstract class BossBase {
       // 选招
       const pick = this.pickMove(dist);
       if (pick) {
-        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevBlade = null;
+        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevByTip.clear(); this.prevTips.clear();
         this.cds[pick.name] = pick.cd;
         this.onMoveStart(pick, toPlayer, dist);
         AU.telegraph();
@@ -352,7 +353,7 @@ export abstract class BossBase {
       // 连段：直戳后概率接二连戳；必须走 onMoveStart，否则前冲/刀光段计数沿用上一招
       const chain = this.pickChain(m, dist, toPlayer);
       if (chain) {
-        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevBlade = null;
+        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevByTip.clear(); this.prevTips.clear();
         this.cds[chain.name] = chain.cd;
         this.onMoveStart(chain, toPlayer, dist);
       } else {
@@ -363,15 +364,19 @@ export abstract class BossBase {
 
   /** 武器：这一段挥砍的时间窗里，刃（含上一帧扫过的区域）碰到玩家才算。窗过了还没碰到，这一段算挥空。 */
   private resolveBlade(m: MoveDef, vol: Extract<AttackVolume, { kind: "blade" }>, playerPos: THREE.Vector3, toPlayer: THREE.Vector3, playerIframed: boolean): void {
-    const strike = this.readBlade(vol);
     const hits = m.hits ?? 1;
     const firstAt = m.active * 0.4;
     const interval = m.hitInterval ?? 0.45;
     const slotStart = (k: number) => Math.min(firstAt + k * interval, m.active);
     const slotEnd = (k: number) => Math.min(firstAt + (k + 1) * interval, m.active);
+    const strikes = this.readBlades(vol);
     if (this.hitFired < hits && this.state === "combat" && this.t >= slotStart(this.hitFired) && this.t < slotEnd(this.hitFired)) {
-      const contact = strikeContact(playerPos.x, playerPos.z, P.playerRadius, strike);
-      if (contact) this.applyBossHit(m, toPlayer, new THREE.Vector3(contact.x, contact.y, contact.z), playerIframed);
+      for (const strike of strikes) {
+        const contact = strikeContact(playerPos.x, playerPos.z, P.playerRadius, strike);
+        if (!contact) continue;
+        this.applyBossHit(m, toPlayer, new THREE.Vector3(contact.x, contact.y, contact.z), playerIframed);
+        break;
+      }
     }
     while (this.hitFired < hits && this.state === "combat" && this.t >= slotEnd(this.hitFired)) this.hitFired++;
   }
@@ -404,14 +409,21 @@ export abstract class BossBase {
     if (this.hitFired === 1 && this.state === "combat") this.hitDone = true;
   }
 
-  private readBlade(vol: Extract<AttackVolume, { kind: "blade" }>): Strike {
+  private readBlades(vol: Extract<AttackVolume, { kind: "blade" }>): Strike[] {
     this.root.updateWorldMatrix(true, true);
-    const a = vol.hilt.getWorldPosition(this.bladeA);
-    const b = vol.tip.getWorldPosition(this.bladeB);
-    const now: Seg = { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z };
-    const strike: Strike = { now, prev: this.prevBlade, pad: vol.pad };
-    this.prevBlade = now;
-    return strike;
+    const parts = [{ hilt: vol.hilt, tip: vol.tip, pad: vol.pad }, ...(vol.also ?? [])];
+    const nextTips = new Set<THREE.Object3D>();
+    const strikes = parts.map(p => {
+      const a = p.hilt.getWorldPosition(this.bladeA);
+      const b = p.tip.getWorldPosition(this.bladeB);
+      const now: Seg = { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z };
+      const prev = this.prevTips.has(p.tip) ? this.prevByTip.get(p.tip) ?? null : null;
+      this.prevByTip.set(p.tip, now);
+      nextTips.add(p.tip);
+      return { now, prev, pad: p.pad };
+    });
+    this.prevTips = nextTips;
+    return strikes;
   }
 
   private volumeTouches(vol: AttackVolume, playerPos: THREE.Vector3): boolean {
