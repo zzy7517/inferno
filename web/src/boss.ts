@@ -31,6 +31,8 @@ export class Boss extends BossBase {
   private armL = new THREE.Group();
   private head!: THREE.Mesh;
   private serpent: THREE.Mesh[] = [];
+  /** 每节沿脊柱的原始长度。头不参与拉长，颈用它接到头。 */
+  private serpDepth: number[] = [];
   private serpGlow!: THREE.PointLight;
   private swordInChest!: THREE.Object3D;
   private swordLight!: THREE.PointLight;
@@ -131,14 +133,54 @@ export class Boss extends BossBase {
     this.armL.add(box(0.3, 0.95, 0.3, stone, 0, -0.45, 0));
     this.armL.add(box(0.34, 0.34, 0.34, stone, 0, -0.98, 0));
     this.torso.add(this.armL);
-    // 人性的沉淀（二阶段蛇形爆发体，从背部生长）
-    for (let i = 0; i < 8; i++) {
-      const s = 0.34 - i * 0.025;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * 1.5), i === 7 ? this.emberMat : stone);
+    // 人性的沉淀：腹鼓、颈细、头比颈宽，下巴单独挂在嘴下。从背后伸出来才看得出是蛇。
+    // 首节仍靠躯干，末节是头（蛇招命中用这两节的位置，不看节数）。
+    const link = (rHead: number, rTail: number, len: number, sx: number, sy: number, mat: THREE.Material) => {
+      const g = new THREE.CylinderGeometry(rHead, rTail, len, 6);
+      g.rotateX(Math.PI / 2);
+      g.scale(sx, sy, 1);
+      const m = new THREE.Mesh(g, mat);
       m.visible = false; m.castShadow = true;
+      this.serpDepth.push(len);
       this.serpent.push(m);
       this.torso.add(m);
+      return m;
+    };
+    // 靠近躯干的几节是腹，末两节收到颈。高低都收，侧面才看得出细脖子。
+    const radii = [0.26, 0.38, 0.48, 0.42, 0.28, 0.18, 0.14, 0.12];
+    const depth = [0.34, 0.36, 0.36, 0.34, 0.32, 0.30, 0.28];
+    const wide = [1.15, 1.40, 1.25, 1.05, 0.90, 0.75, 0.70];
+    const tall = [1.05, 1.35, 1.20, 0.95, 0.75, 0.62, 0.58];
+    for (let i = 0; i < depth.length; i++) {
+      const m = link(radii[i + 1], radii[i], depth[i], wide[i], tall[i], stone);
+      const r = (radii[i] + radii[i + 1]) * 0.5;
+      const yRad = r * tall[i];
+      const xRad = r * wide[i];
+      if (i >= 1 && i <= 2) {
+        m.add(box(xRad * 1.35, yRad * 0.18, depth[i] * 0.8, dark, 0, -yRad * 0.72, 0));
+        m.add(box(xRad * 0.22, yRad * 0.07, depth[i] * 0.55, this.emberMat, 0, -yRad * 0.84, 0));
+      } else if (i >= 5) {
+        m.add(box(xRad * 0.55, yRad * 0.45, depth[i] * 0.7, dark, 0, yRad * 0.85, 0));
+      }
     }
+    const headLen = 0.34;
+    const skull = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.30, headLen), stone);
+    skull.visible = false; skull.castShadow = true;
+    const snoutGeo = new THREE.ConeGeometry(0.18, 0.48, 5);
+    snoutGeo.rotateX(Math.PI / 2);
+    const snout = new THREE.Mesh(snoutGeo, dark);
+    snout.position.set(0, -0.02, 0.36); snout.castShadow = true;
+    skull.add(snout);
+    skull.add(box(0.74, 0.10, 0.16, stone, 0, 0.16, 0.02));
+    // 下巴：厚，并且明显低于颅骨，嘴缝里留一条余烬。
+    skull.add(box(0.50, 0.18, 0.46, stone, 0, -0.36, 0.12));
+    skull.add(box(0.30, 0.12, 0.26, dark, 0, -0.46, 0.30));
+    skull.add(box(0.24, 0.10, 0.34, this.emberMat, 0, -0.20, 0.20));
+    skull.add(box(0.12, 0.08, 0.06, this.emberMat, 0.34, 0.04, 0.04));
+    skull.add(box(0.12, 0.08, 0.06, this.emberMat, -0.34, 0.04, 0.04));
+    this.serpDepth.push(headLen);
+    this.serpent.push(skull);
+    this.torso.add(skull);
     this.serpGlow = new THREE.PointLight(COLORS.ember, 0, 6, 2);
     this.torso.add(this.serpGlow);
     this.root.add(this.body);
@@ -182,20 +224,41 @@ export class Boss extends BossBase {
     this.serpGlow.intensity = show ? Math.min(6.5, 1.6 + serp * 2.4) : 0;
     const aim = Math.PI + p.serpYaw;
     const forward = Math.max(0, -Math.cos(p.serpYaw));
+    // 背后待机把头抬过肩，突刺时把这条弧压平。首尾的水平伸距不变。
+    const crest = (1 - forward * 0.72) * 1.2;
+    const bow = Math.PI * 0.58;
+    const step = outLen / Math.max(1, n - 1);
+    const facePlayer = Math.max(0, Math.cos(p.serpYaw));
     for (let i = 0; i < n; i++) {
       const s = this.serpent[i];
       s.visible = show;
       const k = i / (n - 1);
       const wobble = Math.sin(performance.now() * 0.004 + i * 0.9) * 0.14 * Math.min(1, serp);
       const reach = 0.28 + k * outLen;
-      const along = Math.cos(aim) * reach;
-      const lateral = Math.sin(aim) * reach + wobble;
-      const arch = (1 - forward * 0.7) * 0.48;
-      s.position.set(lateral, 1.22 + Math.sin(k * Math.PI) * arch, along);
-      s.rotation.set(0, aim, 0);
-      const depth = (0.34 - i * 0.025) * 1.5;
-      const step = outLen / Math.max(1, n - 1);
-      s.scale.set(1, 1, Math.min(2.2, Math.max(1, (step * 0.92) / Math.max(0.16, depth))));
+      // 中段偏到肩外。两端不横移，命中用的首尾仍在原来的水平伸距上。
+      const side = Math.sin(k * Math.PI) * 0.42;
+      const along = Math.cos(aim) * reach - Math.sin(aim) * side;
+      const lateral = Math.sin(aim) * reach + Math.cos(aim) * side + wobble;
+      s.position.set(lateral, 1.22 + Math.sin(k * bow) * crest, along);
+      const dy = crest * bow * Math.cos(k * bow);
+      let pitch = -Math.atan2(dy, Math.max(0.35, outLen));
+      let yaw = aim;
+      if (i === n - 1 && facePlayer > 0) {
+        // 身子朝背后伸，头转回来低头看玩家，吻和下巴才露在肩上。
+        yaw = aim + Math.PI * 0.72 * facePlayer;
+        pitch = pitch * (1 - facePlayer) + 0.4 * facePlayer;
+      }
+      s.rotation.set(pitch, yaw, 0);
+      const depth = this.serpDepth[i] ?? 0.3;
+      // 头不拉长。颈接到头心，其余节互相叠住，避免再断开成一串箱子。
+      let zScale = 1;
+      if (i === n - 2) {
+        const reachHead = (step * 1.65) / Math.max(0.16, depth);
+        zScale = Math.min(6.2, Math.max(1, reachHead));
+      } else if (i !== n - 1) {
+        zScale = Math.min(4.2, Math.max(1, (step * 1.55) / Math.max(0.16, depth)));
+      }
+      s.scale.set(1, 1, zScale);
     }
   }
 
