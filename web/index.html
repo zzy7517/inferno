@@ -39,16 +39,53 @@
     .meters .souls { color: #9aa3b2; }
     .meters .souls b { color: #cfd6e2; font-weight: 500; }
 
-    /* ---- 底中：Boss 条 ---- */
-    #bossbar { position: fixed; left: 50%; bottom: 66px; transform: translateX(-50%); width: min(620px, 72vw); z-index: 10;
-      opacity: 0; transition: opacity 0.8s; pointer-events: none; }
+    /* ---- 底中：Boss 名牌。名字在上，血槽在下，两端收一点，像刻在石上 ---- */
+    #bossbar {
+      position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%);
+      width: min(560px, 70vw); z-index: 10;
+      opacity: 0; transition: opacity 0.8s; pointer-events: none;
+      padding: 13px 46px 9px;
+      background:
+        linear-gradient(180deg, rgba(230,195,122,0.16), transparent 34%),
+        linear-gradient(180deg, rgba(26,30,38,0.86), rgba(13,16,22,0.78));
+      clip-path: polygon(
+        22px 0, calc(100% - 22px) 0,
+        100% 12px, 100% calc(100% - 12px),
+        calc(100% - 22px) 100%, 22px 100%,
+        0 calc(100% - 12px), 0 12px
+      );
+      filter: drop-shadow(0 10px 14px rgba(0,0,0,0.62));
+    }
     #bossbar.on { opacity: 1; }
-    #bossName { text-align: right; font-size: 17px; letter-spacing: 5px; color: #d8dee8; margin-bottom: 4px; text-shadow: 0 1px 4px #000; }
-    #bossPhase2 { color: var(--ember); font-size: 12px; margin-left: 8px; opacity: 0; transition: opacity 0.6s; }
+    #bossName {
+      text-align: center; margin-bottom: 8px;
+      text-shadow: 0 1px 0 #0d1016, 0 0 14px rgba(230,195,122,0.16);
+    }
+    #bossTitle {
+      display: block; padding-bottom: 6px; margin-bottom: 4px;
+      border-bottom: 1px solid rgba(230,195,122,0.34);
+      font-size: 18px; font-weight: 600; letter-spacing: 0.42em; text-indent: 0.42em;
+      color: var(--gold);
+    }
+    #bossPhase2 {
+      display: block; margin: 0;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.24em; text-indent: 0.24em;
+      color: var(--cold);
+      opacity: 0; transition: opacity 0.6s;
+    }
     #bossTry { text-align: right; font-size: 11.5px; letter-spacing: 3px; color: #6f7784; margin-top: 3px; }
-    .bar.boss { height: 13px; }
+    .bar.boss {
+      height: 13px; margin: 7px 0 2px; border: none;
+      background: linear-gradient(180deg, rgba(230,195,122,0.78), #8a93a6 48%, rgba(230,195,122,0.62));
+      clip-path: polygon(11px 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 11px 100%, 0 50%);
+    }
+    .bar.boss::before {
+      content: ""; position: absolute; z-index: 0; inset: 2px;
+      background: linear-gradient(180deg, #12151b, #0d1016);
+    }
+    .bar.boss i.lag, .bar.boss i.fill { z-index: 1; top: 2px; bottom: 2px; left: 2px; right: auto; max-width: calc(100% - 4px); }
     .bar.boss i.lag { background: #c9cdd4; }
-    .bar.boss i.fill { background: linear-gradient(180deg, #c05a48, var(--blood)); }
+    .bar.boss i.fill { background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 58%, #0d1016)); }
 
     /* ---- 提示/消息/锁定 ---- */
     #prompt { position: fixed; left: 50%; bottom: 26%; transform: translateX(-50%); z-index: 10;
