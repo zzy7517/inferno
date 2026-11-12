@@ -1,0 +1,19 @@
+web/src/vfx.ts
+  s_eb3e785bcb9cea::t_fb4e81470ddd1b 81,83-128,130-133,138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "2f1f7fcc9426c4029a9b1985ad7563de9c4953c0",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
