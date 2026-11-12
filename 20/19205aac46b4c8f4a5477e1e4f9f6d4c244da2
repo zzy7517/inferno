@@ -1,0 +1,19 @@
+web/src/scene-stormveil.ts
+  s_eb3e785bcb9cea::t_83a023b64df4a2 398-474,618-625,628,649-652,664,675-676,1127-1128,1297-1298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "2019205aac46b4c8f4a5477e1e4f9f6d4c244da2",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
