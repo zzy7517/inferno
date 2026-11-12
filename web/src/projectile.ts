@@ -19,6 +19,7 @@ interface Proj {
   life: number;
   def: ProjDef;
   dead: boolean;
+  from: THREE.Vector3;   // 出生点：泄漏防护按飞行距离算（竞技场已在 x≈95，世界原点距离会误杀）
 }
 
 export class Projectiles {
@@ -37,12 +38,13 @@ export class Projectiles {
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
       );
       this.group.add(mesh);
-      p = { mesh, vx: 0, vy: 0, vz: 0, life: 0, def, dead: true };
+      p = { mesh, vx: 0, vy: 0, vz: 0, life: 0, def, dead: true, from: new THREE.Vector3() };
       this.pool.push(p);
     }
     p.dead = false;
     p.life = def.life;
     p.def = def;
+    p.from.copy(pos);
     const s = def.radius * 0.6;
     p.mesh.scale.setScalar(s);
     p.mesh.position.copy(pos);
@@ -69,7 +71,7 @@ export class Projectiles {
         const dir = new THREE.Vector3(p.vx, 0, p.vz).normalize();
         onHit(p.def, m.clone(), dir);
         this.kill(p);
-      } else if (p.life <= 0 || m.y < 0 || m.length() > 90) {
+      } else if (p.life <= 0 || m.y < 0 || m.distanceToSquared(p.from) > 8100) {
         this.kill(p);
       }
     }
