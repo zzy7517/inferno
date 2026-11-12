@@ -1,0 +1,19 @@
+web/src/boss-godrick.ts
+  s_eb3e785bcb9cea::t_ef3ea6af340713 152-155,157-160,164-173,175-176,188-189,197-200,203,223-224,262,330-336,338-367,369-370,383-400,402-435,437,481,663,668-672,742,747-748,760
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "92620e1ca94ec5b1b64f88af6051c9eeabc4bdd1",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
