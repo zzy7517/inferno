@@ -1,0 +1,19 @@
+web/src/audio.ts
+  s_59ee0ae601c8d1::t_d5764ec915bf03 91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5798c98d198327dd038bde00e0479d953277ab2a",
+  "prompts": {},
+  "sessions": {
+    "s_59ee0ae601c8d1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "794f4e11-2892-4d5f-a9d5-50cc3725ef06",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
