@@ -1,0 +1,19 @@
+web/src/vfx.ts
+  s_14ee8d24600723::t_105f34d05d0443 163,169-173,175-200,202-267,269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "0de634099dae9fb07a61d8e88a97e194c8b72d85",
+  "prompts": {},
+  "sessions": {
+    "s_14ee8d24600723": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0cfeb1c9-ccf9-423b-9cab-c4a5ff04921b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
