@@ -1,0 +1,21 @@
+web/src/scene-cemetery.ts
+  s_eb3e785bcb9cea::t_03199be1a9eb73 21-22,888-981
+web/src/scene-highwall.ts
+  s_eb3e785bcb9cea::t_c82b9179ef3460 20,100-209,1178-1210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b97e70c26225d707f33db612299bda9ed727fe30",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
