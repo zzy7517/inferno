@@ -1,0 +1,38 @@
+web/src/boss-sulyvahn.ts
+  s_0fcd60f95dece6::t_d7c75df636ac42 716-723
+  s_0fcd60f95dece6::t_6d34a3d8b8b84c 58-59
+  s_0fcd60f95dece6::t_3f78878012d8bc 181-183
+  s_0fcd60f95dece6::t_97e59315368eff 670
+  s_0fcd60f95dece6::t_2631e77df35a97 5-6
+  s_0fcd60f95dece6::t_3b4610ad1f3e3f 625-640,642-643,645-646,648
+  s_0fcd60f95dece6::t_7ae42c47bb07d5 588-591
+  s_0fcd60f95dece6::t_86dbf5fe8f3e65 737,739-748,750-755,767-784
+  s_0fcd60f95dece6::t_c01efb9670029f 605,607-608
+  s_0fcd60f95dece6::t_616ab3a336c973 798-805,807-810,812-813,815,817-818
+  s_0fcd60f95dece6::t_b8e101a3fa06a6 30-35,37-39,42-43
+  s_0fcd60f95dece6::t_085db96532fb6d 355-358,360-364,374,380-386,393-430,432-515
+  s_0fcd60f95dece6::t_ba5a384adb67c3 129,131-132,134-138
+  s_0fcd60f95dece6::t_9d96365a1f0bd7 531-532
+  s_0fcd60f95dece6::t_fb13b9dca5fee9 571-572,574
+  s_0fcd60f95dece6::t_758af0c23db544 92-97
+  s_0fcd60f95dece6::t_ed5eae82888987 693-695,697,700-701
+  s_0fcd60f95dece6::t_d4fd268e5c4bfb 615,617
+  s_0fcd60f95dece6::t_1969df7644cc36 162-163,166
+  s_0fcd60f95dece6::t_d9718aee22bf1f 65-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "76fdff2c625d0f0adba72bed420b09da2eecd9d2",
+  "prompts": {},
+  "sessions": {
+    "s_0fcd60f95dece6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ec6ed29a-e18c-40f8-a663-d38b93c091a5",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
