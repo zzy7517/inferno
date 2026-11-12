@@ -1,0 +1,19 @@
+web/src/vfx.ts
+  s_dcbe7652caa724::t_9951d89acb7816 106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c9c2481caa198b8ed06335e38585e1f16f32849c",
+  "prompts": {},
+  "sessions": {
+    "s_dcbe7652caa724": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9f832be0-2c06-45f6-bac4-d166eeceb505",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
