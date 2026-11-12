@@ -20,6 +20,8 @@ export interface PlayerHost {
   bossParryableActive: () => boolean;
   bossOpen: () => boolean;              // parried / stagger
   bossPos: () => THREE.Vector3;
+  /** 出手与锁定要朝向的点。没有近处目标时返回 null，避免全图扭向远处 Boss。 */
+  aimPos?: () => THREE.Vector3 | null;
   shake: (amp: number) => void;
 }
 
@@ -114,8 +116,8 @@ export class Player {
     if (this.state === "dead") return;
     // 战技架势派生（按下即发）：左键=盾冲突刺（高削韧）/ 右键=上挑（击飞小怪）
     if (down && this.state === "stance" && this.canSpend(P.r1Cost)) {
-      if (button === 0) { this.faceBoss(this.host.bossPos(), 0.016, true); this.startMove("stancePoke"); return; }
-      if (button === 2) { this.rmbDown = true; this.faceBoss(this.host.bossPos(), 0.016, true); this.startMove("stanceUp"); return; }
+      if (button === 0) { this.faceBoss(this.aimAt(), 0.016, true); this.startMove("stancePoke"); return; }
+      if (button === 2) { this.rmbDown = true; this.faceBoss(this.aimAt(), 0.016, true); this.startMove("stanceUp"); return; }
     }
     if (button === 0) {
       this.lmbDown = down;
@@ -301,11 +303,12 @@ export class Player {
     const inputDir = this.inputDir(camYaw);
     const moving = inputDir.lengthSq() > 0.01;
     const bossPos = this.host.bossPos();
+    const aim = this.aimAt();
 
-    // 锁定朝向
+    // 锁定朝向：朝当前目标（Boss 或小怪），没有目标就不拧身
     const wantLock = this.lockOn;
-    if (wantLock && this.state !== "roll") {
-      const d = Math.atan2(bossPos.x - this.pos.x, bossPos.z - this.pos.z);
+    if (wantLock && aim && this.state !== "roll") {
+      const d = Math.atan2(aim.x - this.pos.x, aim.z - this.pos.z);
       this.yaw = angDamp(this.yaw, d, 14, dt);
     }
 
@@ -318,7 +321,7 @@ export class Player {
         }
         // 长按 F ≥0.35s → 战技架势（轻点在 onKey 松开时缓冲为弹反）
         if (this.fHeld && this.elapsed - this.fDownAt >= P.stanceHoldTime && this.canSpend(P.stanceCost)) {
-          this.faceBoss(bossPos, dt, true); this.enter("stance"); break;
+          this.faceBoss(aim, dt, true); this.enter("stance"); break;
         }
         if (this.rmbDown) { this.enter("block"); break; }
         const b = this.buffered;
@@ -330,9 +333,9 @@ export class Player {
             if (sprinting && this.canSpend(P.r1Cost)) { this.startMove("runAttack", inputDir); break; }
             // W 按住 + R1 轻点(<0.15s) → 踢击（破盾；对 Boss 仅微量伤害）
             if (this.keys.has("KeyW") && b.tapDur < 0.15 && this.canSpend(P.kickCost)) {
-              this.faceBoss(bossPos, dt, true); this.startMove("kick"); break;
+              this.faceBoss(aim, dt, true); this.startMove("kick"); break;
             }
-            if (this.canSpend(P.r1Cost)) { this.spend(P.r1Cost); this.combo = 0; this.faceBoss(bossPos, dt, true); this.enter("attack"); break; }
+            if (this.canSpend(P.r1Cost)) { this.spend(P.r1Cost); this.combo = 0; this.faceBoss(aim, dt, true); this.enter("attack"); break; }
           }
           if (b.kind === "roll") {
             // 静止按空格 → 后撤步（1.6m 后跃，有无敌帧）；有方向输入 → 翻滚
@@ -378,7 +381,7 @@ export class Player {
           const b = this.buffered; this.buffered = null;
           if (b.kind === "roll" && this.canSpend(P.rollCost)) { this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
           if (b.kind === "r1" && this.canSpend(P.r1Cost) && this.combo < 2) {
-            this.spend(P.r1Cost); this.combo++; this.faceBoss(bossPos, dt, true); this.enter("attack"); break;
+            this.spend(P.r1Cost); this.combo++; this.faceBoss(aim, dt, true); this.enter("attack"); break;
           }
         }
         // -1e-3：clip 时长为浮点（0.89999997…），clampWhenFinished 后与 total 差亿分之一会导致永不收招（真机 rAF 必现）
@@ -417,7 +420,7 @@ export class Player {
         // 翻滚攻：翻滚 60% 后缓冲的 R1 在此精确衔接（起身横扫）
         if (this.buffered?.kind === "r1" && this.t >= T * 0.6 && this.canSpend(P.r1Cost)) {
           this.buffered = null;
-          this.faceBoss(bossPos, dt, true);
+          this.faceBoss(aim, dt, true);
           this.startMove("rollAttack");
           break;
         }
@@ -434,7 +437,7 @@ export class Player {
         const chainAt = this.clipNum("backstep", "chainFrom", 0.18);
         if (this.buffered?.kind === "r1" && this.t >= chainAt && this.canSpend(P.r1Cost)) {
           this.buffered = null;
-          this.faceBoss(bossPos, dt, true);
+          this.faceBoss(aim, dt, true);
           this.startMove("backstepAttack");
           break;
         }
@@ -516,7 +519,7 @@ export class Player {
 
   private hitApplied = false;
   enterAttackFromHold(): void {
-    this.spend(P.r2Cost); this.faceBoss(this.host.bossPos(), 0.016, true);
+    this.spend(P.r2Cost); this.faceBoss(this.aimAt(), 0.016, true);
     this.enter("heavy"); this.hitApplied = false;
     // 满蓄更沉：播放稍慢，数值分级见 heavy 分支（+35% / 破韧 x2）
     this.heavySpeed = this.charge >= P.r2FullCharge ? 0.5 : 0.62;
@@ -550,8 +553,15 @@ export class Player {
     }
   }
 
-  private faceBoss(bossPos: THREE.Vector3, dt: number, snap = false): void {
-    const d = Math.atan2(bossPos.x - this.pos.x, bossPos.z - this.pos.z);
+  /** 锁定目标优先，否则由宿主给出的近战软吸附点。宿主未提供时退回 Boss。 */
+  private aimAt(): THREE.Vector3 | null {
+    if (this.host.aimPos) return this.host.aimPos();
+    return this.host.bossPos();
+  }
+
+  private faceBoss(at: THREE.Vector3 | null, dt: number, snap = false): void {
+    if (!at) return;
+    const d = Math.atan2(at.x - this.pos.x, at.z - this.pos.z);
     this.yaw = snap ? d : angDamp(this.yaw, d, 20, dt);
   }
 

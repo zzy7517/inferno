@@ -18,7 +18,7 @@ import { buildCemetery } from "./scene-cemetery";
 import { buildStormveil } from "./scene-stormveil";
 import { Margit, MARGIT_STATS } from "./boss-margit";
 import { Godrick, GODRICK_STATS } from "./boss-godrick";
-import { EnemyManager } from "./enemy";
+import { EnemyManager, EnemyBase } from "./enemy";
 import { ENEMY_PRESETS } from "./enemies-config";
 import { BOSS_ORDER, SCENE_NAME, ZONE_OF, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene, shortcutUnlockedOn } from "./progress";
 import type { SceneId, BossId, Progress } from "./progress";
@@ -79,6 +79,8 @@ export class Game {
   private boss!: BossBase;
   private bossEntry!: BossEntry;
   private bossId = "gundyr";
+  private lockKind: "boss" | "enemy" = "boss";
+  private lockEnemy: EnemyBase | null = null;
   private player!: Player;
   private tune!: Tuning;
   private projectiles!: Projectiles;
@@ -154,6 +156,7 @@ export class Game {
       bossParryableActive: () => this.boss["sub"] === "act" && this.boss.move?.parryable === true && this.boss.t < (this.boss.move?.active ?? 0) * 0.7,
       bossOpen: () => this.boss.state === "parried" || this.boss.state === "stagger",
       bossPos: () => this.boss.root.position,
+      aimPos: () => this.aimPos(),
       shake: a => this.shake(a),
     });
     this.player.bind(actions);
@@ -241,6 +244,7 @@ export class Game {
   /** 按场景预设表布怪（T8：位置入 ENEMY_PRESETS 数据表；zone 字段按进度闸门过滤，未解锁深区别刷） */
   private spawnEnemies(): void {
     this.enemies.clear();
+    if (this.lockKind === "enemy") this.clearLock();
     const specs = ENEMY_PRESETS[this.sceneId];
     if (!specs?.length) return;
     for (const p of specs) {
@@ -380,7 +384,7 @@ export class Game {
         if (document.pointerLockElement === canvas) document.exitPointerLock();
         else canvas.requestPointerLock();
       }
-      else if (e.code === "KeyQ") this.player.lockOn = !this.player.lockOn;
+      else if (e.code === "KeyQ" && !e.repeat) this.cycleLock();
       else if (e.code === "KeyE") this.interact();
       else if (e.code === "KeyT") this.tune.toggleSlow();         // 慢动作（速度在调校台调）
       else if (e.code === "KeyM") AU.toggleMute();
@@ -483,7 +487,9 @@ export class Game {
     this.showMsg(this.bossEntry.name, 2.2, true);
     AU.roar();
     this.fightStart = this.elapsed;
-    this.player.lockOn = true;   // 开战自动锁定（无鼠标方案）
+    this.lockKind = "boss";
+    this.lockEnemy = null;
+    this.player.lockOn = true;   // 开战自动锁定 Boss（无鼠标方案）
   }
 
   private onBossDeath(): void {
@@ -506,6 +512,7 @@ export class Game {
       ? `薪火的巡礼告一段落 —— ${BOSS_ORDER.length} 位 Boss 尽数陨落`
       : `魂 +${award}`;
     this.player.lockOn = false;
+    this.lockEnemy = null;
     this.saveState();
   }
 
@@ -520,6 +527,7 @@ export class Game {
       this.player.souls = 0;
     }
     this.player.lockOn = false;
+    this.lockEnemy = null;
     this.saveState();
   }
 
@@ -720,17 +728,98 @@ export class Game {
     return null;
   }
 
+  private clearLock(): void {
+    this.lockKind = "boss";
+    this.lockEnemy = null;
+    if (this.player) this.player.lockOn = false;
+  }
+
+  /** 当前锁定点。Boss 战自动锁 Boss；小怪超出 22m 或死亡则失效。 */
+  private lockPoint(): THREE.Vector3 | null {
+    if (!this.player?.lockOn) return null;
+    if (this.lockKind === "enemy") {
+      const e = this.lockEnemy;
+      if (!e?.alive) return null;
+      if (e.root.position.distanceTo(this.player.pos) > 22) return null;
+      return e.root.position;
+    }
+    if (!this.boss?.awake || this.boss.state === "dead") return null;
+    return this.boss.root.position;
+  }
+
+  /** 出手朝向：锁定目标优先；否则面前 3.6m 内的小怪；再否则竞技场内的 Boss。远处石像不吸附。 */
+  private aimPos(): THREE.Vector3 | null {
+    const locked = this.lockPoint();
+    if (locked) return locked;
+    const melee = this.enemies?.nearestAhead(this.player.pos, this.player.yaw, 3.6, 1.15);
+    if (melee) return melee.root.position;
+    if (this.boss?.awake && this.boss.state !== "dead" && this.boss.root.position.distanceTo(this.player.pos) < 28) {
+      return this.boss.root.position;
+    }
+    return null;
+  }
+
+  private cycleLock(): void {
+    const cands = this.lockCandidates();
+    const cur = this.lockPoint();
+    if (!cur) {
+      if (!cands.length) return;
+      this.applyLock(cands[0]);
+      return;
+    }
+    if (cands.length <= 1) { this.clearLock(); return; }
+    const id = this.lockKind === "boss" ? "boss" : `e${this.lockEnemy?.root.id}`;
+    const i = cands.findIndex(c => c.id === id);
+    this.applyLock(cands[(i < 0 ? 0 : i + 1) % cands.length]);
+  }
+
+  private applyLock(c: { id: string; kind: "boss" } | { id: string; kind: "enemy"; enemy: EnemyBase }): void {
+    if (c.kind === "boss") {
+      this.lockKind = "boss";
+      this.lockEnemy = null;
+    } else {
+      this.lockKind = "enemy";
+      this.lockEnemy = c.enemy;
+    }
+    this.player.lockOn = true;
+  }
+
+  private lockCandidates(): ({ id: string; kind: "boss" } | { id: string; kind: "enemy"; enemy: EnemyBase })[] {
+    const out: { id: string; kind: "boss" | "enemy"; enemy?: EnemyBase; ang: number; d: number }[] = [];
+    const push = (id: string, kind: "boss" | "enemy", pos: THREE.Vector3, enemy?: EnemyBase) => {
+      const dx = pos.x - this.player.pos.x;
+      const dz = pos.z - this.player.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 16 || d < 0.35) return;
+      let ang = Math.atan2(dx, dz) - this.player.yaw;
+      ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+      out.push({ id, kind, enemy, ang, d });
+    };
+    if (this.boss.awake && this.boss.state !== "dead") push("boss", "boss", this.boss.root.position);
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      push(`e${e.root.id}`, "enemy", e.root.position, e);
+    }
+    const front = out.filter(o => Math.abs(o.ang) < 1.9);
+    const pool = (front.length ? front : out).sort((a, b) => Math.abs(a.ang) - Math.abs(b.ang) || a.d - b.d);
+    return pool.map(o => o.kind === "enemy"
+      ? { id: o.id, kind: "enemy" as const, enemy: o.enemy as EnemyBase }
+      : { id: o.id, kind: "boss" as const });
+  }
+
   private updateCamera(rdt: number): void {
+    if (this.player.lockOn && !this.lockPoint()) this.clearLock();
     const target = this.player.pos.clone().add(new THREE.Vector3(0, 1.45, 0));
     let dist = this.camDist;
     let lookAt = target;
 
-    const locked = this.player.lockOn && this.boss.awake && this.boss.state !== "dead";
-    if (locked) {
+    const focus = this.lockPoint();
+    const locked = !!focus;
+    if (locked && focus) {
       // 锁定取景：镜头在玩家背侧、看向两人中点，距离随间距自适应
-      const toBoss = this.boss.root.position.clone().sub(this.player.pos);
+      const toBoss = focus.clone().sub(this.player.pos);
       const sep = toBoss.length();
-      lookAt = this.player.pos.clone().lerp(this.boss.root.position, 0.32).setY(target.y);
+      lookAt = this.player.pos.clone().lerp(focus, 0.32).setY(target.y);
       const wantYaw = Math.atan2(toBoss.x, toBoss.z) + Math.PI;
       let d = wantYaw - this.camYaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -788,8 +877,10 @@ export class Game {
     $("prompt").textContent = pr ?? "";
     $("prompt").classList.toggle("on", !!pr);
     const lock = $("lockon");
-    if (this.player.lockOn && this.boss.awake && this.boss.state !== "dead") {
-      const head = this.boss.headWorld();
+    const head = this.lockKind === "enemy" && this.lockEnemy?.alive
+      ? this.lockEnemy.hitPoint()
+      : (this.player.lockOn && this.boss.awake && this.boss.state !== "dead" ? this.boss.headWorld() : null);
+    if (this.player.lockOn && head) {
       head.project(this.camera);
       if (head.z < 1) {
         lock.style.display = "block";

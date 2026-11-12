@@ -788,6 +788,25 @@ export class EnemyManager {
     return { hits, blocked };
   }
 
+  /** 面前半角内最近的活怪，供近战软吸附。没有则 null。 */
+  nearestAhead(from: THREE.Vector3, yaw: number, maxDist: number, halfAng: number): EnemyBase | null {
+    let best: EnemyBase | null = null;
+    let bestD = maxDist;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dx = e.root.position.x - from.x;
+      const dz = e.root.position.z - from.z;
+      const d = Math.hypot(dx, dz);
+      if (d > bestD || d < 0.2) continue;
+      let ang = Math.atan2(dx, dz) - yaw;
+      ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+      if (Math.abs(ang) > halfAng) continue;
+      best = e;
+      bestD = d;
+    }
+    return best;
+  }
+
   /** 背刺入口：取距离最近且可背刺的敌人结算（game.interact 的 E 键调用） */
   tryBackstab(playerPos: THREE.Vector3, playerYaw: number): { dmg: number; died: boolean } | null {
     let best: EnemyBase | null = null;
