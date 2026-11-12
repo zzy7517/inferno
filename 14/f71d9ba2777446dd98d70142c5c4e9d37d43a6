@@ -1,0 +1,38 @@
+web/index.html
+  s_eb3e785bcb9cea::t_5050d884e6649d 142
+web/src/enemy.ts
+  s_eb3e785bcb9cea::t_b96de13838b613 791-809
+web/src/game.ts
+  s_eb3e785bcb9cea::t_5e2b0ea0999e14 21
+  s_eb3e785bcb9cea::t_95d1981030a075 247
+  s_eb3e785bcb9cea::t_8690717a041320 515,530
+  s_eb3e785bcb9cea::t_a0b5e08b47f080 82-83
+  s_eb3e785bcb9cea::t_7f86adfff877a5 159
+  s_eb3e785bcb9cea::t_377e7945698b1e 387
+  s_eb3e785bcb9cea::t_7b1e4bc40ee65e 490-492
+  s_eb3e785bcb9cea::t_2ea83aa77f1cd6 731-803,805-809,811,816-818,820,822
+  s_eb3e785bcb9cea::t_b8a516dc73eab9 804
+  s_eb3e785bcb9cea::t_77fe88aa990b39 880-883
+web/src/player.ts
+  s_eb3e785bcb9cea::t_8a535bfb755d83 119-120,522
+  s_eb3e785bcb9cea::t_327f42e9c670c2 324,336,338,384,423,440
+  s_eb3e785bcb9cea::t_e2d0fddb5c3028 23-24
+  s_eb3e785bcb9cea::t_8feb340817865a 306,308,310-311
+  s_eb3e785bcb9cea::t_e03f3f209abcf5 556-564
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "14f71d9ba2777446dd98d70142c5c4e9d37d43a6",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
