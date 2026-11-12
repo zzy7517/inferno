@@ -876,8 +876,9 @@ export class EnemyManager {
   }
 
   /** 主更新：状态机 + 与玩家推挤（敌人侧让位，minD 同 boss 模式；玩家侧由 game.clampWorld 对称处理）。
-   *  敌人间不做碰撞（省性能）。playerIframed=true 时敌人攻击不结算（翻滚无敌帧）。
-   *  room 为当前 Boss 房可走圆：本帧从圆外走进去的，沿半径推回圆外。 */
+   *  然后活着的小怪两两分开（只动 xz）。playerIframed=true 时敌人攻击不结算（翻滚无敌帧）。
+   *  room 为当前 Boss 房可走圆：本帧从圆外走进去的，沿半径推回圆外；
+   *  分开前已在圆外的，分开后再检一次，圆内的不推出。 */
   update(dt: number, playerPos: THREE.Vector3, playerIframed = false, room: BossRoomSeal | null = null): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -901,6 +902,57 @@ export class EnemyManager {
         }
       }
       if (e.gone) this.enemies.splice(i, 1);
+    }
+    this.separateAlive(room);
+  }
+
+  /** 活着的小怪两两分开，只动 xz（乌鸦仍停在飞行高度）。
+   *  最小距离 = 双方 radius 之和，过近则重叠量各退一半。dead / gone 不参与。
+   *  分开前已在封门圆外的，分开后若进圆再推回；圆内的不推。 */
+  private separateAlive(room: BossRoomSeal | null): void {
+    const live: EnemyBase[] = [];
+    const x0: number[] = [];
+    const z0: number[] = [];
+    const wasOut: boolean[] = [];
+    for (const e of this.enemies) {
+      if (e.state === "dead" || e.gone) continue;
+      live.push(e);
+      x0.push(e.root.position.x);
+      z0.push(e.root.position.z);
+      wasOut.push(!!room && bossRoomDist(e.root.position.x, e.root.position.z, room) >= room.r);
+    }
+    const n = live.length;
+    if (n < 2) return;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = live[i], b = live[j];
+        const dx = b.root.position.x - a.root.position.x;
+        const dz = b.root.position.z - a.root.position.z;
+        const minD = a.stats.radius + b.stats.radius;
+        const len = Math.hypot(dx, dz);
+        if (len >= minD) continue;
+        const half = (minD - len) * 0.5;
+        if (len > 1e-4) {
+          const k = half / len;
+          a.root.position.x -= dx * k;
+          a.root.position.z -= dz * k;
+          b.root.position.x += dx * k;
+          b.root.position.z += dz * k;
+        } else {
+          // 叠在同一点时方向无定义，沿 x 各退一半
+          a.root.position.x -= half;
+          b.root.position.x += half;
+        }
+      }
+    }
+    if (!room) return;
+    for (let i = 0; i < n; i++) {
+      if (!wasOut[i]) continue;
+      const e = live[i];
+      if (bossRoomDist(e.root.position.x, e.root.position.z, room) >= room.r) continue;
+      const p = pushXZOut(e.root.position.x, e.root.position.z, room, x0[i] - room.x, z0[i] - room.z);
+      e.root.position.x = p.x;
+      e.root.position.z = p.z;
     }
   }
 
