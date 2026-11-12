@@ -1,0 +1,19 @@
+web/src/boss-watchers.ts
+  s_e20f06526a634e::t_8bbd35eae46a78 11,18-24,26-39,98,103-104,128-129,271-277,292-294,298-313,319-320,324-329,338-340,342-358,377,393,400,418-423,427,435-437,491-492,496-497,515-516,531-539,542,544-545,548-552,554-558,560-563,565,570-576
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ea05c80cdd807708c5c519adeabddeb41e9587dc",
+  "prompts": {},
+  "sessions": {
+    "s_e20f06526a634e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "27a92d5f-3b04-4f30-b330-6bf428e1cfda",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
