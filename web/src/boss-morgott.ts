@@ -20,7 +20,7 @@ import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -45,6 +45,8 @@ const DAGGER_PROJ: ProjDef = { speed: 12.5, radius: 0.4, dmg: 14, feelKey: "moMa
 const POUNCE_REACH = 9.5;
 /** 连续同一招的权重系数。必须 > 0：冷却把其余招锁死时，这一招仍要能被选中。 */
 const REPEAT_W = 0.4;
+/** 王者之证判定帧金环外圈（proofNova）。命中圆跟这圈走；内圈血环只叠色，不再打一次。 */
+const PROOF_RING = 7.0;
 
 // ---------------- 帧数据（键名 morgott 前缀 / 手感键 mo 开头；fextralife wiki 忠实校正） ----------------
 export const MOVES_MORGOTT: Record<string, MoveDef> = {
@@ -208,6 +210,18 @@ export class Morgott extends BossBase {
   private hammerG = new THREE.Group();
   private gswordG = new THREE.Group();
   private bladeG = new THREE.Group();
+  /** 刃的两端，钉在对应武器网格的长轴上。 */
+  private staffHilt = new THREE.Object3D();
+  private staffTip = new THREE.Object3D();
+  private hammerHilt = new THREE.Object3D();
+  private hammerTip = new THREE.Object3D();
+  private gswordHilt = new THREE.Object3D();
+  private gswordTip = new THREE.Object3D();
+  private bladeHilt = new THREE.Object3D();
+  private bladeTip = new THREE.Object3D();
+  private tailHilt = new THREE.Object3D();
+  private tailTip = new THREE.Object3D();
+  private mouth = new THREE.Object3D();             // 诅咒喷吐起点（颌前）
   private eyeMat!: THREE.MeshStandardMaterial;    // 双眼（预言金光）
   private crownMat!: THREE.MeshStandardMaterial;  // 王冠残环 + 额前预言印记 + 杖身符环（金辉呼吸）
   private hammerMat!: THREE.MeshStandardMaterial; // 魅影金锤（显形时 emissive）
@@ -281,6 +295,27 @@ export class Morgott extends BossBase {
       parent.add(m);
       return m;
     };
+    // 两端钉在已有网格的长轴上，不改尺寸。近原点的一端记为护手。
+    const pinBlade = (parent: THREE.Object3D, hilt: THREE.Object3D, tip: THREE.Object3D): void => {
+      const mesh = parent.children.find(o => (o as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+      const geo = mesh?.geometry;
+      if (!geo) { parent.add(hilt, tip); return; }
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      if (!bb) { parent.add(hilt, tip); return; }
+      const size = new THREE.Vector3();
+      const mid = new THREE.Vector3();
+      bb.getSize(size);
+      bb.getCenter(mid);
+      const axis = (["x", "y", "z"] as const).reduce((a, b) => size[a] >= size[b] ? a : b);
+      const lo = mid.clone();
+      const hi = mid.clone();
+      lo[axis] = bb.min[axis];
+      hi[axis] = bb.max[axis];
+      if (lo.lengthSq() <= hi.lengthSq()) { hilt.position.copy(lo); tip.position.copy(hi); }
+      else { hilt.position.copy(hi); tip.position.copy(lo); }
+      parent.add(hilt, tip);
+    };
 
     // 枯瘦双腿（袍下若隐若现）——髋枢轴 + 膝枢轴（crouch 弯折 / legL 抬左腿）——腿根 y 1.58（挺拔高大）
     for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.17], [this.legL, this.shinL, -0.17]] as [THREE.Group, THREE.Group, number][]) {
@@ -314,6 +349,7 @@ export class Morgott extends BossBase {
       box(0.14, 0.14, 0.44, SKIN_DARK, 0, -0.08, -0.64),
       box(0.1, 0.1, 0.36, SKIN_DARK, 0, -0.2, -0.98),
     ], this.tailG);
+    pinBlade(this.tailG, this.tailHilt, this.tailTip);
     this.body.add(this.tailG);
 
     // 躯干（宽肩挺拔）——底座 y 1.72；褪色王披（披肩 + 背后长氅）
@@ -359,6 +395,8 @@ export class Morgott extends BossBase {
         Math.sin(a) * 0.165, 0.3 + (tall ? 0.03 : 0), Math.cos(a) * 0.165, 0, a, 0));
     }
     merge(crown, this.head, this.crownMat);
+    this.mouth.position.set(0, -0.14, 0.16);                                 // 颌前，喷吐从这里出来
+    this.head.add(this.mouth);
     this.torso.add(this.head);
 
     // 右臂 + 咒杖（一阶段，长 2.5，顶端分叉咒枝 + 金符环）——二阶段杖隐剑出（staffG/bladeG 切换）
@@ -379,6 +417,7 @@ export class Morgott extends BossBase {
       box(0.07, 0.03, 0.07, GOLD_DEEP, 0, 0.8, 0),
       box(0.07, 0.09, 0.07, WOOD, 0.01, 0.12, 0.02),                             // 瘤结
     ], this.staffG);
+    pinBlade(this.staffG, this.staffHilt, this.staffTip);
     this.armR.add(this.staffG);
     // 蒙格特咒剑（二阶段右手常驻）：钝钢剑身三段折弯（warped blade）+ 血焰 emissive 呼吸
     this.bladeG.position.set(0, -1.02, 0.1);
@@ -390,6 +429,7 @@ export class Morgott extends BossBase {
       box(0.075, 0.46, 0.022, 0x5a5048, 0.03, -0.82, 0, 0, 0, -0.07),
       box(0.065, 0.4, 0.02, 0x5a5048, 0.08, -1.22, 0, 0, 0, -0.14),
     ], this.bladeG, this.bladeMat);
+    pinBlade(this.bladeG, this.bladeHilt, this.bladeTip);
     this.bladeG.visible = false;
     this.armR.add(this.bladeG);
     // 魅影金锤（Giant-Crusher 风味·比玛尔基特更大）：挂右手，显形度 updateVisuals 缓动（hammerShow）
@@ -399,6 +439,7 @@ export class Morgott extends BossBase {
       box(0.52, 0.4, 0.48, 0xcbb277, 0, 0.36, 0),                                // 金锤头
       box(0.56, 0.1, 0.52, 0xcbb277, 0, 0.16, 0),                                // 锤颈箍
     ], this.hammerG, this.hammerMat);
+    pinBlade(this.hammerG, this.hammerHilt, this.hammerTip);
     this.hammerG.visible = false;
     this.armR.add(this.hammerG);
     this.torso.add(this.armR);
@@ -421,6 +462,7 @@ export class Morgott extends BossBase {
       box(0.1, 1.5, 0.03, 0xd6bd82, 0, -0.9, 0),                                 // 剑身（1.5m 王之剑）
       box(0.07, 0.26, 0.026, 0xd6bd82, 0, -1.76, 0),                             // 剑尖收锋
     ], this.gswordG, this.gswordMat);
+    pinBlade(this.gswordG, this.gswordHilt, this.gswordTip);
     this.gswordG.visible = false;
     this.armL.add(this.gswordG);
     this.torso.add(this.armL);
@@ -632,7 +674,7 @@ export class Morgott extends BossBase {
     if (this.fxStep !== 0 || t < active * 0.4) return;
     this.fxStep = 1;
     const c = this.root.position.clone();
-    this.vfx.ring(c, 7.0, GOLD);
+    this.vfx.ring(c, PROOF_RING, GOLD);
     this.vfx.ring(c.clone().setY(0.05), 5.2, BLOOD);
     this.vfx.scorch(c, 3.6, GOLD);
     this.gold.burst(c.clone().setY(1.4), 40, 6.5, 1.6, 0.8);
@@ -909,6 +951,33 @@ export class Morgott extends BossBase {
     }
   }
 
+  /** 碰到武器才算打中。喷吐只挪起点；飞刀身子不判；王者之证跟金环，锤砸不再叠一圈。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    switch (m.name) {
+      case "morgottCombo":
+        return { kind: "blade", hilt: this.staffHilt, tip: this.staffTip, pad: 0.2 };
+      case "morgottTail":
+        return { kind: "blade", hilt: this.tailHilt, tip: this.tailTip, pad: 0.085 };
+      case "morgottSlam":
+      case "morgottPounce":
+        return { kind: "blade", hilt: this.hammerHilt, tip: this.hammerTip, pad: 0.2 };
+      case "morgottGreatsword":
+        return { kind: "blade", hilt: this.gswordHilt, tip: this.gswordTip, pad: 0.08 };
+      case "morgottBloodChase":
+        return { kind: "blade", hilt: this.bladeHilt, tip: this.bladeTip, pad: 0.08 };
+      case "morgottCurseSpew": {
+        const p = this.mouth.getWorldPosition(HIT_TMP);
+        return { kind: "cone", x: p.x, z: p.z, yaw: this.yaw, range: m.range, arc: m.arc };
+      }
+      case "morgottKingsProof":
+        return { kind: "disk", x: this.root.position.x, z: this.root.position.z, r: PROOF_RING };
+      case "morgottDaggers":
+        return { kind: "none" };
+      default:
+        return null;
+    }
+  }
+
   /** 重招风声更闷 */
   protected override activeWhooshVolume(m: MoveDef): number {
     return m.name === "morgottSlam" || m.name === "morgottPounce" || m.name === "morgottKingsProof" || m.name === "morgottGreatsword" ? 0.6
@@ -1078,6 +1147,7 @@ export class Morgott extends BossBase {
 
 /** 魅影武器凝聚金尘 / 聚气金尘 / 喷扇定向流的取位临时量（避免每帧分配） */
 const SUMMON_TMP = new THREE.Vector3();
+const HIT_TMP = new THREE.Vector3();
 const WISP_TMP = new THREE.Vector3();
 const SPRAY_TMP = new THREE.Vector3();
 const TO_P = new THREE.Vector3();
