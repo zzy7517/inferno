@@ -1,0 +1,25 @@
+web/src/scene-cemetery.ts
+  s_eb3e785bcb9cea::t_399b68cb32dae1 28,52-53
+web/src/scene-geom.ts
+  s_eb3e785bcb9cea::t_d9085612a7bcb9 1-75
+web/src/scene-highwall.ts
+  s_eb3e785bcb9cea::t_24765bbecd3a9d 30,94-95
+web/src/scene-stormveil.ts
+  s_eb3e785bcb9cea::t_5dbc7ce68b1f75 30,88-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "274e4606d58a3b08e970f52bbecf8deb876a8300",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
