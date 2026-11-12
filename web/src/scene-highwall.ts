@@ -405,13 +405,13 @@ export function buildHighWall(scene: THREE.Scene): {
 
   // ---------------- 主石构共用材质 + 火盆件 ----------------
   const stoneMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
-  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffa14e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })); // 火焰材质模板（clone 出独立闪烁相位）
+  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffc56a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })); // 火焰材质模板（clone 出独立闪烁相位）
   const coalGeoms: THREE.BufferGeometry[] = [];
   const glowGeoms: THREE.BufferGeometry[] = [];          // 静态自发光批：箭缝月光/塔窗烛光/哨位火光/D 幽蓝/封印符文
   const flames: FlameRef[] = [];
 
   /** 火焰组 + 炭芯 + 火光：同组火位并入单 mesh（顶点级闪烁），每位挂一盏灯 */
-  const addFlames = (fires: [number, number, number][], scale: number, intensity: number, dist: number, ph: number): void => {
+  const addFlames = (fires: [number, number, number][], scale: number, intensity: number, dist: number, ph: number, throughFog = false): void => {
     const cones: THREE.BufferGeometry[] = [];
     const lights: THREE.PointLight[] = [];
     for (const [x, y, z] of fires) {
@@ -423,7 +423,9 @@ export function buildHighWall(scene: THREE.Scene): {
       lights.push(light);
     }
     const merged = mergeGeometries(cones, false)!;
-    const mesh = new THREE.Mesh(merged, track(flameMat0.clone()));
+    const mat = track(flameMat0.clone());
+    if (throughFog) mat.fog = false;                       // 雾门前拱火穿雾，长廊东向信标
+    const mesh = new THREE.Mesh(merged, mat);
     mesh.renderOrder = 6;
     const vpc = cones[0].attributes.position.count;       // 各锥顶点数一致（同参数生成）
     for (const c of cones) c.dispose();
@@ -521,7 +523,7 @@ export function buildHighWall(scene: THREE.Scene): {
     }
     G.push(cylG(0.24, 0.13, 0.18, 8, fx, 4.54, fz, PAL.metal));
     coalGeoms.push(dodG(0.12, fx, 4.64, fz, 0x000000));
-    glowGeoms.push(boxG(0.34, 0.36, 0.34, fx, 4.74, fz, 0xff9c4d));                     // 火光晕（静态暖橙）
+    glowGeoms.push(boxG(0.34, 0.36, 0.34, fx, 4.74, fz, 0xffc56a));                     // 火光晕（沿路暖橙，比冷月缝更亮）
     G.push(cylG(0.024, 0.032, 2.0, 5, x - 0.75, 4.76, -4.1, PAL.wood, { rz: 0.24 }));  // 靠墙长矛
     G.push(boxG(0.06, 0.38, 0.06, x - 0.52, 5.7, -3.9, COLORS.steel, { rz: 0.24 }));
     G.push(cylG(0.27, 0.27, 0.05, 10, x + 1.0, 3.98, -4.2, PAL.flagChar, { rx: Math.PI / 2, ry: 0.4 })); // 倚墙圆盾
@@ -656,8 +658,8 @@ export function buildHighWall(scene: THREE.Scene): {
         G.push(cylG(1.98, 1.98, 0.45, 14, gx, 8.7, s * 4.75, PAL.stoneMid));
         if (s < 0) {                                                                     // 北塔完好锥顶 + 塔窗残烛
           G.push(coneG(2.3, 2.8, 12, gx, 10.3, s * 4.75, PAL.stoneDeep));
-          glowGeoms.push(boxG(0.18, 0.6, 0.12, gx - 1.85, 6.0, s * 4.75, 0x5a4a33));
-          glowGeoms.push(boxG(0.14, 0.45, 0.12, gx - 1.8, 7.2, s * 4.4, 0x4a3e2e));
+          glowGeoms.push(boxG(0.18, 0.6, 0.12, gx - 1.85, 6.0, s * 4.75, 0xffb060));   // 塔窗残烛：主路上的火色地标
+          glowGeoms.push(boxG(0.14, 0.45, 0.12, gx - 1.8, 7.2, s * 4.4, 0xe09048));
         } else {                                                                         // 南塔断顶残垛
           for (let i = 0; i < 5; i++) {
             const a = (i / 5) * Math.PI * 2 + 0.4;
@@ -706,7 +708,7 @@ export function buildHighWall(scene: THREE.Scene): {
         G.push(boxG(0.09, 0.6, 0.09, ax, 3.0, s * 1.62, PAL.metal));        // 拱门火盆支架（贴拱柱内侧）
         G.push(cylG(0.26, 0.14, 0.2, 8, ax, 3.3, s * 1.5, PAL.metal));
       }
-      addFlames([[ax, 3.62, 1.5], [ax, 3.62, -1.5]], 1, 7, 9, 1);       // 拱门火盆一对（共享闪烁）
+      addFlames([[ax, 3.62, 1.5], [ax, 3.62, -1.5]], 1, 7, 9, 1, true); // 拱门火盆一对（穿雾，共享闪烁）
       for (const s of [-1, 1]) {                                            // 雾门门墩（x=-4 走廊东口）
         G.push(boxG(0.95, 4.8, 1.3, B_CORR.maxX, 2.4, s * 2.5, PAL.stoneMid, { jitter: 0.1 }));
         G.push(boxG(0.72, 0.5, 1.0, B_CORR.maxX, 5.0, s * 2.5, PAL.stone));
@@ -962,8 +964,12 @@ export function buildHighWall(scene: THREE.Scene): {
   const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92 }));
   root.add(batch(glowGeoms, glowMat, "none"));
 
+  // 步道中线余烬短杠（炭芯批，0 新灯）：东雾变浓时仍能顺着火色走到 x=-4 雾门。
+  for (let i = 0; i < 19; i++) {
+    coalGeoms.push(boxG(0.78, 0.08, 0.16, -260 + i * 14, 0.1, 0, 0x000000));
+  }
   // 炭芯合批（emissive 呼吸）
-  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.4, roughness: 1, flatShading: true }));
+  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.9, roughness: 1, flatShading: true }));
   {
     const m = batch(coalGeoms, coalMat, "none");
     m.matrixAutoUpdate = true;                           // batch 默认冻结矩阵，动态件还原
@@ -1072,11 +1078,11 @@ export function buildHighWall(scene: THREE.Scene): {
         arr[v * 3 + 2] = cz + oz * s + pit * oy * 1.2;
       }
       attr.needsUpdate = true;
-      fl.mat.opacity = 0.7 + 0.2 * Math.sin(animT * 13 + i * 1.7);
+      fl.mat.opacity = 0.9 + 0.08 * Math.sin(animT * 13 + i * 1.7);
       const li = fl.base - 0.8 + Math.sin(animT * 9.5 + i * 2.4) * 1.4 + Math.sin(animT * 23 + i) * 0.7;
       for (const l of fl.lights) l.intensity = li;
     }
-    coalMat.emissiveIntensity = 1.35 + Math.sin(animT * 7.3) * 0.3;
+    coalMat.emissiveIntensity = 1.9 + Math.sin(animT * 7.3) * 0.35;
     {                                                                   // 流云：wrap 循环漂移 + 边缘渐隐（进出不跳变）
       const span = CLOUD_SPAN.max - CLOUD_SPAN.min;
       for (const c of clouds) {

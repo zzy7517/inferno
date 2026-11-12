@@ -1191,7 +1191,7 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
   }
 
   // ---------------- 火光件：壁炬×2（雾门墩）+ 火盆×2（玛尔基特房/残柱厅）+ 圣坛恩泽 ----------------
-  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffa14e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffc56a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
   const coalGeoms: THREE.BufferGeometry[] = [];
   const flames: FlameRef[] = [];
   /** 挂墙壁炬（雾门门墩内侧，风中的两点暖） */
@@ -1200,6 +1200,7 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     sE2.push(cylG(0.24, 0.13, 0.2, 8, -5.15, 3.3, z * 1.55, PAL.metal));
     coalGeoms.push(dodG(0.14, -5.15, 3.38, z * 1.55, 0x000000));
     const mesh = new THREE.Mesh(coneG(0.16, 0.52, 7, -5.15, 3.6, z * 1.55, 0xffffff), track(flameMat0.clone()));
+    (mesh.material as THREE.MeshBasicMaterial).fog = false;             // 雾门壁炬穿雾，之字坡上看得见门
     mesh.renderOrder = 6;
     root.add(mesh);
     const light = new THREE.PointLight(COLORS.ember, 6, 9, 2);
@@ -1255,7 +1256,21 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     root.add(light);
     flames.push({ mesh, mat: mesh.material as THREE.MeshBasicMaterial, light, ph: 7.3 + s });
   }
-  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.4, roughness: 1, flatShading: true }));
+  // 主线折点余烬短杠（炭芯批，0 新灯）：沿 STORMVEIL_WALK 指向下一折，西侧未燃火把保持微光以免把人引回封门。
+  for (let i = 0; i < STORMVEIL_WALK.length - 1; i++) {
+    const [x, z] = STORMVEIL_WALK[i];
+    const [nx, nz] = STORMVEIL_WALK[i + 1];
+    const dx = nx - x, dz = nz - z;
+    const len = Math.hypot(dx, dz);
+    const ry = Math.atan2(-dz, dx);
+    const ts = len > 12 ? [0.34, 0.72] : [0.62];
+    for (const t of ts) {
+      const px = x + dx * t;
+      if (px > -5.8) continue;                                         // 让开雾门门墩与壁炬
+      coalGeoms.push(boxG(0.78, 0.08, 0.16, px, 0.1, z + dz * t, 0x000000, { ry }));
+    }
+  }
+  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.9, roughness: 1, flatShading: true }));
   {
     const m = batch(coalGeoms, coalMat, "none");
     m.matrixAutoUpdate = true;
@@ -1391,10 +1406,10 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
       fl.mesh.scale.set(1 + (s - 1) * 0.4, s, 1 + (s - 1) * 0.4);
       fl.mesh.rotation.z = Math.sin(animT * 2.1 + fl.ph) * 0.12;                          // 风吹火苗侧摆
       fl.mesh.rotation.x = Math.cos(animT * 1.7 + fl.ph * 0.8) * 0.09;
-      fl.mat.opacity = 0.7 + 0.2 * Math.sin(animT * 13 + i * 1.7);
+      fl.mat.opacity = 0.9 + 0.08 * Math.sin(animT * 13 + i * 1.7);
       fl.light.intensity = 5.6 + Math.sin(animT * 9.5 + i * 2.4) * 1.3 + Math.sin(animT * 23 + i) * 0.7;
     }
-    coalMat.emissiveIntensity = 1.35 + Math.sin(animT * 7.3) * 0.3;
+    coalMat.emissiveIntensity = 1.9 + Math.sin(animT * 7.3) * 0.35;
     graceLight.intensity = 6.2 + Math.sin(animT * 1.6) * 0.7 + Math.sin(animT * 4.1) * 0.3;
     {                                                                                      // 风絮/枯叶：横飘 + 打旋 + wrap
       for (const w of windSys) {

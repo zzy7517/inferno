@@ -311,7 +311,8 @@ export function buildCemetery(scene: THREE.Scene): {
   const floorE: THREE.BufferGeometry[] = [];
 
   // —— 火光件（先声明供各区使用）：余烬炭芯批 / 法兰冷蓝批 / 火盆 / 壁烛 ——
-  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffa14e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+  // 雾门双火盆专用：穿雾仍是东向信标（本场景没有别的火苗 mesh）
+  const flameMat0 = track(new THREE.MeshBasicMaterial({ color: 0xffc56a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   const coalGeoms: THREE.BufferGeometry[] = [];         // 余烬炭芯（emissive 呼吸，A 区火盆/烛芯）
   const blueGeoms: THREE.BufferGeometry[] = [];         // 法兰冷蓝光芯（C 区灯笼/烛台/门 B 幽光，emissive 呼吸代灯）
   const purpleGeoms: THREE.BufferGeometry[] = [];       // 重力紫光裂（D 区陨石裂纹/紫徽，emissive 呼吸代灯）
@@ -845,7 +846,11 @@ export function buildCemetery(scene: THREE.Scene): {
   root.add(batch(structD, stoneMat, "both"));
   root.add(batch(floorW, stoneMat, "receive"));
   root.add(batch(floorE, stoneMat, "receive"));
-  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.4, roughness: 1, flatShading: true }));
+  // 主路余烬短杠（并入炭芯批，0 新灯）：只铺走廊中线与墓苑东西穿行，侧龛死路不加。东向 +X = 古达雾门。
+  for (const x of [-122, -112, -98, -92, -82, -72, -62, -54, -48, -42, -34, -24, -16, -12]) {
+    coalGeoms.push(boxG(0.78, 0.08, 0.16, x, 0.1, 0, 0x000000));
+  }
+  const coalMat = track(new THREE.MeshStandardMaterial({ color: 0x2a1207, emissive: COLORS.ember, emissiveIntensity: 1.9, roughness: 1, flatShading: true }));
   root.add(batch(coalGeoms, coalMat, "none"));
   const blueMat = track(new THREE.MeshStandardMaterial({ color: 0x0d1420, emissive: 0x4a6f94, emissiveIntensity: 1.5, roughness: 1, flatShading: true }));
   root.add(batch(blueGeoms, blueMat, "none"));
@@ -934,10 +939,10 @@ export function buildCemetery(scene: THREE.Scene): {
       const s = 1 + Math.sin(animT * 11 + i * 2.1) * 0.18 + Math.sin(animT * 27 + i) * 0.08;
       fl.mesh.scale.set(1 + (s - 1) * 0.4, s, 1 + (s - 1) * 0.4);
       fl.mesh.rotation.z = Math.sin(animT * 2.1 + fl.ph) * 0.09;
-      fl.mat.opacity = 0.7 + 0.2 * Math.sin(animT * 13 + i * 1.7);
+      fl.mat.opacity = 0.9 + 0.08 * Math.sin(animT * 13 + i * 1.7);
       fl.light.intensity = 5.2 + Math.sin(animT * 9.5 + i * 2.4) * 1.2 + Math.sin(animT * 23 + i) * 0.6;
     }
-    coalMat.emissiveIntensity = 1.3 + Math.sin(animT * 7.3) * 0.3;          // 炭芯呼吸（A 区余烬）
+    coalMat.emissiveIntensity = 1.9 + Math.sin(animT * 7.3) * 0.35;         // 炭芯呼吸（火盆/拱门烛/路心短杠）
     blueMat.emissiveIntensity = 1.35 + Math.sin(animT * 4.1 + 1.7) * 0.35;  // 幽蓝呼吸（C 区冷灯，异相位）
     purpleMat.emissiveIntensity = 0.95 + Math.sin(animT * 2.6 + 0.9) * 0.3; // 重力紫呼吸（D 区陨裂，缓相位）
     for (const gl of glowLights)                                            // 烛龛/幽蓝点光：按基准强度呼吸（无火苗件）
