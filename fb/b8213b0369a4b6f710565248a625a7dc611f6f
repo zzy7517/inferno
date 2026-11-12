@@ -1,0 +1,31 @@
+web/src/boss-margit.ts
+  s_aec76381fcd5e0::t_2274397f462b83 244
+  s_aec76381fcd5e0::t_8dad0bd964da2b 386
+  s_aec76381fcd5e0::t_4f272f10741e99 357
+  s_aec76381fcd5e0::t_30642e2c6e3061 385,387
+  s_aec76381fcd5e0::t_3962b1ad479c56 300-303
+  s_aec76381fcd5e0::t_f1ac588b46deca 397,399-401
+  s_aec76381fcd5e0::t_d98579123f0ec5 398
+  s_aec76381fcd5e0::t_4aae63e079dadd 262-278,280-288,292-299,304-309,312,317,319-321,323-330,332,335,337,340,342-351,353-355,358-359,362-363,367-369,371-379,382-384,388-389,393
+  s_aec76381fcd5e0::t_82cd6461f60f5a 253
+  s_aec76381fcd5e0::t_aa7ab8bef76d4d 352
+  s_aec76381fcd5e0::t_5e9447250fe68b 446,448-455
+  s_aec76381fcd5e0::t_8a4bf17a139d65 447
+  s_aec76381fcd5e0::t_57ea6e44744691 360-361,365-366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "fbb8213b0369a4b6f710565248a625a7dc611f6f",
+  "prompts": {},
+  "sessions": {
+    "s_aec76381fcd5e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c2be53fa-11d8-463d-8e3c-28f6a68e9b61",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
