@@ -41,6 +41,11 @@ const STEEL = 0x565c66;       // 咒剑钝钢
 /** 魅影匕首投射物：速度 12.5，drop 每秒下坠 0.9 制造抛物线弹道，life 1.7s ≈ 21m 射程后自散 */
 const DAGGER_PROJ: ProjDef = { speed: 12.5, radius: 0.4, dmg: 14, feelKey: "moMagic", life: 1.7, color: GOLD, drop: 0.9 };
 
+/** 跃扑选招上限：冲程 7.5m + 接触余量 2m。再远落点够不着，改为踱步（8.5m 仍在圈内，探针能强制选出）。 */
+const POUNCE_REACH = 9.5;
+/** 连续同一招的权重系数。必须 > 0：冷却把其余招锁死时，这一招仍要能被选中。 */
+const REPEAT_W = 0.4;
+
 // ---------------- 帧数据（键名 morgott 前缀 / 手感键 mo 开头；fextralife wiki 忠实校正） ----------------
 export const MOVES_MORGOTT: Record<string, MoveDef> = {
   // 王杖三连（Staff Combo·2-4 段变奏）：3 段判定节奏 0.5s；多段时间轴第 k 段在
@@ -56,22 +61,22 @@ export const MOVES_MORGOTT: Record<string, MoveDef> = {
     name: "morgottTail", label: "横扫尾刀", startup: 0.42, active: 0.22, recovery: 0.95,
     dmg: 21, range: 3.2, arc: 6.28, knockUp: 3.2, parryable: false, cd: 6.0, feel: "moHeavy",
   },
-  // 延迟下砸地板波（Overhead Slam·读招考试招牌）：金锤前摇后半段显形，蓄势到极限后静止骗提前翻滚
-  // （前 45% 蓄型 → 静止 → 爆发下劈）；砸地金色冲击环走 hammerImpact 自放（保证金光主题，不走基类暖色 shock）
+  // 延迟下砸（读招考试招牌）：前段举锤，中段停住骗提前翻滚，末段才加力砸下。
+  // 冲击环与判定帧对齐；后摇 1.5s，收势先钉 0.7s。startup 不缩短。
   morgottSlam: {
     name: "morgottSlam", label: "下砸地板波", startup: 1.15, active: 0.16, recovery: 1.5,
     dmg: 32, range: 3.7, arc: 1.3, parryable: true, cd: 6.5, feel: "moHeavy",
   },
   // 投掷魅影匕首（Holy Daggers·扇形）：中远距；近战判定禁用（range 0.2 同玛尔基特咒刃），
-  // 伤害由 DAGGER_PROJ 承载；一次性扇形撒布（一阶段 3 连 / 二阶段血焰附魔 5 连，扇面 ±0.32）；
+  // 伤害由 DAGGER_PROJ 承载；一次性扇形撒布（一阶段 3 连扇面 ±0.16 / 二阶段 5 连 ±0.32）；
   // 玩家趁机逼近则 40% 接跳跃扑杀（chain）＝wiki「投掷后接跃空突进」的突然变奏
   morgottDaggers: {
     name: "morgottDaggers", label: "投掷魅影匕首", startup: 0.55, active: 0.20, recovery: 0.95,
     dmg: 14, range: 0.2, arc: 0.9, parryable: false, cd: 5.2, chain: "morgottPounce",
     proj: { speed: 12.5, radius: 0.4, life: 1.7 }, feel: "moMagic",
   },
-  // 跳跃扑杀（Flying Hammer Slam）：远距起跳，空中悬停一瞬（欺诈延迟）→ 召锤砸地金色冲击波；
-  // 落地硬直 1.55s 是最大惩罚窗口（wiki Flying Hammer Slam）
+  // 跳跃扑杀：深蹲 → 前扑升空 → 顶点悬停（金尘聚锤）→ 砸地。够得着约 9.5m，更远不空扑。
+  // 落地后摇 1.55s，收势先钉 0.7s，是打空后的惩罚窗口。
   morgottPounce: {
     name: "morgottPounce", label: "跳跃扑杀", startup: 0.65, active: 0.16, recovery: 1.55,
     dmg: 34, range: 3.7, arc: 1.4, lunge: 7.5, parryable: true, cd: 7.5, feel: "moHeavy",
@@ -97,8 +102,8 @@ export const MOVES_MORGOTT: Record<string, MoveDef> = {
     dmg: 22, range: 4.1, arc: 2.5, hits: 2, hitInterval: 0.34, lunge: 4.5, parryable: false,
     phase2Only: true, cd: 8.0, feel: "moBlood",
   },
-  // 王者之证（King's Proof·读招大题）：拄剑垂首长前摇 1.6s（聚金尘.telegraph）→ 拔剑横斩
-  // 大范围黄金冲击波（全周 6.5m·高伤害 42）——全额跑出 7m 才躲得开；cd 15s 全场每阶段仅数见
+  // 王者之证（读招大题）：startup 保持 1.6s，不要收成反应测试。拄剑聚气（金尘旋进 + 地面威胁环）
+  // → 判定帧金爆（全周 6.5m·伤害 42）。后摇 1.7s。cd 15s，全场少见。
   morgottKingsProof: {
     name: "morgottKingsProof", label: "王者之证", startup: 1.6, active: 0.3, recovery: 1.7,
     dmg: 42, range: 6.5, arc: 6.28, parryable: false, phase2Only: true, cd: 15.0, feel: "moProof",
@@ -153,8 +158,9 @@ const C3K: Pose = { ...STANCE, twist: -0.75, rLift: 0.35, rSwing: 1.25, lean: 0.
 // 横扫尾刀：缩身蓄势（尾后卷）→ 全周甩尾
 const TW: Pose = { ...STANCE, crouch: 0.28, lean: 0.32, tail: -1.9, twist: 0.38 };
 const TK: Pose = { ...STANCE, crouch: 0.16, lean: 0.18, tail: 1.9, twist: -0.48 };
-// 延迟下砸：抬左腿高举金锤过顶（前 45% 蓄型后静止骗翻滚）→ 爆发劈落砸地
+// 延迟下砸：举锤（SW）→ 停住 → 末段加到极限（SW_TOP）→ 判定帧砸到地（SK）
 const SW: Pose = { ...STANCE, crouch: 0.2, lean: -0.1, rLift: -2.4, rSwing: 0.5, lLift: -1.15, lSwing: -0.35, nod: -0.16, legL: 0.9 };
+const SW_TOP: Pose = { ...SW, crouch: 0.28, lean: -0.2, rLift: -2.72, nod: -0.32, legL: 1.1 };
 const SK: Pose = { ...STANCE, crouch: 0.38, lean: 0.5, rLift: 1.1, rSwing: 0.05, nod: 0.3, reach: 0.4, y: -0.18 };
 // 投掷魅影匕首：左臂高举聚刃 → 甩发扇形
 const DW: Pose = { ...STANCE, twist: -0.42, lLift: -1.65, lSwing: 0.55, lean: -0.06, nod: 0.1, rLift: 0.2, rSwing: 0.3 };
@@ -177,8 +183,9 @@ const SPK: Pose = { ...STANCE, crouch: 0.26, lean: 0.4, nod: 0.38, reach: 0.35, 
 const BCW: Pose = { ...STANCE, twist: 0.6, lean: -0.14, crouch: 0.18, rLift: -1.3, rSwing: -0.8, nod: -0.06 };
 const BC1K: Pose = { ...STANCE, twist: -0.5, lean: 0.42, crouch: 0.2, rLift: 0.7, rSwing: 1.2, reach: 0.5, nod: 0.2 };
 const BC2K: Pose = { ...STANCE, twist: 0.7, lean: 0.3, crouch: 0.14, rLift: 0.5, rSwing: -1.25, lLift: 0.4, lSwing: 0.5, nod: 0.14 };
-// 王者之证：拄剑垂首长前摇（前 30% 落型后完全静止——读招大题）→ 拔剑上挑横斩金爆 → 收势立王姿
+// 王者之证：快速落成拄剑，再把整段 1.6s 用来加深跪姿聚气（KP_CHARGE）→ 判定帧拔剑（KPK）
 const KPW: Pose = { ...STANCE, y: -0.2, lean: 0.24, crouch: 0.28, nod: 0.5, rLift: 0.15, rSwing: 0.1, lLift: -0.25, lSwing: -0.15 };
+const KP_CHARGE: Pose = { ...KPW, y: -0.36, lean: 0.42, crouch: 0.54, nod: 0.84, rLift: 0.5, lLift: -0.58, reach: 0.1 };
 const KPK: Pose = { ...STANCE, y: 0.12, lean: -0.2, crouch: 0.08, nod: -0.3, rLift: -1.9, rSwing: 0.9, lLift: -1.7, lSwing: -0.85 };
 // 变身演出四段：拄杖伏身咳喘（诅咒上涌）→ 起身拔咒剑 → 横斩金爆（震波时刻＝transformHitAt）→ 收剑立王姿
 const TF_GATHER: Pose = { ...STANCE, y: -0.34, crouch: 0.4, lean: 0.44, nod: 0.5, rLift: 0.1, rSwing: 0.3, lLift: 0.05, lSwing: -0.2 };
@@ -221,13 +228,14 @@ export class Morgott extends BossBase {
   private bladeShow = 0;                          // 咒剑显形度 0..1（二阶段常驻）
   private p2Applied = false;                      // 二阶段附魔是否已写入共享表
   private prevTfT = 0;                            // 变身演出上一帧 t（金爆帧跨帧判定）
-  private lastVisT = 0;                           // 粒子池推进用真实 dt
+  private frameDt = 0;                            // 本帧游戏 dt（顿帧/暂停/慢放为 0 或被缩放；粒子跟它，不跟墙钟）
+  private lastMove = "";                          // 上一招：连续同招降权，系数恒 > 0
+  private telU = 0;                               // 前摇进度，聚气节拍跨帧用
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost, facing = -Math.PI / 2) {
     super(scene, vfx, pos, host, MORGOTT_STATS, facing);
     this.gold = new Particles(scene, 140, { size: 0.05, color: GOLD, additive: true, gravity: -0.2 });
     this.blood = new Particles(scene, 120, { size: 0.06, color: BLOOD, additive: true, gravity: -0.15 });
-    this.lastVisT = performance.now();
     this.transformHitAt = 1.9;    // 变身演出：伏身咳喘(0.8 拔咒剑) → 起身举剑 → 1.9s 横斩金爆震波
     this.transformDur = 3.0;
     this.assemble();
@@ -451,6 +459,12 @@ export class Morgott extends BossBase {
     p.tail = a.tail + (b.tail - a.tail) * k; p.legL = a.legL + (b.legL - a.legL) * k;
   }
 
+  /** 重招后摇：受击姿态先钉住 0.7s（打得进去），再缓回站姿。不缩短 recovery 本身。 */
+  private holdHeavy(from: Pose, m: MoveDef, t: number): void {
+    const pinned = Math.min(0.7, Math.max(0, m.recovery - 0.22));
+    this.lerpPose(from, STANCE, smooth(seg(t, pinned, m.recovery)));
+  }
+
   /** 三拍连段姿态：拍与引擎判定时刻对齐（首段 active*0.4，其后每 hitInterval）；
    *  ws/ks 为各拍 wind→strike 位型（王杖三连 / 咒剑大剑三连共用） */
   private trioPose(t: number, m: MoveDef, ws: Pose[], ks: Pose[]): void {
@@ -462,39 +476,63 @@ export class Morgott extends BossBase {
 
   protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
     if (m.name === "morgottPounce") {
-      // 跳跃扑杀专属：深蹲 → 前扑升空 → 空中悬停（欺诈延迟：最高点停一瞬）→ act 段召锤砸地钉落
+      // 深蹲 → 前扑升到顶点 → 悬停（高度锁死；旧式 sin 只在前摇最后一帧到顶，悬停不存在）→ 判定帧砸地
+      const crouchEnd = m.startup * 0.34;
+      const riseEnd = m.startup * 0.68;
       if (sub === "tel") {
-        this.lerpPose(STANCE, PW, smooth(Math.min(1, t / (m.startup * 0.4))));
-        const k = smooth(seg(t, m.startup * 0.4, m.startup));
-        if (k > 0) {
+        if (t <= crouchEnd) {
+          this.root.position.copy(this.moveFrom);
+          this.lerpPose(STANCE, PW, smooth(clamp01(t / Math.max(0.01, crouchEnd))));
+        } else if (t <= riseEnd) {
+          const k = smooth(seg(t, crouchEnd, riseEnd));
           this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
           this.lerpPose(PW, PH, k);
-          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * 1.7;         // 升到顶点后悬停不落（须在 lerp 之后）
-          if (Math.random() < 0.4) this.vfx.dust.burst(this.root.position.clone().setY(0.2), 2, 2, 0.6);
+          this.pose.y = Math.sin(k * Math.PI / 2) * 1.75;
+          if (this.frameDt > 0 && Math.random() < this.frameDt * 24) {
+            this.vfx.dust.burst(this.root.position.clone().setY(0.2), 2, 2, 0.6);
+          }
+        } else {
+          this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen);
+          this.lerpPose(PH, PH, 1);
+          const h = seg(t, riseEnd, m.startup);
+          this.pose.y = 1.75 + Math.sin(h * Math.PI) * 0.05;                   // 顶点轻浮，收在 1.75 与下砸衔接
         }
         return;
       }
       if (sub === "act") {
-        this.lerpPose(PH, PK, seg(t, 0, m.active));
-        this.pose.y = 1.7 * Math.max(0, 1 - t / m.active);                      // 下砸：整段钉到地（须在 lerp 之后）
+        const hitAt = Math.max(0.01, m.active * 0.4);                          // 与基类首段判定同一时刻落地
+        const k = t <= hitAt ? smooth(clamp01(t / hitAt)) : 1;
+        this.lerpPose(PH, PK, k);
+        this.pose.y = 1.75 + (PK.y - 1.75) * k;
         this.hammerImpact(t, m, 5.5);
         return;
       }
-      this.lerpPose(PK, STANCE, smooth(seg(t, m.recovery * 0.25, m.recovery))); // 落地大硬直（惩罚窗口）
+      this.holdHeavy(PK, m, t);
       return;
     }
     if (m.name === "morgottSlam") {
-      // 延迟下砸专属（读招考试招牌）：前 45% 蓄型（金锤显形）→ 静止骗提前翻滚 → act 爆发下劈
+      // 前 40% 举锤，中段停住骗滚，末 18% 才加到极限；判定帧锤已落地
       if (sub === "tel") {
-        this.lerpPose(STANCE, SW, smooth(Math.min(1, t / (m.startup * 0.45))));
+        const raiseEnd = m.startup * 0.4;
+        const release = m.startup * 0.82;
+        if (t <= raiseEnd) {
+          this.lerpPose(STANCE, SW, smooth(clamp01(t / Math.max(0.01, raiseEnd))));
+        } else if (t <= release) {
+          const hold = clamp01((t - raiseEnd) / Math.max(0.01, release - raiseEnd));
+          this.lerpPose(SW, SW_TOP, hold * 0.12);
+        } else {
+          const k = smooth(seg(t, release, m.startup));
+          this.lerpPose(SW, SW_TOP, 0.12 + 0.88 * k);
+        }
         return;
       }
       if (sub === "act") {
-        this.lerpPose(SW, SK, seg(t, 0, m.active));
+        const hitAt = Math.max(0.01, m.active * 0.4);
+        this.lerpPose(SW_TOP, SK, t <= hitAt ? smooth(clamp01(t / hitAt)) : 1);
         this.hammerImpact(t, m, 3.7);
         return;
       }
-      this.lerpPose(SK, STANCE, smooth(seg(t, m.recovery * 0.3, m.recovery)));
+      this.holdHeavy(SK, m, t);
       return;
     }
     if (m.name === "morgottCurseSpew") {
@@ -509,7 +547,7 @@ export class Morgott extends BossBase {
         this.pose.twist = -0.55 + k * 1.1;
         return;
       }
-      this.lerpPose(SPK, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+      this.holdHeavy(SPK, m, t);
       return;
     }
     if (m.name === "morgottBloodChase") {
@@ -527,22 +565,27 @@ export class Morgott extends BossBase {
         this.lerpPose(idx === 0 ? BCW : BC1K, idx === 0 ? BC1K : BC2K, smooth(clamp01(ph - idx)));
         return;
       }
-      this.lerpPose(BC2K, STANCE, smooth(seg(t, m.recovery * 0.3, m.recovery)));
+      this.holdHeavy(BC2K, m, t);
       return;
     }
     if (m.name === "morgottKingsProof") {
-      // 王者之证专属：拄剑垂首长前摇 1.6s——前 30% 落型后完全静止（聚金尘在 updateVisuals）；
-      // act 拔剑上挑横斩 → 金爆（proofNova）；rec 收势立王姿
+      // 1.6s 不缩短：快速落成拄剑，其余时间加深跪姿（聚气在 telegraph）。判定帧才拔剑金爆。
       if (sub === "tel") {
-        this.lerpPose(STANCE, KPW, smooth(Math.min(1, t / (m.startup * 0.3))));
+        const plantEnd = m.startup * 0.22;
+        if (t <= plantEnd) this.lerpPose(STANCE, KPW, smooth(clamp01(t / Math.max(0.01, plantEnd))));
+        else {
+          const g = clamp01((t - plantEnd) / Math.max(0.01, m.startup - plantEnd));
+          this.lerpPose(KPW, KP_CHARGE, g * g);
+        }
         return;
       }
       if (sub === "act") {
-        this.proofNova(t);
-        this.lerpPose(KPW, KPK, seg(t, 0, m.active));
+        const hitAt = Math.max(0.01, m.active * 0.4);
+        this.lerpPose(KP_CHARGE, KPK, t <= hitAt ? smooth(clamp01(t / hitAt)) : 1);
+        this.proofNova(t, m.active);
         return;
       }
-      this.lerpPose(KPK, STANCE, smooth(seg(t, m.recovery * 0.45, m.recovery)));
+      this.holdHeavy(KPK, m, t);
       return;
     }
     // 通用 wind→strike（尾刀/匕首）+ 三拍连段（王杖/咒剑大剑）
@@ -564,14 +607,15 @@ export class Morgott extends BossBase {
       else this.lerpPose(wind, strike, seg(t, 0, m.active));
     } else {
       const end: Pose = m.name === "morgottCombo" ? C3K : m.name === "morgottGreatsword" ? G3K : strike;
-      this.lerpPose(end, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+      if (m.name === "morgottTail" || m.name === "morgottGreatsword") this.holdHeavy(end, m, t);
+      else this.lerpPose(end, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
     }
     void total;
   }
 
-  /** 金色落点表现：冲击环 + 金斑 + 震屏（延迟下砸/跳跃扑杀共用；与命中判定解耦——打中/躲开都应砸出坑） */
+  /** 金色落点表现：冲击环与基类首段判定（active*0.4）同帧。打中/躲开都砸出坑。 */
   private hammerImpact(t: number, m: MoveDef, radius: number): void {
-    if (this.fxStep !== 0 || t < m.active * 0.5) return;
+    if (this.fxStep !== 0 || t < m.active * 0.4) return;
     this.fxStep = 1;
     const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const at = this.root.position.clone().addScaledVector(fwd, 2.0).setY(0.1);
@@ -583,9 +627,9 @@ export class Morgott extends BossBase {
     this.host.shake(0.65);
   }
 
-  /** 王者之证金爆：双冲击环（金 + 血焰暗环）+ 大金斑 + 金尘血焰喷涌（与命中判定解耦） */
-  private proofNova(t: number): void {
-    if (this.fxStep !== 0 || t < 0.02) return;
+  /** 王者之证金爆：与首段判定同帧。前摇里的聚气才是可读时钟，爆炸不抢在挥砍之前。 */
+  private proofNova(t: number, active: number): void {
+    if (this.fxStep !== 0 || t < active * 0.4) return;
     this.fxStep = 1;
     const c = this.root.position.clone();
     this.vfx.ring(c, 7.0, GOLD);
@@ -602,6 +646,7 @@ export class Morgott extends BossBase {
   /** 缓存玩家位置（pickMove 的绕背检测拿不到 playerPos，只在 update 入口有）；
    *  帧末按帧 dt 驱动魅影武器显形缓动（墙钟会在快速步进/暂停时失真，帧 dt 恒稳） */
   override update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
+    this.frameDt = dt;                                                     // 必须在 super 之前：updateVisuals 要用本帧 dt
     this.playerPos.copy(playerPos);
     super.update(dt, playerPos, playerIframed);
     this.updateSummons(dt);
@@ -619,27 +664,32 @@ export class Morgott extends BossBase {
       const n = this.move.name;
       const telA = this.sub === "tel", actA = this.sub === "act";
       if (n === "morgottSlam") {
-        hammerTarget = telA && this.t >= this.move.startup * 0.45 ? 1 : actA ? 1 : 0;
+        hammerTarget = telA && this.t >= this.move.startup * 0.16 ? 1 : actA ? 1 : 0;
       } else if (n === "morgottPounce") {
         hammerTarget = telA || actA ? 1 : 0;
       } else if (n === "morgottGreatsword") {
         gswordTarget = telA || actA ? 1 : 0;
       }
     }
-    this.hammerShow += (hammerTarget - this.hammerShow) * Math.min(1, dt * 9);
+    const slamTel = this.state === "combat" && this.sub === "tel" && this.move?.name === "morgottSlam";
+    this.hammerShow += (hammerTarget - this.hammerShow) * Math.min(1, dt * (slamTel ? 16 : 9));
     this.gswordShow += (gswordTarget - this.gswordShow) * Math.min(1, dt * 12);
     this.bladeShow += (bladeTarget - this.bladeShow) * Math.min(1, dt * 6);     // 拔剑较缓（仪式感）
+    const mv = this.state === "combat" ? this.move : null;
+    const windU = mv && this.sub === "tel" ? clamp01(this.t / Math.max(0.01, mv.startup)) : 0;
+    const hammerHot = !!mv && (mv.name === "morgottSlam" || mv.name === "morgottPounce") && this.sub === "tel";
+    const proofHot = !!mv && mv.name === "morgottKingsProof" && this.sub === "tel";
     const show = this.hammerShow;
     this.hammerG.visible = show > 0.04;
-    this.hammerMat.emissiveIntensity = show * (1.3 + Math.sin(now * 0.02) * 0.25);
+    this.hammerMat.emissiveIntensity = show * (1.3 + (hammerHot ? windU * 1.7 : 0) + Math.sin(now * 0.02) * 0.25);
     this.hammerMat.opacity = 0.55 + show * 0.37;
     const gshow = this.gswordShow;
     this.gswordG.visible = gshow > 0.04;
     this.gswordMat.emissiveIntensity = gshow * (1.35 + Math.sin(now * 0.022) * 0.3);
     this.gswordMat.opacity = 0.5 + gshow * 0.4;
     this.bladeG.visible = this.bladeShow > 0.04;
-    this.staffG.visible = this.phase === 1;                                      // 二阶段杖隐剑出
-    this.bladeMat.emissiveIntensity = this.bladeShow * (1.1 + Math.sin(now * 0.016) * 0.3);
+    this.staffG.visible = this.phase === 1 && this.hammerShow < 0.2;            // 二阶段杖隐剑出；金锤显形时杖让位
+    this.bladeMat.emissiveIntensity = this.bladeShow * (1.1 + (proofHot ? windU * 2.4 : 0) + Math.sin(now * 0.016) * 0.3);
     if (show > 0.05 && show < 0.96 && Math.random() < dt * 22) {
       this.hammerG.getWorldPosition(SUMMON_TMP);
       this.gold.burst(SUMMON_TMP, 2, 1.1, 0.9, 0.4);                            // 凝聚金尘
@@ -659,11 +709,86 @@ export class Morgott extends BossBase {
     if (this.t >= 2.2) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
   }
 
+  /** 重前摇视觉钟：金尘旋进已有粒子池，不新建网格。frameDt 为 0 时停住（顿帧/暂停）。 */
+  private telegraph(): void {
+    if (this.state !== "combat" || this.sub !== "tel" || !this.move) {
+      this.telU = 0;
+      return;
+    }
+    const m = this.move;
+    const u = clamp01(this.t / Math.max(0.01, m.startup));
+    const prev = this.telU;
+    // 顿帧时不推进节拍、不喷粒子，但辉光留在当前刻度，避免充能被打闪一下
+    if (this.frameDt > 0) this.telU = u;
+    if (m.name === "morgottKingsProof") {
+      this.eyeMat.emissiveIntensity += u * 2.4;
+      this.crownMat.emissiveIntensity += u * 1.8;
+      if (this.frameDt <= 0) return;
+      const px = this.root.position.x, pz = this.root.position.z;
+      this.emitGather(px, 1.2, pz, 28 + u * 90, 1.15 + (1 - u) * 2.6);
+      this.emitRing(12 + u * 26, 1.6 + u * 4.2);
+      this.pulseAt(prev, u, [0.3, 0.55, 0.8], px, 1.05, pz);
+    } else if (m.name === "morgottSlam") {
+      this.crownMat.emissiveIntensity += u * 0.45;
+      if (this.frameDt <= 0) return;
+      this.hammerG.getWorldPosition(SUMMON_TMP);
+      const x = SUMMON_TMP.x, y = SUMMON_TMP.y, z = SUMMON_TMP.z;
+      this.emitGather(x, y, z, 14 + u * 40, 1.3);
+      this.pulseAt(prev, u, [0.42], x, y, z);
+    } else if (m.name === "morgottPounce") {
+      this.crownMat.emissiveIntensity += u * 0.4;
+      if (this.frameDt <= 0 || u <= 0.5) return;
+      this.hammerG.getWorldPosition(SUMMON_TMP);
+      const x = SUMMON_TMP.x, y = SUMMON_TMP.y, z = SUMMON_TMP.z;
+      this.emitGather(x, y, z, 16 + u * 34, 1.05);
+      this.pulseAt(prev, u, [0.68], x, y, z);
+    }
+  }
+
+  private emitGather(tx: number, ty: number, tz: number, rate: number, radius: number): void {
+    const dt = Math.min(this.frameDt, 0.05);
+    if (dt <= 0) return;
+    const expect = dt * rate;
+    let n = Math.floor(expect);
+    if (Math.random() < expect - n) n++;
+    if (n > 4) n = 4;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const rad = radius * (0.35 + Math.random() * 0.65);
+      const y = Math.max(0.05, ty - 1.1 + Math.random() * 1.8);
+      const x = tx + Math.sin(a) * rad;
+      const z = tz + Math.cos(a) * rad;
+      const dx = tx - x, dy = ty - y, dz = tz - z;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const sp = 1.7 + Math.random() * 1.8;
+      this.gold.spawn(x, y, z, (dx / len) * sp, (dy / len) * sp + 0.25, (dz / len) * sp, 0.42 + Math.random() * 0.32);
+    }
+  }
+
+  private emitRing(rate: number, radius: number): void {
+    const dt = Math.min(this.frameDt, 0.05);
+    if (dt <= 0 || Math.random() > dt * rate) return;
+    const a = Math.random() * Math.PI * 2;
+    this.gold.spawn(
+      this.root.position.x + Math.sin(a) * radius, 0.1, this.root.position.z + Math.cos(a) * radius,
+      0, 0.55 + Math.random() * 0.7, 0, 0.5,
+    );
+  }
+
+  private pulseAt(prev: number, u: number, marks: number[], x: number, y: number, z: number): void {
+    for (const mark of marks) {
+      if (prev < mark && u >= mark) {
+        WISP_TMP.set(x, y, z);
+        this.gold.burst(WISP_TMP, 9, 1.5, 0.48, 1.25);
+      }
+    }
+  }
+
   /** 金瞳/王冠金辉呼吸 / 魅影武器显形缓动 / 刀光·喷扇按判定段补画 / 二阶段血焰附魔 + 数值 buff 一次性写入 */
   protected override updateVisuals(): void {
     const now = performance.now();
-    const dt = Math.min(0.05, (now - this.lastVisT) / 1000);
-    this.lastVisT = now;
+    // 跟游戏 dt：顿帧/暂停时停住，慢放时与前摇同一口时钟。墙钟会在这些时候把聚气播完。
+    const dt = Math.min(0.05, Math.max(0, this.frameDt));
     this.gold.update(dt);
     this.blood.update(dt);
     const p2 = this.phase === 2;
@@ -680,13 +805,7 @@ export class Morgott extends BossBase {
         this.blood.burst(SUMMON_TMP, 1, 0.6, 1.0, 0.5);
       }
     }
-    // 王者之证聚气：前摇期间金尘自四周冉冉升起（读招大题的视觉钟）
-    if (this.state === "combat" && this.sub === "tel" && this.move?.name === "morgottKingsProof" && Math.random() < dt * 26) {
-      const a = Math.random() * Math.PI * 2;
-      WISP_TMP.set(this.root.position.x + Math.sin(a) * (1.5 + Math.random() * 2.5), 0.3,
-        this.root.position.z + Math.cos(a) * (1.5 + Math.random() * 2.5));
-      this.gold.burst(WISP_TMP, 1, 0.7, 1.3, 1.6);
-    }
+    this.telegraph();
     // 刀光/喷扇补画（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）
     if (this.state === "combat" && this.sub === "act" && this.move) {
       const m = this.move;
@@ -763,13 +882,14 @@ export class Morgott extends BossBase {
     this.slashFired = 0;
     this.fxStep = 0;
     this.moveLen = 0;
-    if (m.name === "morgottPounce") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
-      this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.3));
-    } else if (m.name === "morgottBloodChase") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
-      this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.5));
-    }
+    this.telU = 0;
+    this.lastMove = m.name;
+    if (m.name !== "morgottPounce" && m.name !== "morgottBloodChase") return;
+    this.moveDir.copy(toPlayer).setY(0);
+    if (this.moveDir.lengthSq() < 1e-8) this.moveDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    else this.moveDir.normalize();                                             // 重叠时 normalize(0) 会把落点写成 NaN
+    const stop = m.name === "morgottPounce" ? 1.3 : 1.5;
+    this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - stop));
   }
 
   /** 判定段开始：投掷魅影匕首扇形齐发（一阶段 3 连 / 二阶段 5 连）/ 尾刀全周轨迹（躲开也照画） */
@@ -816,7 +936,7 @@ export class Morgott extends BossBase {
     }
     if (this.t < 0.8) {
       this.lerpPose(STANCE, TF_GATHER, smooth(this.t / 0.8));
-      if (Math.random() < 0.12) this.blood.burst(this.chestWorld(), 2, 1.2, 1.0, 0.8);  // 咳喘血焰
+      if (this.frameDt > 0 && Math.random() < this.frameDt * 7.2) this.blood.burst(this.chestWorld(), 2, 1.2, 1.0, 0.8);  // 咳喘血焰（按 60fps 的 0.12/帧折算）
     } else if (this.t < 1.5) {
       this.lerpPose(TF_GATHER, TF_DRAW, smooth(seg(this.t, 0.8, 1.5)));
     } else if (this.t < this.transformHitAt) {
@@ -849,6 +969,9 @@ export class Morgott extends BossBase {
     this.fxStep = 0;
     this.slashFired = 0;
     this.prevTfT = 0;
+    this.lastMove = "";
+    this.telU = 0;
+    this.frameDt = 0;
     this.hammerShow = 0;
     this.gswordShow = 0;
     this.bladeShow = 0;
@@ -889,48 +1012,65 @@ export class Morgott extends BossBase {
     return super.pickChain(m, dist, toPlayer);
   }
 
+  /** 这一招现在出手打得到。跃扑另有 9.5m 上限；前冲招按真实落点余距，而不是站桩射程。 */
+  private moveReaches(m: MoveDef, dist: number): boolean {
+    if (m.proj) return true;
+    if (m.name === "morgottPounce") return dist <= POUNCE_REACH;
+    const lunge = m.lunge ?? 0;
+    if (lunge > 0) {
+      const stop = m.name === "morgottBloodChase" ? 1.5 : 1.3;
+      const gap = dist - Math.min(lunge, Math.max(0, dist - stop));
+      return gap <= m.range + 0.45;
+    }
+    return dist < m.range * 0.95;
+  }
+
   // ---------------- 选招（读招考试权重：绕背尾刀 / 贴身尾刀+突斩 / 中距杖压+延迟下砸 / 远距匕首扇+跃扑压制；
   //     二阶段加大剑三连与王者之证读招大题） ----------------
   protected override pickMove(dist: number): MoveDef | null {
     const M = MOVES_MORGOTT;
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // 绕背优先甩尾（wiki Tail Sweep：身后来犯者——绕背不是无本买卖）
-    const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
+    const choose = (list: [MoveDef, number][]): MoveDef | null => {
+      const cands: [MoveDef, number][] = [];
+      for (const [m, w] of list) {
+        if (w <= 0 || !ready(m) || !this.moveReaches(m, dist)) continue;
+        // 降权而不是剔除：只剩这一招时（探针封锁其余冷却）仍然选得到
+        cands.push([m, m.name === this.lastMove ? w * REPEAT_W : w]);
+      }
+      return this.pickWeighted(cands);
+    };
+    const toP = TO_P.set(this.playerPos.x - this.root.position.x, 0, this.playerPos.z - this.root.position.z);
     const dirYaw = Math.atan2(toP.x, toP.z);
-    if (dist < 3.0 && !angleWithin(this.yaw, dirYaw, 2.2) && ready(M.morgottTail)) {
-      return M.morgottTail;
-    }
+    const behind = dist < 3.0 && toP.lengthSq() > 0.04 && !angleWithin(this.yaw, dirYaw, 2.2);
+    // 绕背优先甩尾。刚甩过则交给降权抽选，避免背后只剩尾刀时选不出来。
+    if (behind && ready(M.morgottTail) && this.lastMove !== M.morgottTail.name) return M.morgottTail;
     const p2 = this.phase === 2;
     if (dist > 6) {
-      // 远档：匕首扇压制（惩罚站桩/喝药）+ 跃扑突进（lunge 7.5 + 接触余量 ≈ 2.6，9.5 外够不着就踱步逼近）
-      // + 二阶段血焰突斩前冲追击
-      const far: [MoveDef, number][] = [
+      return choose([
         [M.morgottDaggers, 3],
-        [M.morgottPounce, dist <= 9.5 ? 2.5 : 0],
+        [M.morgottPounce, dist <= POUNCE_REACH ? 2.5 : 0],
         [M.morgottBloodChase, p2 && dist <= 9 ? 2 : 0],
-      ];
-      const farCands = far.filter(([m, w]) => w > 0 && ready(m));
-      return this.pickWeighted(farCands);
+      ]);
     }
-    const pool: [MoveDef, number][] = dist < 2.4 ? [
-      [M.morgottTail, 4],                                                       // 贴身脱身优先
-      [M.morgottCombo, 3.2],
-      [M.morgottBloodChase, p2 ? 1.6 : 0],
-      [M.morgottCurseSpew, p2 && dist >= 1.6 ? 1.6 : 0],
-    ] : [
+    if (dist < 2.4) {
+      return choose([
+        [M.morgottTail, 4],
+        [M.morgottCombo, 3.2],
+        [M.morgottBloodChase, p2 ? 1.6 : 0],
+        [M.morgottCurseSpew, p2 && dist >= 1.6 ? 1.6 : 0],
+      ]);
+    }
+    return choose([
+      [M.morgottTail, behind ? 4 : 0],                                        // 刚用过尾刀时，中距绕背仍能再选到
       [M.morgottCombo, 3],
-      [M.morgottGreatsword, p2 ? 3.5 : 0],                                      // 二阶段主力连段
-      [M.morgottSlam, 2.5],                                                     // 招牌延迟下砸
-      [M.morgottPounce, dist >= 2.6 ? 2 : 0],
-      [M.morgottDaggers, dist >= 4.5 ? 1.5 : 0],                                // 中远缀匕首骚扰
+      [M.morgottGreatsword, p2 ? 3.5 : 0],
+      [M.morgottSlam, 2.5],
+      [M.morgottPounce, dist >= 2.6 && dist <= POUNCE_REACH ? 2 : 0],
+      [M.morgottDaggers, dist >= 4.5 ? 1.5 : 0],
       [M.morgottCurseSpew, p2 && dist >= 2.6 ? 2.5 : 0],
       [M.morgottBloodChase, p2 ? 2 : 0],
-      [M.morgottKingsProof, p2 && dist >= 1.8 && dist <= 5.8 ? 1.4 : 0],        // 读招大题（cd 15 全场少见）
-    ];
-    // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里
-    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
-    if (!cands.length) return null;
-    return this.pickWeighted(cands);
+      [M.morgottKingsProof, p2 && dist >= 1.8 && dist <= 5.8 ? 1.4 : 0],
+    ]);
   }
 
   private pickWeighted(cands: [MoveDef, number][]): MoveDef | null {
@@ -946,3 +1086,4 @@ export class Morgott extends BossBase {
 const SUMMON_TMP = new THREE.Vector3();
 const WISP_TMP = new THREE.Vector3();
 const SPRAY_TMP = new THREE.Vector3();
+const TO_P = new THREE.Vector3();
