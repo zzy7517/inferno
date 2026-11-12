@@ -1,0 +1,29 @@
+web/src/scene-stormveil.ts
+  s_fc0c9fc791ce69::t_77962545ab0cac 398-402,404-409,411-418,420-421,423-424,426-446,448-460,462-474
+  s_fc0c9fc791ce69::t_d6a0c9b1b522f3 1297-1298
+  s_fc0c9fc791ce69::t_e13e1af098ebbf 447
+  s_fc0c9fc791ce69::t_5ac98611a45a31 664
+  s_fc0c9fc791ce69::t_70dca5bc2236fc 649-652
+  s_fc0c9fc791ce69::t_a91f8e3dda03b8 675-676
+  s_fc0c9fc791ce69::t_40278b58f89e86 1127
+  s_fc0c9fc791ce69::t_a13b55d474d50d 1128
+  s_fc0c9fc791ce69::t_d90f12f541ea23 403,410,419,422,425
+  s_fc0c9fc791ce69::t_6b3d822b44f715 461
+  s_fc0c9fc791ce69::t_e26bc9f6ef927d 618-625,628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9912e6c004c9939d6b3f73af0357786d5dfb1943",
+  "prompts": {},
+  "sessions": {
+    "s_fc0c9fc791ce69": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9e0254ab-6a06-463c-bb19-dcfa059ca7b0",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
