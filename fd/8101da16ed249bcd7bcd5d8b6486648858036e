@@ -1,0 +1,31 @@
+web/scripts/eight-boss-probe.mjs
+  s_eb3e785bcb9cea::t_18c5294d8cc70f 125
+  s_eb3e785bcb9cea::t_97ba1c65ba354d 115
+web/scripts/cemetery-c-probe.mjs
+  s_eb3e785bcb9cea::t_30b9dc27cf459d 110-114
+  s_eb3e785bcb9cea::t_05782b013245f4 123-124
+  s_eb3e785bcb9cea::t_573d5146c95347 102
+  s_eb3e785bcb9cea::t_755b6a0a7abf60 133-135
+web/src/game.ts
+  s_eb3e785bcb9cea::t_8dd11e0f95e3e8 58,60
+web/src/enemies-config.ts
+  s_eb3e785bcb9cea::t_42bea54271cf1b 109-113
+web/src/scene-cemetery.ts
+  s_eb3e785bcb9cea::t_ffea2867f3e99f 6-8,18-20,147-167,169,172-178,185-189,205-209,286-289,298-308,317-319,332-334,536,539,543,552,583,643,654,662,672,682-684,686,690,693,697,708-709,723-725,758-764,780-782,790-791,805-807,818-821,831-837,842,852,857-858,860-862,869,875-881,921-925,936,944,1012-1013
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "fd8101da16ed249bcd7bcd5d8b6486648858036e",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
