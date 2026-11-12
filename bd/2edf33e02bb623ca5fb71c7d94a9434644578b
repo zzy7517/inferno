@@ -1,0 +1,19 @@
+web/src/boss-vordt.ts
+  s_eb3e785bcb9cea::t_08e4eb9037f246 146-160,180,182-192,194,196-224,226-232,235,238-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "bd2edf33e02bb623ca5fb71c7d94a9434644578b",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
