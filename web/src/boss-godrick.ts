@@ -2,17 +2,18 @@
   * 通用机制（状态机/削韧破绽/弹反/多段判定/击飞/冷却/走近追踪）全在 BossBase（boss-base.ts），
   * 本文件只保留葛瑞克专属：MOVES_GODRICK/FEEL_GODRICK（模块加载即并入 config 总表——调校台/存档自动收录，不改现有文件）、
   * 接肢外观与 Pose 系统（躯干伸出的三条嫁接手臂 + 金发王冠 + 主手巨斧，~70 mesh，暗金+腐绿+铁灰）、
-  * 二阶段「斩臂接龙」：hp≤60% 挥斧自断左臂（靠近会被误伤 / 断臂期间减伤 / 削韧不清空——fextralife 权威锚点）
+  * 二阶段「斩臂接龙」：hp≤60% 挥斧自断左臂（斧刃碰到会被误伤 / 断臂期间减伤 / 削韧不清空——fextralife 权威锚点）
   * → 龙头手臂接上 → 嘶吼震波（"Forefathers, one and all… bear witness!"），进 P2 后第一招固定横扫龙焰。
   * 忠实度锚点（fextralife wiki）：Stance 105、全程不可弹反、P1 打击+标准 / P2 附加火属性（本作无属性表，以龙焰视觉承载）。
   * HP 6080 按本作 Boss 尺度（roster 620–780，≈1:7.8）折算为 780；魂 20000 属注册表接线（主线程）。
   */
 import * as THREE from "three";
-import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
+import { MOVES, FEEL, MoveDef, FeelDef, P } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
+import { strikeContact } from "./weapon-hit";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -135,6 +136,13 @@ const P2_DMG_SCALE = 1.2;
 const LUNGE_REACH = 3.3;
 /** 龙口扑击后咬得到的中心距（短于 range 3 + 基类 0.45）。 */
 const DRAGON_BITE_REACH = 2.2;
+/** 月刃胶囊厚度，盖住刃宽。 */
+const AXE_PAD = 0.35;
+/** 接肢臂半宽，沿肩到爪尖。 */
+const ARM_PAD = 0.18;
+/** 龙头半宽，从颈到吻尖。 */
+const DRAGON_PAD = 0.22;
+const VOL_AT = new THREE.Vector3();
 /** 一阶段基线。buff 写在共享表上，旗标在实例上——实例丢了表还在，所以还原看表本身而不只看旗标。 */
 const P1_BASE: Record<string, { startup: number; dmg: number }> = {};
 for (const m of Object.values(MOVES_GODRICK)) if (!m.phase2Only) P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg };
@@ -221,13 +229,20 @@ export class Godrick extends BossBase {
   private graftArms: THREE.Group[] = [];       // 躯干伸出的三条嫁接手臂（updateVisuals 蠕动）
   private graftBase: { x: number; z: number }[] = [];
   private axeHead = new THREE.Object3D();      // 月刃腹心：刀光贴着刃，不从胸口铺开
+  private axeHilt = new THREE.Object3D();      // 握把
+  private axeTip = new THREE.Object3D();       // 月刃外缘
+  private armHilt = new THREE.Object3D();      // 接肢臂肩
+  private armTip = new THREE.Object3D();       // 爪尖
+  private dragonHilt = new THREE.Object3D();   // 龙颈（二阶段才显示，标记仍钉在龙头上）
+  private dragonTip = new THREE.Object3D();    // 吻尖
+  private gustFrom = new THREE.Object3D();     // 胸口：风暴锥的起点
   private maw = new THREE.Object3D();          // 龙口外沿：龙焰从这里喷出
   private eyeMat!: THREE.MeshStandardMaterial;
   private flameMat!: THREE.MeshStandardMaterial;   // P2 龙口内焰
   private flameLight!: THREE.PointLight;
 
   private pose: GPose = { ...STATUE };
-  private playerPos = new THREE.Vector3(0, 0, 5);   // 摔伤/断臂误伤的距离判定用（update 入口缓存）
+  private playerPos = new THREE.Vector3(0, 0, 5);   // 第三砸距离、断臂刃判定用（update 入口缓存）
   private moveFrom = new THREE.Vector3();           // 位移类招（旋斧/突刺/龙扑）基准
   private moveDir = new THREE.Vector3(0, 0, 1);
   private moveLen = 0;
@@ -298,6 +313,8 @@ export class Godrick extends BossBase {
     this.torso.add(box(0.9, 0.3, 0.5, gold, 0, 0.72, 0.02));           // 上胸金纹甲
     this.torso.add(box(0.8, 0.52, 0.1, fleshDark, 0, 0.45, -0.32));    // 背板（嫁接肉床）
     this.torso.add(box(0.22, 0.18, 0.05, goldTrim, 0, 0.5, 0.33));     // 胸口纹章
+    this.gustFrom.position.set(0, 0.5, 0.33);
+    this.torso.add(this.gustFrom);
     // 肩甲双层外扩（肩宽 ~2.1）
     for (const s of [-1, 1]) {
       const p1 = box(0.38, 0.22, 0.42, iron, s * 0.62, 0.7, 0);
@@ -368,6 +385,10 @@ export class Godrick extends BossBase {
     axe.add(spike);
     this.axeHead.position.set(0.62, 0.02, hz);
     axe.add(this.axeHead);
+    // 刃：握把沿斧柄到月刃外缘。外缘在杆端 hz，局部半径约 0.95（落在 0.7–1.1）
+    this.axeHilt.position.set(0, 0, 0.1);
+    this.axeTip.position.set(0.95, 0, hz);
+    axe.add(this.axeHilt, this.axeTip);
     this.armR.add(axe);
     this.torso.add(this.armR);
 
@@ -379,6 +400,9 @@ export class Godrick extends BossBase {
     for (const [fx, fz] of [[-0.09, 0.2], [0, 0.24], [0.09, 0.2]] as [number, number][]) {
       this.fleshArm.add(box(0.05, 0.22, 0.05, fleshDark, fx, -1.12, fz));  // 三爪
     }
+    this.armHilt.position.set(0, 0, 0);
+    this.armTip.position.set(0, -1.23, 0.24);                              // 中爪尖
+    this.fleshArm.add(this.armHilt, this.armTip);
     this.armL.add(this.fleshArm);
     // 龙头手臂（P2）：颈 + 前伸吻部 + 可开合的嘴 + 后掠长角。何时显示仍由接龙演出决定
     this.dragon.add(box(0.34, 0.5, 0.38, dragonMat, 0, -0.22, 0.02));   // 颈
@@ -433,6 +457,9 @@ export class Godrick extends BossBase {
     this.dragon.add(throat, breath);
     this.maw.position.set(0, -0.74, 1.12);
     this.dragon.add(this.maw);
+    this.dragonHilt.position.set(0, -0.22, 0.02);                          // 颈
+    this.dragonTip.position.set(0, -0.66, 1.06);                           // 吻尖前端
+    this.dragon.add(this.dragonHilt, this.dragonTip);
     this.flameLight = new THREE.PointLight(FLAME, 0, 6, 2);
     this.flameLight.position.copy(this.maw.position);
     this.dragon.add(this.flameLight);
@@ -468,6 +495,61 @@ export class Godrick extends BossBase {
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
   protected override headPart(): THREE.Object3D { return this.head; }
+
+  /** 斧和龙头碰到才算。风暴从胸口、龙焰从龙嘴，range/arc 仍用招式上的数。跪地用已经在画的环。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    const axe: AttackVolume = { kind: "blade", hilt: this.axeHilt, tip: this.axeTip, pad: AXE_PAD };
+    const arm: AttackVolume = { kind: "blade", hilt: this.armHilt, tip: this.armTip, pad: ARM_PAD };
+    const head: AttackVolume = { kind: "blade", hilt: this.dragonHilt, tip: this.dragonTip, pad: DRAGON_PAD };
+    switch (m.name) {
+      case "godrickCleave":
+      case "godrickLunge":
+      case "godrickSpin":
+      case "godrickSelfSever":
+        return axe;
+      case "godrickAxeCombo":
+        // 段 0、1 是右斧（A1/A2），段 2 是左接肢臂（A3）
+        return this.hitFired >= 2 ? arm : axe;
+      case "godrickFury":
+        // F1–F5 都只抡右斧：逆时针、顺时针、逆挑、下劈、再下劈。没有接肢臂那一拍
+        return axe;
+      case "godrickGrab":
+      case "godrickGrabSlam":
+        return arm;
+      case "godrickDragonGrab":
+        return head;
+      case "godrickWindGust": {
+        const p = this.gustFrom.getWorldPosition(VOL_AT);
+        return { kind: "cone", x: p.x, z: p.z, yaw: this.yaw, range: m.range, arc: m.arc };
+      }
+      case "godrickFlame": {
+        const p = this.maw.getWorldPosition(VOL_AT);
+        return { kind: "cone", x: p.x, z: p.z, yaw: this.yaw, range: m.range, arc: m.arc };
+      }
+      case "godrickKneel":
+        // 前两段引擎判定对上 near 环；第三砸 5.2 仍在 kneelFx，不从这里再打一次
+        return { kind: "disk", x: this.root.position.x, z: this.root.position.z, r: this.kneelRing(this.hitFired, m) };
+      default:
+        return null;
+    }
+  }
+
+  /** 我命尔跪正在画的环。前两砸 range+0.45，第三砸 5.2。 */
+  private kneelRing(step: number, m: MoveDef): number {
+    return step >= 2 ? 5.2 : m.range + 0.45;
+  }
+
+  /** 断臂那一斧：刃碰到才算。演出不走战斗判定，这里用同一对护手/尖。 */
+  private axeContact(): THREE.Vector3 | null {
+    const a = this.axeHilt.getWorldPosition(new THREE.Vector3());
+    const b = this.axeTip.getWorldPosition(new THREE.Vector3());
+    const hit = strikeContact(this.playerPos.x, this.playerPos.z, P.playerRadius, {
+      now: { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z },
+      prev: null,
+      pad: AXE_PAD,
+    });
+    return hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : null;
+  }
 
   // ---------------- 姿态应用 ----------------
   protected override applyPose(): void {
@@ -633,11 +715,11 @@ export class Godrick extends BossBase {
   /** 我命尔跪！：高举蓄势 → 砸1(0.92) → 快砸2(1.27) → 停顿缓举（恐惧窗口）→ 第三砸(2.05 手动判定+巨环)。
    *  落点表现按窗口首帧触发（kneelFx 步进闸），与引擎判定时刻 0.92/1.27 及手动第三砸 2.05 对齐 */
   private kneelPose(t: number, m: MoveDef): void {
-    const near = m.range + 0.45;   // 与基类前两段判定同一半径，环外不再吃伤
+    const ring = (step: number) => this.kneelRing(step, m);
     if (t < 0.92) this.lerpPose(KNW, KN1, smooth(seg(t, 0.7, 0.92)));
-    else if (t < 1.27) { this.kneelFx(0, near); this.lerpPose(KN1, KN2, smooth(seg(t, 0.92, 1.02))); }
-    else if (t < 2.05) { this.kneelFx(1, near); this.lerpPose(KN2, KNW, smooth(seg(t, 1.45, 2.05))); }
-    else { this.kneelFx(2, 5.2); this.lerpPose(KNW, KN3, smooth(seg(t, 2.05, 2.25))); }
+    else if (t < 1.27) { this.kneelFx(0, ring(0)); this.lerpPose(KN1, KN2, smooth(seg(t, 0.92, 1.02))); }
+    else if (t < 2.05) { this.kneelFx(1, ring(1)); this.lerpPose(KN2, KNW, smooth(seg(t, 1.45, 2.05))); }
+    else { this.kneelFx(2, ring(2)); this.lerpPose(KNW, KN3, smooth(seg(t, 2.05, 2.25))); }
   }
 
   /** 三连砸的落点表现 + 第三砸手动判定（引擎只发前两段 dmg；第三段走 host 总线，同 feel） */
@@ -858,7 +940,7 @@ export class Godrick extends BossBase {
 
   /** 斩臂接龙演出（transform 状态，基类 1.9s 同刻回调 onBossTransform 震波）：
    *  0–0.35 仰天自白（"Forefathers, one and all… bear witness!"）
-   *  0.35–0.5 挥斧劈向自己左臂 → 0.5 断臂（残端露出/血尘/靠近者被误伤 godrickSelfSever）
+   *  0.35–0.5 挥斧劈向自己左臂 → 0.5 断臂（残端露出/血尘/斧刃碰到才误伤 godrickSelfSever）
    *  0.5–1.3 跪伏剧痛（期间减伤 ×0.5，见 takeHit）→ 1.3 龙头手臂接上
    *  1.3–1.9 举龙臂张嘴 → 1.9 嘶吼震波（phase=2 / hp 回 30% / P2 开场固定技挂起）→ 2.5 落定
    */
@@ -877,13 +959,14 @@ export class Godrick extends BossBase {
         this.vfx.dust.burst(at, 6, 2, 0.7);
         AU.hitHeavy();
         this.host.shake(0.4);
-        // 靠近会被挥落的巨斧误伤（wiki：自断演出靠近受伤）
-        const sv = MOVES_GODRICK.godrickSelfSever;
-        const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
-        const d = toP.length();
-        if (d <= sv.range + 0.45) {
+        // 挥落的巨斧刃碰到才误伤（wiki：自断演出靠近受伤）
+        const point = this.axeContact();
+        if (point) {
+          const sv = MOVES_GODRICK.godrickSelfSever;
+          const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
+          const d = toP.length();
           const dir = d > 0.001 ? toP.normalize() : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-          this.host.onBossHit(sv.dmg, dir, this.chestWorld(), sv);
+          this.host.onBossHit(sv.dmg, dir, point, sv);
         }
       }
       this.lerpPose(CHOP, AGONY, smooth(seg(this.t, 0.5, 1.1)));
