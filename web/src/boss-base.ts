@@ -1,13 +1,22 @@
 /** BossBase：通用 Boss 机制基类（自 boss.ts 抽出，行为零变化）
  * 基类负责：状态机骨架（statue/rising/combat/stagger/parried/transform/dead + idle→tel→act→rec 招式循环）、
- * 削韧→破绽、弹反判定、阶段转换框架、死亡、命中判定（距离+夹角）、走近/弱追踪转向、冷却表
+ * 削韧→破绽、弹反判定、阶段转换框架、死亡、命中判定、走近/弱追踪转向、冷却表
+ * 武器攻击和玩家同一套：刃碰到人才算打中。子类没给出形状时，仍用招式上的 range/arc。
  * 外观/姿态/选招/唤醒与变身演出由子类实现（见 boss.ts 古达；后续玻尔多/深渊监视者/沙力万同理）
  */
 import * as THREE from "three";
-import { MOVES, MoveDef, BOSS } from "./config";
+import { MOVES, MoveDef, BOSS, P } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import type { ProjDef } from "./projectile";
+import { Seg, Strike, strikeContact } from "./weapon-hit";
+
+/** 这一招打到人的形状。武器用刃；不是武器的用圆、锥，或交给飞行物。 */
+export type AttackVolume =
+  | { kind: "blade"; hilt: THREE.Object3D; tip: THREE.Object3D; pad: number }
+  | { kind: "disk"; x: number; z: number; r: number }
+  | { kind: "cone"; x: number; z: number; yaw: number; range: number; arc: number }
+  | { kind: "none" };
 
 export type BossState = "statue" | "rising" | "combat" | "stagger" | "parried" | "transform" | "dead";
 
@@ -47,6 +56,9 @@ export abstract class BossBase {
   protected cds: Record<string, number> = {};
   protected hitDone = false;
   protected hitFired = 0;              // 多段判定已触发段数
+  private prevBlade: Seg | null = null;
+  private readonly bladeA = new THREE.Vector3();
+  private readonly bladeB = new THREE.Vector3();
   protected deathT = 0;
   // 变身演出时序（子类可按需覆盖）
   protected transformHitAt = 0.85;    // 震波回调时刻
@@ -103,6 +115,13 @@ export abstract class BossBase {
   }
   /** 招式 tel→act（进入判定段）：挥砍轨迹特效等（whoosh 音已在基类播） */
   protected onMoveActive(m: MoveDef): void { void m; }
+
+  /** 这一招的命中形状。null 表示仍用招式上的 range/arc（脚边扇形）。
+   *  blade：护手到尖，和玩家的剑同一套判定。
+   *  disk：砸地、践踏，圆的半径跟看见的环一致。
+   *  cone：吐息，从嘴往前。
+   *  none：箭、飞刀、岩石，身子不算打中，飞行物自己判。 */
+  protected attackVolume(m: MoveDef): AttackVolume | null { void m; return null; }
   /** 判定段 whoosh 音量（重招更闷） */
   protected activeWhooshVolume(m: MoveDef): number { return m.name === "slam" || m.name === "jump" ? 0.6 : 1; }
   /** 招式名→帧数据（连段解析用）；默认共享 config.MOVES 表 */
@@ -189,7 +208,7 @@ export abstract class BossBase {
   reset(): void {
     this.state = "statue"; this.sub = "idle"; this.move = null; this.t = 0;
     this.hp = this.cfg.hp; this.phase = 1; this.poise = 0; this.yaw = this.facing0;
-    this.cds = {}; this.hitDone = false; this.hitFired = 0; this.deathT = 0;
+    this.cds = {}; this.hitDone = false; this.hitFired = 0; this.prevBlade = null; this.deathT = 0;
     this.resetVisuals();
     this.applyPose();
   }
@@ -288,7 +307,7 @@ export abstract class BossBase {
       // 选招
       const pick = this.pickMove(dist);
       if (pick) {
-        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0;
+        this.move = pick; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevBlade = null;
         this.cds[pick.name] = pick.cd;
         this.onMoveStart(pick, toPlayer, dist);
         AU.telegraph();
@@ -312,21 +331,9 @@ export abstract class BossBase {
 
     if (this.sub === "act") {
       this.movePose(m, "act", this.t, total);
-      // 多段判定：第 k 段在 active*0.4 + k*hitInterval 触发（hits=1 时与单段行为一致）
-      const hits = m.hits ?? 1;
-      const firstAt = m.active * 0.4;
-      const interval = m.hitInterval ?? 0.45;
-      while (this.hitFired < hits && this.state === "combat" && this.t >= Math.min(firstAt + this.hitFired * interval, m.active)) {
-        this.hitFired++;
-        if (dist <= m.range + 0.45 && angleWithin(this.yaw, dirYaw, m.arc / 2)) {
-          if (!playerIframed) {
-            const dir = toPlayer.clone().normalize();
-            this.host.onBossHit(m.dmg, dir, this.chestWorld(), m);
-          }
-          // 打实且没被弹开才关窗。弹反在 onBossHit 里先把状态切走。
-          if (this.hitFired === 1 && this.state === "combat") this.hitDone = true;
-        }
-      }
+      const vol = this.attackVolume(m);
+      if (vol?.kind === "blade") this.resolveBlade(m, vol, playerPos, toPlayer, playerIframed);
+      else this.resolveTicks(m, vol, dist, dirYaw, playerPos, toPlayer, playerIframed);
       if (m.shock && this.t >= m.active * 0.5 && this.t - dt < m.active * 0.5) {
         // 落地冲击环与命中解耦：打中/躲开都应震地（原 !hitDone 条件导致命中时冲击环被吞）
         this.vfx.ring(this.root.position, m.shock);
@@ -344,13 +351,74 @@ export abstract class BossBase {
       // 连段：直戳后概率接二连戳；必须走 onMoveStart，否则前冲/刀光段计数沿用上一招
       const chain = this.pickChain(m, dist, toPlayer);
       if (chain) {
-        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0;
+        this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0; this.prevBlade = null;
         this.cds[chain.name] = chain.cd;
         this.onMoveStart(chain, toPlayer, dist);
       } else {
         this.sub = "idle"; this.move = null;
       }
     }
+  }
+
+  /** 武器：这一段挥砍的时间窗里，刃（含上一帧扫过的区域）碰到玩家才算。窗过了还没碰到，这一段算挥空。 */
+  private resolveBlade(m: MoveDef, vol: Extract<AttackVolume, { kind: "blade" }>, playerPos: THREE.Vector3, toPlayer: THREE.Vector3, playerIframed: boolean): void {
+    const strike = this.readBlade(vol);
+    const hits = m.hits ?? 1;
+    const firstAt = m.active * 0.4;
+    const interval = m.hitInterval ?? 0.45;
+    const slotStart = (k: number) => Math.min(firstAt + k * interval, m.active);
+    const slotEnd = (k: number) => Math.min(firstAt + (k + 1) * interval, m.active);
+    if (this.hitFired < hits && this.state === "combat" && this.t >= slotStart(this.hitFired) && this.t < slotEnd(this.hitFired)) {
+      const contact = strikeContact(playerPos.x, playerPos.z, P.playerRadius, strike);
+      if (contact) this.applyBossHit(m, toPlayer, new THREE.Vector3(contact.x, contact.y, contact.z), playerIframed);
+    }
+    while (this.hitFired < hits && this.state === "combat" && this.t >= slotEnd(this.hitFired)) this.hitFired++;
+  }
+
+  /** 没有刃的招式：圆、锥，或仍用脚边扇形。飞行物（none）身子不打人。 */
+  private resolveTicks(m: MoveDef, vol: AttackVolume | null, dist: number, dirYaw: number, playerPos: THREE.Vector3, toPlayer: THREE.Vector3, playerIframed: boolean): void {
+    const hits = m.hits ?? 1;
+    const firstAt = m.active * 0.4;
+    const interval = m.hitInterval ?? 0.45;
+    while (this.hitFired < hits && this.state === "combat" && this.t >= Math.min(firstAt + this.hitFired * interval, m.active)) {
+      const touched = vol ? this.volumeTouches(vol, playerPos) : dist <= m.range + 0.45 && angleWithin(this.yaw, dirYaw, m.arc / 2);
+      if (touched) {
+        const point = vol?.kind === "cone"
+          ? new THREE.Vector3(playerPos.x, 1.2, playerPos.z)
+          : this.chestWorld();
+        this.applyBossHit(m, toPlayer, point, playerIframed);
+      } else this.hitFired++;
+    }
+  }
+
+  private applyBossHit(m: MoveDef, toPlayer: THREE.Vector3, point: THREE.Vector3, playerIframed: boolean): void {
+    this.hitFired++;
+    if (!playerIframed) {
+      const dir = toPlayer.clone();
+      if (dir.lengthSq() > 1e-6) dir.normalize();
+      else dir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      this.host.onBossHit(m.dmg, dir, point, m);
+    }
+    // 打实且没被弹开才关窗。弹反在 onBossHit 里先把状态切走。
+    if (this.hitFired === 1 && this.state === "combat") this.hitDone = true;
+  }
+
+  private readBlade(vol: Extract<AttackVolume, { kind: "blade" }>): Strike {
+    this.root.updateWorldMatrix(true, true);
+    const a = vol.hilt.getWorldPosition(this.bladeA);
+    const b = vol.tip.getWorldPosition(this.bladeB);
+    const now: Seg = { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z };
+    const strike: Strike = { now, prev: this.prevBlade, pad: vol.pad };
+    this.prevBlade = now;
+    return strike;
+  }
+
+  private volumeTouches(vol: AttackVolume, playerPos: THREE.Vector3): boolean {
+    if (vol.kind === "none" || vol.kind === "blade") return false;
+    if (vol.kind === "disk") return Math.hypot(playerPos.x - vol.x, playerPos.z - vol.z) <= vol.r + P.playerRadius;
+    const dx = playerPos.x - vol.x;
+    const dz = playerPos.z - vol.z;
+    return Math.hypot(dx, dz) <= vol.range + P.playerRadius && angleWithin(vol.yaw, Math.atan2(dx, dz), vol.arc / 2);
   }
 }
 
