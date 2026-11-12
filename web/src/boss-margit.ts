@@ -4,6 +4,7 @@
  * - MOVES_MARGIT/FEEL_MARGIT 模块加载即并入 config 总表（调校台/存档自动收录，不改现有文件）
  * - 金色召唤武器体系（身份标识）：金锤/金剑 emissive 半透明网格在招式开始时凭空显形（hammerShow/swordShow 缓动）
  * - 咒刃经 host.fireProjectile → game 侧 Projectiles 池；二连发惩罚中远距站桩/喝药贪刀（wiki：常在玩家回血时投掷）
+ * - 命中贴武器：咒杖、金锤、咒剑、袖刃各钉在自己的网格两端；尾巴沿尾节；投掷咒刃身子不打人
  * - 欺诈性延迟前摇：杖背藏先收到背后骗提前翻滚，命中前再短举过头才砸/旋；近身单砸 / 远身前冲双旋（运行时按距离分支）
  * - 匕首退击（先斩、再后跳、再投刃）、跃空刺（悬停→下刺，落地才判定，9.5m 外不跳）、绕背尾扫（冷却内不强制）
  * - 连段按站位延长：杖剑三连近身 40% 接金锤收尾（chain=杖→剑→锤武器切换），咒刃后接突进挥击；段间隔留翻滚窗
@@ -16,7 +17,7 @@ import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, angleWithin, pickWeighted as pickByWeight } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -193,6 +194,17 @@ export class Margit extends BossBase {
   private tailG = new THREE.Group();
   private hammerG = new THREE.Group();
   private swordG = new THREE.Group();
+  // 刃的两端，钉在对应网格上（空物体，不改外观尺寸）
+  private staffHilt = new THREE.Object3D();
+  private staffTip = new THREE.Object3D();
+  private hammerHilt = new THREE.Object3D();
+  private hammerTip = new THREE.Object3D();
+  private swordHilt = new THREE.Object3D();
+  private swordTip = new THREE.Object3D();
+  private sleeveHilt = new THREE.Object3D();
+  private sleeveTip = new THREE.Object3D();
+  private tailHilt = new THREE.Object3D();
+  private tailTip = new THREE.Object3D();
   private eyeMat!: THREE.MeshStandardMaterial;    // 双眼（预言金光）
   private runeMat!: THREE.MeshStandardMaterial;   // 额前预言印记 + 杖身金符文
   private hammerMat!: THREE.MeshStandardMaterial; // 召唤金锤（显形时 emissive）
@@ -279,9 +291,14 @@ export class Margit extends BossBase {
     }
     // 尾（袍下三节，横扫尾击时甩出）
     this.tailG.position.set(0, 1.44, -0.2);
-    this.tailG.add(box(0.16, 0.16, 0.48, skinDark, 0, 0, -0.24));
-    this.tailG.add(box(0.13, 0.13, 0.42, skinDark, 0, -0.08, -0.62));
-    this.tailG.add(box(0.1, 0.1, 0.34, skinDark, 0, -0.2, -0.94));
+    const tailRoot = box(0.16, 0.16, 0.48, skinDark, 0, 0, -0.24);
+    const tailMid = box(0.13, 0.13, 0.42, skinDark, 0, -0.08, -0.62);
+    const tailEnd = box(0.1, 0.1, 0.34, skinDark, 0, -0.2, -0.94);
+    this.tailHilt.position.set(0, 0, 0.24);                                   // 尾根端面
+    tailRoot.add(this.tailHilt);
+    this.tailTip.position.set(0, 0, -0.17);                                   // 尾尖端面
+    tailEnd.add(this.tailTip);
+    this.tailG.add(tailRoot, tailMid, tailEnd);
     this.body.add(this.tailG);
 
     // 躯干（窄削佝偻）——底座 y 1.64
@@ -335,9 +352,13 @@ export class Margit extends BossBase {
     staff.add(box(0.055, 0.16, 0.055, robeDark, 0, 0.05, 0));                // 握柄缠布
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.05, 2.3, 6), wood);
     shaft.position.y = -0.22; shaft.castShadow = true;
+    this.staffHilt.position.set(0, -1.15, 0);                                 // 杖尾端面
+    shaft.add(this.staffHilt);
     staff.add(shaft);
     const fork1 = box(0.035, 0.42, 0.035, wood, 0.06, 1.0, 0);
     fork1.rotation.z = -0.55;
+    this.staffTip.position.set(0, 0.21, 0);                                   // 分叉咒枝顶端
+    fork1.add(this.staffTip);
     const fork2 = box(0.03, 0.34, 0.03, wood, -0.07, 0.95, 0);
     fork2.rotation.z = 0.6;
     staff.add(fork1, fork2);
@@ -347,8 +368,13 @@ export class Margit extends BossBase {
     this.armR.add(staff);
     // 召唤金锤（Giant-Crusher 风味）：挂右手，显形度 updateVisuals 缓动（hammerShow）
     this.hammerG.position.set(0, -1.02, 0.16);
-    this.hammerG.add(box(0.055, 0.66, 0.055, wood, 0, -0.1, 0));             // 短柄
-    this.hammerG.add(box(0.46, 0.34, 0.42, this.hammerMat, 0, 0.32, 0));     // 金锤头
+    const hammerHandle = box(0.055, 0.66, 0.055, wood, 0, -0.1, 0);          // 短柄
+    this.hammerHilt.position.set(0, -0.33, 0);                                // 柄端
+    hammerHandle.add(this.hammerHilt);
+    const hammerHead = box(0.46, 0.34, 0.42, this.hammerMat, 0, 0.32, 0);    // 金锤头
+    this.hammerTip.position.set(0, 0.17, 0);                                  // 锤头外端面
+    hammerHead.add(this.hammerTip);
+    this.hammerG.add(hammerHandle, hammerHead);
     this.hammerG.add(box(0.5, 0.08, 0.46, this.hammerMat, 0, 0.14, 0));      // 锤颈箍
     this.hammerLight = new THREE.PointLight(GOLD, 0, 4, 2);
     this.hammerLight.position.set(0, 0.32, 0);
@@ -369,14 +395,22 @@ export class Margit extends BossBase {
     }
     const heldBlade = box(0.035, 0.4, 0.015, steel, 0, -0.75, 0.1);          // 袖中咒刃（钝钢）
     heldBlade.rotation.x = 0.35;
+    this.sleeveHilt.position.set(0, 0.2, 0);
+    this.sleeveTip.position.set(0, -0.2, 0);
+    heldBlade.add(this.sleeveHilt, this.sleeveTip);
     this.armL.add(heldBlade);
     // 召唤金剑（Carian 直剑风味）：挂左手，杖剑三连第三拍显形挥斩（swordShow）
     this.swordG.position.set(0, -0.92, 0.08);
     this.swordG.rotation.x = 0.2;
     this.swordG.add(box(0.05, 0.18, 0.05, robeDark, 0, 0, 0));               // 柄
-    this.swordG.add(box(0.24, 0.04, 0.05, this.swordMat, 0, -0.12, 0));      // 护手
+    const swordGuard = box(0.24, 0.04, 0.05, this.swordMat, 0, -0.12, 0);    // 护手
+    swordGuard.add(this.swordHilt);
+    const swordPoint = box(0.045, 0.18, 0.018, this.swordMat, 0, -1.38, 0);  // 剑尖收锋
+    this.swordTip.position.set(0, -0.09, 0);
+    swordPoint.add(this.swordTip);
+    this.swordG.add(swordGuard);
     this.swordG.add(box(0.07, 1.15, 0.022, this.swordMat, 0, -0.72, 0));     // 剑身
-    this.swordG.add(box(0.045, 0.18, 0.018, this.swordMat, 0, -1.38, 0));    // 剑尖收锋
+    this.swordG.add(swordPoint);
     this.swordG.visible = false;
     this.armL.add(this.swordG);
     this.torso.add(this.armL);
@@ -387,6 +421,42 @@ export class Margit extends BossBase {
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
   protected override headPart(): THREE.Object3D { return this.head; }
+
+  /**
+   * 每一拍用这一下真正挥出去的东西。
+   * 金锤/锤跃/杖背藏近砸的冲击环只在落点画坑，伤害本来就只有挥下那一拍，不再加圆。
+   * 杖剑三连前两段是咒杖，第三段才换左手咒剑。切过去的那一帧基类还没开始查这一段。
+   */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    switch (m.name) {
+      case "margitStaff":
+      case "margitWindup":
+      case "margitLeap":
+        return { kind: "blade", hilt: this.staffHilt, tip: this.staffTip, pad: 0.2 };
+      case "margitCombo":
+        return this.comboUsesSword(m)
+          ? { kind: "blade", hilt: this.swordHilt, tip: this.swordTip, pad: 0.08 }
+          : { kind: "blade", hilt: this.staffHilt, tip: this.staffTip, pad: 0.2 };
+      case "margitHammer":
+      case "margitHammerLeap":
+        return { kind: "blade", hilt: this.hammerHilt, tip: this.hammerTip, pad: 0.2 };
+      case "margitRetreat":
+        return { kind: "blade", hilt: this.sleeveHilt, tip: this.sleeveTip, pad: 0.04 };
+      case "margitTail":
+        return { kind: "blade", hilt: this.tailHilt, tip: this.tailTip, pad: 0.08 };
+      case "margitDaggers":
+        return { kind: "none" };
+      default:
+        return null;
+    }
+  }
+
+  /** 第三段从 active*0.4 + 2*段间隔 开始。用招式上已有的间隔，不另写一个数。 */
+  private comboUsesSword(m: MoveDef): boolean {
+    const interval = m.hitInterval ?? HIT_GAP;
+    const thirdAt = Math.min(m.active * 0.4 + 2 * interval, m.active);
+    return this.hitFired >= 2 || this.t >= thirdAt;
+  }
 
   // ---------------- 姿态应用 ----------------
   protected override applyPose(): void {
