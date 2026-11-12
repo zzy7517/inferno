@@ -151,6 +151,23 @@ export class Watchers extends BossBase {
       m.position.set(x, y, z); m.castShadow = true;
       return m;
     };
+    // 深色布、flatShading 都用上面的 cloth。面片不索引，平着切出折痕。
+    const clothMesh = (pts: readonly (readonly [number, number, number])[], faces: readonly (readonly number[])[], x = 0, y = 0, z = 0) => {
+      const pos: number[] = [];
+      for (const f of faces) for (const i of f) {
+        const p = pts[i];
+        pos.push(p[0], p[1], p[2]);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, cloth);
+      m.position.set(x, y, z); m.castShadow = true;
+      return m;
+    };
+    const quad = (faces: number[][], a: number, b: number, c: number, d: number) => {
+      faces.push([a, c, b], [b, c, d]);
+    };
     // 腿（髋枢轴 + 膝枢轴两组：跪地/蹲伏的弯折）——腿根 y 1.38
     for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.14], [this.legL, this.shinL, -0.14]] as [THREE.Group, THREE.Group, number][]) {
       leg.position.set(sx, 1.38, 0);
@@ -190,6 +207,33 @@ export class Watchers extends BossBase {
     this.head.add(box(0.05, 0.1, 0.26, ironDark, 0, 0.19, 0));             // 盔脊
     this.head.add(box(0.24, 0.09, 0.05, ironDark, 0, 0.03, 0.15));         // 眼缝暗槽
     for (const ex of [-0.062, 0.062]) this.head.add(box(0.05, 0.032, 0.02, this.eyeMat, ex, 0.03, 0.175));
+    // 兜帽罩在盔外，额前开口留着眼缝。侧面是后倾的尖顶，布顺着后颈垂下来。
+    {
+      const pts: [number, number, number][] = [
+        [-0.17, 0.16, 0.11], [0, 0.23, 0.09], [0.17, 0.16, 0.11],
+        [-0.20, 0.26, -0.01], [0, 0.38, -0.06], [0.20, 0.26, -0.01],
+        [-0.17, 0.12, -0.17], [0, 0.20, -0.20], [0.17, 0.12, -0.17],
+        [-0.14, -0.02, -0.20], [0, 0.04, -0.24], [0.14, -0.02, -0.20],
+        [-0.10, -0.18, -0.18], [0, -0.08, -0.24], [0.08, -0.20, -0.15],
+        [-0.03, -0.30, -0.12], [0, -0.36, -0.16], [0.04, -0.24, -0.10],
+      ];
+      const faces: number[][] = [];
+      for (let i = 0; i < 5; i++) {
+        const a = i * 3, b = a + 3;
+        quad(faces, a, a + 1, b, b + 1);
+        quad(faces, a + 1, a + 2, b + 1, b + 2);
+      }
+      const flap = pts.length;
+      pts.push(
+        [-0.19, 0.04, 0.03], [-0.14, -0.12, -0.04], [-0.08, -0.24, -0.10],
+        [0.19, 0.04, 0.03], [0.14, -0.12, -0.04], [0.07, -0.22, -0.08],
+      );
+      quad(faces, 0, flap, 3, flap + 1);
+      faces.push([3, flap + 1, 6], [6, flap + 1, flap + 2], [6, flap + 2, 9]);
+      quad(faces, 2, 5, flap + 3, flap + 4);
+      faces.push([5, 8, flap + 4], [8, flap + 4, flap + 5], [8, 11, flap + 5]);
+      this.head.add(clothMesh(pts, faces));
+    }
     this.torso.add(this.head);
     // 右臂 + 大剑。长握柄露出拳头以下一截，宽剑格，厚脊薄刃，尖端逐级收窄。
     // 刃全部用 bladeMat：二阶段整刃一起燃，点燃时机不改。不新开灯。
@@ -260,17 +304,48 @@ export class Watchers extends BossBase {
     dagger.add(box(0.01, 0.045, 0.008, this.bladeMat, 0, -0.59, 0));        // 末端约 y=-0.61
     this.armL.add(dagger);
     this.torso.add(this.armL);
-    // 破烂黑披风：三片 Plane，跟随摆动（updateVisuals）
-    for (let i = 0; i < 3; i++) {
-      const g = new THREE.PlaneGeometry(0.42, 1.0);
-      g.translate(0, -0.5, 0);                                             // 上缘为摆动枢轴
-      const p = new THREE.Mesh(g, cloth);
-      p.position.set((i - 1) * 0.19, 2.06, -0.22);
-      p.rotation.y = (i - 1) * 0.13;
-      p.castShadow = true;
-      this.cape.push(p);
-      this.torso.add(p);
+    // 一条破斗篷：从肩后贴背垂下，过腰后向后曳开，下摆参差。
+    // 右缘停在持剑肩（x=0.33）内侧，布不包住挥剑的肩轴；下摆让开贴背扫过的刃。
+    {
+      const cols = 4, rows = 8;
+      const tears = [0.22, 0, 0.38, 0.08, 0.3];
+      const pts: [number, number, number][] = [];
+      for (let r = 0; r <= rows; r++) {
+        const v = r / rows;
+        for (let c = 0; c <= cols; c++) {
+          const u = c / cols;
+          const x = (-0.24 + v * 0.08) + ((0.12 - v * 0.04) - (-0.24 + v * 0.08)) * u;
+          const yFull = 0.76 - v * 1.78;
+          const y = yFull + tears[c] * v * v * 0.7;
+          const zS = y >= -0.02 ? -0.23 - (0.76 - y) * 0.32 : -0.64 - Math.min(1, (-0.02 - y) / 0.95) * 0.38;
+          const z = zS - Math.sin(u * Math.PI) * (0.08 + v * 0.06);
+          pts.push([x, y, z]);
+        }
+      }
+      const faces: number[][] = [];
+      const id = (r: number, c: number) => r * (cols + 1) + c;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        if (r >= rows - 2 && c === 0) continue;                            // 左下角撕开一截
+        quad(faces, id(r, c), id(r, c + 1), id(r + 1, c), id(r + 1, c + 1));
+      }
+      this.torso.add(clothMesh(pts, faces));
     }
+    // 肩后两片短破布，仍走 cape 的摆动。短，甩不开肩轴，也扫不到刃。
+    const rag = (x0: number, x1: number, len: number) => {
+      const pts: [number, number, number][] = [
+        [x0, 0, 0], [(x0 + x1) / 2, 0, -0.04], [x1, 0, 0],
+        [x0 + 0.01, -len * 0.55, -0.02], [(x0 + x1) / 2, -len * 0.5, -0.08], [x1 - 0.01, -len * 0.6, -0.02],
+        [x0 + 0.02, -len, 0], [(x0 + x1) / 2 + 0.01, -len * 0.85, -0.05], [x1, -len * 0.7, 0],
+      ];
+      const faces: number[][] = [];
+      quad(faces, 0, 1, 3, 4); quad(faces, 1, 2, 4, 5);
+      quad(faces, 3, 4, 6, 7); quad(faces, 4, 5, 7, 8);
+      return clothMesh(pts, faces);
+    };
+    const ragL = rag(-0.16, -0.04, 0.28); ragL.position.set(0, 0.42, -0.36);
+    const ragR = rag(-0.02, 0.08, 0.22); ragR.position.set(0, 0.38, -0.34);
+    this.cape.push(ragL, ragR);
+    this.torso.add(ragL, ragR);
     this.root.add(this.body);
     this.body.add(this.torso);
   }
