@@ -177,8 +177,8 @@ async function main() {
       g.player.pos.set(p.x, 0, p.z);
       g.player.yaw = p.yaw;
       g.camYaw = p.yaw + Math.PI;
-      if (p.pitch !== undefined) g.camPitch = p.pitch;   // 高处地标需抬头（静止时不回正）
-      g.camPrevPos.copy(g.player.pos);
+      if (p.pitch !== undefined) g.camPitch = p.pitch;
+      g.snapCamera();
     }, s);
     await page.waitForTimeout(750);
     const path = `${SHOT_DIR}/${s.name}.png`;

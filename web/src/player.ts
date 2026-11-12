@@ -44,6 +44,8 @@ export class Player {
   estus = P.estusMax;
   souls = 0;
   lockOn = false;
+  /** 正在疾跑。镜头据此把视野拉开。 */
+  sprinting = false;
   blocking = false;
 
   private charge = 0;
@@ -286,6 +288,7 @@ export class Player {
   // ---------------- 主更新 ----------------
   update(dt: number, camYaw: number): void {
     this.elapsed += dt;
+    this.sprinting = false;
     if (this.state === "dead") { this.mixer.update(dt); return; }
     // 击飞空中：抛物线 + 落地硬直，锁一切输入
     if (this.airborne) {
@@ -352,6 +355,7 @@ export class Player {
         // 移动
         if (moving) {
           const sprint = this.keys.has("ShiftLeft") && this.canSpend(1);
+          this.sprinting = sprint;
           const speed = (sprint ? P.sprint : P.walk) * slowK;
           if (sprint) this.spend(11 * dt);
           this.pos.addScaledVector(inputDir, speed * dt);

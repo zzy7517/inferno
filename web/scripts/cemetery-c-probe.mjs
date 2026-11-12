@@ -28,7 +28,7 @@ const median = xs => {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 };
 
-/** 传送取景（跟背相机：yaw 0=+Z π/2=+X；camPrevPos 吸附防插值抖动） */
+/** 传送取景（轨道相机：yaw 0=+Z π/2=+X；snapCamera 把注视点贴到新位置） */
 const teleport = (page, p) => page.evaluate(pp => {
   const g = window.__game;
   g.player.lockOn = false;
@@ -36,7 +36,7 @@ const teleport = (page, p) => page.evaluate(pp => {
   g.player.yaw = pp.yaw;
   g.camYaw = pp.yaw + Math.PI;
   if (pp.pitch !== undefined) g.camPitch = pp.pitch;
-  g.camPrevPos.copy(g.player.pos);
+  g.snapCamera();
 }, p);
 
 /** 隐藏角色/小怪/Boss 后采样 renderer.info（场景本体口径；12 帧中位数） */

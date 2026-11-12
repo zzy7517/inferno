@@ -57,16 +57,23 @@ export const BOSS = {
   name: "灰烬审判者古达",
 };
 
-/** 镜头：默认全自动（触控板友好）——移动跟背 + 锁定双人取景 + 开战自动锁定；按 V 进自由视角（鼠标指针锁定） */
+/** 镜头：鼠标轨道。点画面锁定指针，滚轮改距离；锁定时绕到目标背后，俯仰和距离跟身高、间距走。 */
 export const CAM = {
   yaw: -Math.PI / 2,     // 初始朝向：看向 +X（走廊→Boss 方向），W 即前进
-  pitch: 0.36,
-  followLerp: 2.6,       // 自动跟背缓动强度
-  manualGrace: 1.5,      // 自由视角退出后，多少秒内不自动回正
-  lockLerp: 6,           // 锁定时镜头缓动强度
-  lockPitch: 0.30,
-  lockDistBase: 4.6,     // 锁定取景基础距离
-  lockDistPerSep: 0.30,  // 距离随人/Boss 间距的增量系数
+  pitch: 0.18,
+  dist: 4.4,
+  distMin: 2.6,
+  distMax: 7.5,
+  pitchMin: -0.55,
+  pitchMax: 0.95,
+  lookSens: 0.0024,
+  fov: 55,
+  shoulder: 0.35,        // 注视点往镜头右侧偏，人不要卡在画面正中
+  lockYaw: 6,
+  lockPitch: 3,
+  smoothXZ: 14,
+  smoothY: 8,
+  distLerp: 5,
 };
 
 /** 古达招式。重招前摇略长于 m1-demo 初值以便读招；后摇留出一段 R1。跳劈后摇保持 1.40s 惩罚窗。 */

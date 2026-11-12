@@ -71,7 +71,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 export class Game {
   private renderer = new THREE.WebGLRenderer({ antialias: true });
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 480);
+  private camera = new THREE.PerspectiveCamera(CAM.fov, innerWidth / innerHeight, 0.1, 480);
   private vfx!: Vfx;
   private bonfire!: Bonfire;
   private fog!: FogGate;
@@ -88,9 +88,17 @@ export class Game {
   private flow: Flow = "intro";
   private camYaw = CAM.yaw;
   private camPitch = CAM.pitch;
-  private manualT = 0;                        // 自由视角宽限倒计时（>0 时不自动跟背）
-  private camPrevPos = new THREE.Vector3(-12.2, 0, 1.4);   // 上一帧玩家位置（判断是否移动，供跟背）
-  private camDist = 5.6;
+  private camDistT = CAM.dist;
+  private camDist = CAM.dist;
+  private smoothTarget = new THREE.Vector3();
+  private readonly lookPt = new THREE.Vector3();
+  private readonly focusPt = new THREE.Vector3();
+  private readonly camOffset = new THREE.Vector3();
+  private readonly camRight = new THREE.Vector3();
+  private lookX = 0;
+  private lookY = 0;
+  private lookZoom = 0;
+  private camFov = CAM.fov;
   private shakeAmp = 0;
   private shakeT = 0;                     // 震屏相位（正弦叠加，避免逐帧随机噪声）
   private readonly camRay = new THREE.Raycaster();
@@ -208,8 +216,7 @@ export class Game {
     }
 
     this.bindInput();
-    this.camera.position.set(-16, 3, 4);
-    this.camPrevPos.copy(this.anchors.spawn);
+    this.snapCamera();
     this.prevPx = this.anchors.spawn.x;
     this.showMsg("无名的不死人啊，回到这片灰烬中来吧……", 4);
   }
@@ -358,25 +365,27 @@ export class Game {
   // ---------------- 输入 ----------------
   private bindInput(): void {
     const canvas = this.renderer.domElement;
-    canvas.addEventListener("click", () => { AU.init(); });   // 点击仅初始化音频，不锁定指针（触控板友好）
+    canvas.addEventListener("click", () => { AU.init(); });
+    canvas.addEventListener("mousedown", () => {
+      if (this.menuOpen || document.pointerLockElement === canvas) return;
+      const lock = canvas.requestPointerLock();
+      if (lock) lock.catch(() => {});
+    });
     canvas.addEventListener("dragstart", e => e.preventDefault()); // 点按被当成拖拽时，浏览器会停住页面绘制
     addEventListener("contextmenu", e => e.preventDefault());
-    // 双模式视角：默认全自动（跟背/锁定取景）；按 V 切换自由视角（鼠标指针锁定），ESC 退出后自动回正
-    document.addEventListener("pointerlockchange", () => {
-      if (document.pointerLockElement !== canvas) this.manualT = CAM.manualGrace;   // 退出自由视角 → 宽限后恢复跟背
-    });
     addEventListener("mousemove", e => {
-      if (document.pointerLockElement !== canvas || this.player.lockOn) return;    // 锁定时镜头交给取景逻辑
-      this.camYaw -= e.movementX * 0.0024;
-      this.camPitch = Math.max(0.04, Math.min(0.9, this.camPitch + e.movementY * 0.002));
-      this.manualT = CAM.manualGrace;
+      if (this.menuOpen) return;
+      // 指针锁住时用完整位移；没锁住时鼠标划过画面也转，幅度打六折
+      const k = document.pointerLockElement === canvas ? 1 : e.buttons === 0 ? 0.6 : 0;
+      if (!k) return;
+      this.lookX += e.movementX * k;
+      this.lookY += e.movementY * k;
     });
-    // passive:false 才能 preventDefault。不拦的话，触控板横滑会走浏览器返回手势：
-    // 页面被拍成快照，WebGL 不再刷新，看起来就是屏幕卡死。
+    // passive:false 才能 preventDefault，避免滚轮把页面滚走、WebGL 停更。
     addEventListener("wheel", e => {
       e.preventDefault();
-      if (e.ctrlKey || document.pointerLockElement !== canvas) return; // 捏合只禁缩放；双指不推动镜头
-      this.camDist = Math.max(3.2, Math.min(8.5, this.camDist + e.deltaY * 0.004));
+      if (this.menuOpen) return;
+      this.lookZoom += Math.sign(e.deltaY);
     }, { passive: false });
     addEventListener("mousedown", e => { if (!this.menuOpen) this.player.onMouse(e.button, true); });
     addEventListener("mouseup", e => { if (!this.menuOpen) this.player.onMouse(e.button, false); });
@@ -396,11 +405,7 @@ export class Game {
         return;
       }
       this.player.onKey(e.code, true);
-      if (e.code === "KeyV" && !e.repeat) {                       // 自由视角开关（鼠标用户）
-        if (document.pointerLockElement === canvas) document.exitPointerLock();
-        else canvas.requestPointerLock();
-      }
-      else if (e.code === "KeyQ" && !e.repeat) this.cycleLock();
+      if (e.code === "KeyQ" && !e.repeat) this.cycleLock();
       else if (e.code === "KeyE") this.interact();
       else if (e.code === "KeyT") this.tune.toggleSlow();         // 慢动作（速度在调校台调）
       else if (e.code === "KeyM") AU.toggleMute();
@@ -505,7 +510,7 @@ export class Game {
     this.fightStart = this.elapsed;
     this.lockKind = "boss";
     this.lockEnemy = null;
-    this.player.lockOn = true;   // 开战自动锁定 Boss（无鼠标方案）
+    this.player.lockOn = false;
   }
 
   private onBossDeath(): void {
@@ -907,44 +912,53 @@ export class Game {
     return dx * dx + dz * dz >= s.walk * s.walk;
   }
 
+  /** 传送后贴到角色身上，避免注视点从旧坐标缓过来。 */
+  private snapCamera(): void {
+    const p = this.player.pos;
+    this.smoothTarget.set(p.x, p.y + 1.45, p.z);
+    this.camDist = this.camDistT;
+  }
+
   private updateCamera(rdt: number): void {
     if (this.player.lockOn && !this.lockPoint()) this.clearLock();
-    const target = this.player.pos.clone().add(new THREE.Vector3(0, 1.45, 0));
-    let dist = this.camDist;
-    let lookAt = target;
+    if (!this.menuOpen) {
+      this.camYaw -= this.lookX * CAM.lookSens;
+      this.camPitch = clamp(this.camPitch + this.lookY * CAM.lookSens, CAM.pitchMin, CAM.pitchMax);
+      if (this.lookZoom) this.camDistT = clamp(this.camDistT + this.lookZoom * 0.4, CAM.distMin, CAM.distMax);
+    }
+    this.lookX = this.lookY = this.lookZoom = 0;
+
+    const p = this.player.pos;
+    if (this.smoothTarget.distanceToSquared(p) > 64) this.snapCamera();
+    this.smoothTarget.x = damp(this.smoothTarget.x, p.x, CAM.smoothXZ, rdt);
+    this.smoothTarget.y = damp(this.smoothTarget.y, p.y + 1.45, CAM.smoothY, rdt);
+    this.smoothTarget.z = damp(this.smoothTarget.z, p.z, CAM.smoothXZ, rdt);
+    const look = this.lookPt.copy(this.smoothTarget);
 
     const focus = this.lockPoint();
-    const locked = !!focus;
-    if (locked && focus) {
-      // 锁定取景：镜头在玩家背侧、看向两人中点，距离随间距自适应
-      const toBoss = focus.clone().sub(this.player.pos);
-      const sep = toBoss.length();
-      lookAt = this.player.pos.clone().lerp(focus, 0.32).setY(target.y);
-      const wantYaw = Math.atan2(toBoss.x, toBoss.z) + Math.PI;
-      let d = wantYaw - this.camYaw;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.camYaw += d * Math.min(1, rdt * CAM.lockLerp);
-      this.camPitch += (CAM.lockPitch - this.camPitch) * Math.min(1, rdt * 4);
-      dist = Math.max(this.camDist, CAM.lockDistBase + sep * CAM.lockDistPerSep);
-    } else {
-      // 自动跟背：自由视角宽限期外且正在移动 → 缓动到角色背后（黑神话式）
-      this.manualT = Math.max(0, this.manualT - rdt);
-      const moved = this.player.pos.distanceToSquared(this.camPrevPos) > 1e-6;
-      this.camPrevPos.copy(this.player.pos);
-      if (this.manualT <= 0 && moved) {
-        const wantYaw = this.player.yaw + Math.PI;
-        let d = wantYaw - this.camYaw;
-        d = Math.atan2(Math.sin(d), Math.cos(d));
-        this.camYaw += d * Math.min(1, rdt * CAM.followLerp);
-        this.camPitch += (CAM.pitch - this.camPitch) * Math.min(1, rdt * 1.5);
-      }
+    let wantDist = this.camDistT;
+    if (focus) {
+      const dx = focus.x - p.x, dz = focus.z - p.z;
+      const sep = Math.hypot(dx, dz);
+      this.camYaw = dampAngle(this.camYaw, Math.atan2(-dx, -dz), CAM.lockYaw, rdt);
+      const boss = this.lockKind === "boss";
+      const top = boss
+        ? Math.max(1.6, this.boss.headWorld(this.focusPt).y - this.boss.root.position.y)
+        : Math.max(1.2, (this.lockEnemy?.hitPoint(this.focusPt).y ?? p.y + 1.2) - (this.lockEnemy?.root.position.y ?? p.y));
+      this.camPitch = damp(this.camPitch, clamp(0.16 + (top - 1.7) * 0.05 - sep * 0.004, 0.05, 0.4), CAM.lockPitch, rdt);
+      wantDist = this.camDistT + Math.min(sep * 0.12, 2) * (boss ? 1.4 : 1);
+      const rootY = boss ? this.boss.root.position.y : (this.lockEnemy?.root.position.y ?? p.y);
+      const k = clamp(0.3 - sep * 0.005, 0.1, 0.3);
+      look.lerp(this.focusPt.set(focus.x, rootY + top * 0.55, focus.z), k);
     }
-    this.camera.position.set(
-      lookAt.x + Math.sin(this.camYaw) * Math.cos(this.camPitch) * dist,
-      lookAt.y + Math.sin(this.camPitch) * dist,
-      lookAt.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist,
-    );
-    this.occludeCamera(lookAt);
+    this.camDist = damp(this.camDist, wantDist, CAM.distLerp, rdt);
+
+    const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
+    this.camOffset.set(Math.sin(this.camYaw) * cp, sp, Math.cos(this.camYaw) * cp);
+    this.camRight.set(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
+    look.addScaledVector(this.camRight, CAM.shoulder);
+    this.camera.position.copy(look).addScaledVector(this.camOffset, this.camDist);
+    this.occludeCamera(look);
     if (this.shakeAmp > 0.001) {
       // 手感档案的振幅直接驱动互质正弦；顿帧期间仍走真实时间，衰减完回到原位
       this.shakeT += rdt * 28;
@@ -956,7 +970,13 @@ export class Game {
     } else {
       this.shakeT = 0;
     }
-    this.camera.lookAt(lookAt);
+    this.camera.lookAt(look);
+    const wantFov = CAM.fov + (this.player.sprinting ? 6 : 0) + (this.player.state === "heavyCharge" ? -5 : 0);
+    this.camFov = damp(this.camFov, wantFov, 5, rdt);
+    if (Math.abs(this.camera.fov - this.camFov) > 0.02) {
+      this.camera.fov = this.camFov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   /** 镜头钻进墙里时拉回到墙前。只打场景根上的实心网格，跳过天穹、雾和地面贴片。 */
@@ -1108,4 +1128,16 @@ export class Game {
       }
     });
   }
+}
+
+function damp(a: number, b: number, lambda: number, dt: number): number {
+  return a + (b - a) * (1 - Math.exp(-lambda * dt));
+}
+function dampAngle(a: number, b: number, lambda: number, dt: number): number {
+  let d = b - a;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  return a + d * (1 - Math.exp(-lambda * dt));
+}
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }

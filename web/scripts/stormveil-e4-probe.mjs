@@ -197,7 +197,7 @@ async function main() {
       g.player.yaw = p.yaw;
       g.camYaw = p.yaw + Math.PI;
       if (p.pitch !== undefined) g.camPitch = p.pitch;
-      g.camPrevPos.copy(g.player.pos);
+      g.snapCamera();
       g.prevPx = p.x;
     }, s);
     await page.waitForTimeout(750);
