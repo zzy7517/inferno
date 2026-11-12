@@ -1,0 +1,19 @@
+web/src/player.ts
+  s_fb1dc2041d3154::t_61ef253554df29 412-420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "a2eaa8f980fc16e9ced64d0f3979cf7bd9697977",
+  "prompts": {},
+  "sessions": {
+    "s_fb1dc2041d3154": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a5f3e49-610c-4a0d-92ef-de0a98be4b9a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
