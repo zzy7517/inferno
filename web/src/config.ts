@@ -46,6 +46,8 @@ export const P = {
   estusHeal: 0.45, estusMax: 3,
   staminaRegen: 30, regenDelay: 0.55, regenBlock: 8,
   bufferWindow: 0.25,
+  dmgMul: 1,                                           // 调试：全局攻击倍率，命中结算时乘
+  godDmg: false,                                       // 调试：两下死——命中直接结算目标 maxHp/2（忽略倍率）
 };
 
 export const BOSS = {

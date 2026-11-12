@@ -974,7 +974,9 @@ export class EnemyManager {
       this.struck.add(e);
       const to = new THREE.Vector3().subVectors(e.root.position, pos);
       to.y = 0;
-      const r = e.takeHit(dmg, poise, feelKey, to.normalize(), opts);
+      // 调试热调：两下死按目标上限一半结算（忽略倍率）；否则乘全局倍率
+      const d = P.godDmg ? Math.ceil(e.stats.hp / 2) : dmg * P.dmgMul;
+      const r = e.takeHit(d, poise, feelKey, to.normalize(), opts);
       if (r.blocked) blocked++;
       else hits++;
     }

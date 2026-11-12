@@ -435,7 +435,8 @@ export class Game {
   /** 玩家命中 Boss：时间/动画/特效/音效/镜头/手柄六通道同帧 */
   private hitBoss(dmg: number, poise: number, feelKey: string, point: THREE.Vector3): void {
     const f = FEEL[feelKey] ?? FEEL.pR1a;
-    const r = this.boss.takeHit(dmg, poise);
+    // 调试热调：两下死直接结算一半上限；否则乘全局倍率
+    const r = this.boss.takeHit(P.godDmg ? Math.ceil(this.boss.maxHp / 2) : dmg * P.dmgMul, poise);
     this.vfx.sparks.burst(point, f.sparks, f.sparkSpeed, 0.35);
     this.hitstopFor(f.hitstop);
     this.shake(f.shake);
