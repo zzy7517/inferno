@@ -8,6 +8,8 @@ import type { BossBase, BossHost } from "./boss-base";
 import { Vordt, VORDT_STATS } from "./boss-vordt";
 import { Watchers, WATCHERS_STATS } from "./boss-watchers";
 import { Sulyvahn, SULYVANN_STATS } from "./boss-sulyvahn";
+import { Morgott, MORGOTT_STATS } from "./boss-morgott";
+import { Radahn, RADAHN_STATS } from "./boss-radahn";
 import { Player } from "./player";
 import { Tuning } from "./tune";
 import { Projectiles } from "./projectile";
@@ -42,6 +44,8 @@ const BOSSES: Record<string, BossEntry> = {
   margit:    { name: MARGIT_STATS.name, radius: MARGIT_STATS.radius, arena: "stormveil", souls: 12000, create: (s, v, p, h) => new Margit(s, v, p, h) },
   godrick:   { name: GODRICK_STATS.name, radius: GODRICK_STATS.radius, arena: "stormveil", souls: 20000, create: (s, v, p, h) => new Godrick(s, v, p, h) },
   watchers:  { name: WATCHERS_STATS.name, radius: WATCHERS_STATS.radius, arena: "cemetery", souls: 6000, create: (s, v, p, h) => new Watchers(s, v, p, h) },
+  morgott:   { name: MORGOTT_STATS.name, radius: MORGOTT_STATS.radius, arena: "stormveil", souls: 15000, create: (s, v, p, h) => new Morgott(s, v, p, h) },
+  radahn:    { name: RADAHN_STATS.name, radius: RADAHN_STATS.radius, arena: "cemetery", souls: 18000, create: (s, v, p, h) => new Radahn(s, v, p, h) },
   sulyvahn:  { name: SULYVANN_STATS.name, radius: SULYVANN_STATS.radius, arena: "highwall", souls: 9000, create: (s, v, p, h) => new Sulyvahn(s, v, p, h) },
 };
 /** Boss→场景映射（进度线推导用） */
@@ -168,11 +172,17 @@ export class Game {
       onDeath: souls => { this.player.souls += souls; this.showMsg(`魂 +${souls}`, 1.2, true); this.saveState(); },
       shake: a => this.shake(a),
     });
-    this.spawnEnemies();
-
     // Boss 选择：?boss= 直选（调试/再战入口，一次性），否则按进度线推导本场雾门 Boss
+    // 直选同时开放直至该 Boss 的驻区——否则 clampWorld 会按未解锁区把玩家推出竞技场（Boss 够不着）
     const bossParam = params.get("boss");
-    if (bossParam && BOSSES[bossParam]) this.bossOverride = bossParam;
+    if (bossParam && BOSSES[bossParam]) {
+      this.bossOverride = bossParam;
+      for (let i = 0; i <= BOSS_ORDER.indexOf(bossParam as BossId); i++) {
+        const z = ZONE_OF[BOSS_ORDER[i]];
+        if (z && !this.progress.zoneUnlocks.includes(z)) this.progress.zoneUnlocks.push(z);
+      }
+    }
+    this.spawnEnemies();
     this.spawnBoss();
 
     // 调校台（` 键开关）：帧数据热调 / 判定可视化 / 逐帧 / 存档
@@ -460,7 +470,7 @@ export class Game {
     }
     this.vfx.embers.burst(point.clone().setY(1.5), 40, 6, 1.2);
     this.shake(0.8);
-    this.showMsg("人性的沉淀", 1.6);
+    if (this.bossId === "gundyr") this.showMsg("人性的沉淀", 1.6);
   }
 
   private revealBoss(): void {

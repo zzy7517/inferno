@@ -454,6 +454,10 @@ export class Watchers extends BossBase {
     this.transformDur = 2.4;
   }
 
+  protected override releaseSharedState(): void {
+    if (this.p2Applied) this.restorePhase1Moves();
+  }
+
   protected override resetVisuals(): void {
     this.restorePhase1Moves();
     this.bladeMat.emissiveIntensity = 0;

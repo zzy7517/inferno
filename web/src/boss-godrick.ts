@@ -798,6 +798,10 @@ export class Godrick extends BossBase {
     this.transformDur = 2.5;
   }
 
+  protected override releaseSharedState(): void {
+    if (this.p2Applied) this.restorePhase1Moves();
+  }
+
   protected override resetVisuals(): void {
     this.restorePhase1Moves();
     this.tfxStep = 0;

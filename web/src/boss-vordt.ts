@@ -397,6 +397,10 @@ export class Vordt extends BossBase {
     if (Math.random() < dt * 8) this.mist.burst(this.chestWorld(), 1, 0.8, 1.6, 0.4);
   }
 
+  protected override releaseSharedState(): void {
+    if (this.phase === 2) this.cfg.walkSpeed = WALK_P1;
+  }
+
   /** 复位外观：锤冰收回、眼灯熄灭、移速还原、回趴伏石像 */
   protected override resetVisuals(): void {
     this.transformFxDone = false;

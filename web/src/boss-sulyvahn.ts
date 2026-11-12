@@ -536,6 +536,10 @@ export class Sulyvahn extends BossBase {
     if (Math.random() < dt * 20) this.vfx.embers.burst(this.chestWorld(), 3, 3, 1.2);
   }
 
+  protected override releaseSharedState(): void {
+    if (this.p2Applied) this.restorePhase1Moves();
+  }
+
   protected override resetVisuals(): void {
     this.restorePhase1Moves();
     this.ghostOn = false;

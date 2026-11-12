@@ -417,15 +417,15 @@ export class Margit extends BossBase {
         const ks = smooth(k);
         if (k > 0) {
           this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * ks);
-          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * 1.55;       // 升到顶点后悬停不落
           this.lerpPose(LWIND, LHOVER, ks);
+          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * 1.55;       // 升到顶点后悬停不落（须在 lerp 之后）
           if (Math.random() < 0.4) this.vfx.dust.burst(this.root.position.clone().setY(0.2), 2, 2, 0.6);
         }
         return;
       }
       if (sub === "act") {
-        this.pose.y = 1.55 * Math.max(0, 1 - t / m.active);                  // 下刺：整段钉到地
         this.lerpPose(LHOVER, LSTAB, seg(t, 0, m.active));
+        this.pose.y = 1.55 * Math.max(0, 1 - t / m.active);                  // 下刺：整段钉到地（须在 lerp 之后）
         return;
       }
       this.lerpPose(LSTAB, STANCE, smooth(seg(t, m.recovery * 0.25, m.recovery)));   // 落地大硬直（惩罚窗口）
@@ -438,8 +438,8 @@ export class Margit extends BossBase {
         const k = smooth(seg(t, m.startup * 0.5, m.startup));
         if (k > 0) {
           this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
-          this.pose.y = Math.sin(k * Math.PI) * 1.8;                          // 高跳抛物线
           this.lerpPose(HLW, HLAIR, k);
+          this.pose.y = Math.sin(k * Math.PI) * 1.8;                          // 高跳抛物线（须在 lerp 之后）
         }
         return;
       }
@@ -752,8 +752,9 @@ export class Margit extends BossBase {
         this.gold.burst(this.root.position.clone().setY(0.8), 18, 4, 1.2, 0.6);
         this.vfx.ring(this.root.position, 5.5, GOLD);
       }
-      this.pose.y = 0;
-      this.lerpPose(TF_AIR, TF_SLAM, smooth(seg(this.t, this.transformHitAt, this.transformHitAt + 0.2)));
+      const k = smooth(seg(this.t, this.transformHitAt, this.transformHitAt + 0.2));
+      this.lerpPose(TF_AIR, TF_SLAM, k);
+      this.pose.y = 1.1 + (TF_SLAM.y - 1.1) * k;                                 // 从跃起高度落下（lerp 会覆盖提前写入的 y）
       if (this.t > this.transformHitAt + 0.2) {
         this.lerpPose(TF_SLAM, STANCE, smooth(seg(this.t, this.transformHitAt + 0.2, this.transformDur)));
       }
@@ -766,6 +767,10 @@ export class Margit extends BossBase {
     this.lerpPose(this.pose, { ...STANCE, lean: 1.2, y: -0.85, crouch: 0.55, nod: 0.55, rLift: 0.25, rSwing: 0.55, lLift: 0.25, lSwing: -0.55, tail: 0.6 }, dt * 3.5);
     if (Math.random() < dt * 20) this.vfx.embers.burst(this.chestWorld(), 3, 3, 1.2);
     if (Math.random() < dt * 6) this.gold.burst(this.chestWorld(), 1, 0.8, 1.4, 0.4);
+  }
+
+  protected override releaseSharedState(): void {
+    if (this.p2Applied) this.restorePhase1Moves();
   }
 
   protected override resetVisuals(): void {

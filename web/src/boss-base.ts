@@ -92,8 +92,15 @@ export abstract class BossBase {
   protected updateVisuals(): void { }
   /** idle 走近时每帧调用（步态起伏） */
   protected onIdleWalk(): void { }
-  /** 招式被选中进入 tel 时调用（跳跃落点预计算等） */
+  /** 招式被选中进入 tel 时调用（跳跃落点预计算等）；连段切入也会调用 */
   protected onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void { void m; void toPlayer; void dist; }
+  /** 收招连段：40% 且距离进入后续招射程。返回 null 则回待机。位移类后续招靠 onMoveStart 重算落点。 */
+  protected pickChain(m: MoveDef, dist: number, _toPlayer: THREE.Vector3): MoveDef | null {
+    void _toPlayer;
+    const chain = m.chain ? this.moveByName(m.chain) : null;
+    if (!chain || (this.cds[chain.name] ?? 0) > 0 || Math.random() >= 0.4 || dist >= chain.range) return null;
+    return chain;
+  }
   /** 招式 tel→act（进入判定段）：挥砍轨迹特效等（whoosh 音已在基类播） */
   protected onMoveActive(m: MoveDef): void { void m; }
   /** 判定段 whoosh 音量（重招更闷） */
@@ -180,8 +187,12 @@ export abstract class BossBase {
     this.applyPose();
   }
 
-  /** 场景切换/再战换人时销毁：释放几何材质并摘树；子类挂在 scene 的额外对象覆写 extraDispose */
+  /** 本实例若改写过共享帧数据/移速，在销毁时归还。死亡重开不走 reset，不归还会把二阶段数值留在模块表里。 */
+  protected releaseSharedState(): void { }
+
+  /** 场景切换/再战换人时销毁：先归还共享数值，再释放几何材质并摘树；子类挂在 scene 的额外对象覆写 extraDispose */
   dispose(): void {
+    this.releaseSharedState();
     this.root.traverse(o => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
@@ -322,11 +333,12 @@ export abstract class BossBase {
     // rec
     this.movePose(m, "rec", this.t, total);
     if (this.t >= m.recovery) {
-      // 连段：直戳后概率接二连戳
-      const chain = m.chain ? this.moveByName(m.chain) : null;
-      if (chain && (this.cds[chain.name] ?? 0) <= 0 && Math.random() < 0.4 && dist < chain.range) {
+      // 连段：直戳后概率接二连戳；必须走 onMoveStart，否则前冲/刀光段计数沿用上一招
+      const chain = this.pickChain(m, dist, toPlayer);
+      if (chain) {
         this.move = chain; this.sub = "tel"; this.t = 0; this.hitDone = false; this.hitFired = 0;
         this.cds[chain.name] = chain.cd;
+        this.onMoveStart(chain, toPlayer, dist);
       } else {
         this.sub = "idle"; this.move = null;
       }
