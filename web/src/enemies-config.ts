@@ -136,5 +136,7 @@ export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
     { kind: "crow", at: [-17, -2.0], facing: Math.PI / 2 },
     { kind: "squire", at: [-11, 1.5], facing: -Math.PI / 2 },
     { kind: "hollow", at: [17, -1.0], facing: -Math.PI / 2, zone: "stormveil:E4" },
+    { kind: "squire", at: [45.2, 1.4], facing: -Math.PI / 2, zone: "stormveil:F" },       // 谒见长廊卫兵
+    { kind: "crow", at: [50.0, -1.2], facing: -Math.PI / 2, zone: "stormveil:F" },
   ],
 };
