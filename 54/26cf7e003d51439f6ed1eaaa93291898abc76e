@@ -1,0 +1,22 @@
+web/src/enemy.ts
+  s_ae27eec51658c3::t_ed9b3ff8d0f9af 546-554,558
+  s_ae27eec51658c3::t_69c6259455de50 816-826
+  s_ae27eec51658c3::t_c63bbfcf4d782c 699-706,710-711
+  s_ae27eec51658c3::t_248170c6b7a57e 658
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5426cf7e003d51439f6ed1eaaa93291898abc76e",
+  "prompts": {},
+  "sessions": {
+    "s_ae27eec51658c3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "88dcc95e-7c2c-44fc-9468-732ff1b9a38b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
