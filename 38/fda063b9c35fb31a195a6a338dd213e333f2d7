@@ -1,0 +1,41 @@
+web/src/player.ts
+  s_fc7453dc3a1251::t_234f2941bd92a2 47-48
+  s_fc7453dc3a1251::t_ae0ea4e9b7b866 291
+  s_fc7453dc3a1251::t_9ce39254afe455 358
+web/scripts/stormveil-e4-probe.mjs
+  s_fc7453dc3a1251::t_bcae163d2f3f6d 200
+web/src/game.ts
+  s_fc7453dc3a1251::t_2b2f56ccc99443 91-101
+  s_fc7453dc3a1251::t_a8ece4e6adeccd 74
+  s_fc7453dc3a1251::t_9d046384902905 368-370,373,377-382,384,387-388
+  s_fc7453dc3a1251::t_e20baf4622460e 513
+  s_fc7453dc3a1251::t_18b510fe355c00 371-372
+  s_fc7453dc3a1251::t_75956f42990dde 915-921,924-936,939-952,954-961,973-979
+  s_fc7453dc3a1251::t_be1c55fdb4df6d 219
+  s_fc7453dc3a1251::t_cf7617f111eaec 408
+  s_fc7453dc3a1251::t_42eb7d4eef60b7 1132-1143
+web/scripts/highwall-art-probe.mjs
+  s_fc7453dc3a1251::t_678a4baa8483bd 180-181
+web/scripts/cemetery-c-probe.mjs
+  s_fc7453dc3a1251::t_5362ac8f81b789 31,39
+web/src/config.ts
+  s_fc7453dc3a1251::t_773baf8f9a05fb 60,63-76
+web/index.html
+  s_fc7453dc3a1251::t_4ea71cac524a39 154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "38fda063b9c35fb31a195a6a338dd213e333f2d7",
+  "prompts": {},
+  "sessions": {
+    "s_fc7453dc3a1251": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c1cc15e-d4ad-4230-876a-bf73c2c934eb",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
