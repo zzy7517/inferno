@@ -161,7 +161,7 @@ export class Game {
       onPlayerHurt: (dmg, point, feelKey) => this.onPlayerHurt(dmg, point, feelKey),
       onParrySuccess: point => this.onParry(point),
       onDeath: () => this.onPlayerDeath(),
-      bossParryableActive: () => this.boss["sub"] === "act" && this.boss.move?.parryable === true && this.boss.t < (this.boss.move?.active ?? 0) * 0.7,
+      bossParryableActive: () => this.boss.canBeParried(),
       bossOpen: () => this.boss.state === "parried" || this.boss.state === "stagger",
       bossPos: () => this.boss.root.position,
       aimPos: () => this.aimPos(),
@@ -816,13 +816,14 @@ export class Game {
     if (this.player) this.player.lockOn = false;
   }
 
-  /** 当前锁定点。Boss 战自动锁 Boss；小怪超出 22m 或死亡则失效。 */
+  /** 当前锁定点。Boss 战自动锁 Boss；小怪超出 22m、死亡，或封门后站在圆外则失效。 */
   private lockPoint(): THREE.Vector3 | null {
     if (!this.player?.lockOn) return null;
     if (this.lockKind === "enemy") {
       const e = this.lockEnemy;
       if (!e?.alive) return null;
       if (e.root.position.distanceTo(this.player.pos) > 22) return null;
+      if (this.enemyOutsideSeal(e.root.position)) return null;
       return e.root.position;
     }
     if (!this.boss?.awake || this.boss.state === "dead") return null;
@@ -879,7 +880,7 @@ export class Game {
     };
     if (this.boss.awake && this.boss.state !== "dead") push("boss", "boss", this.boss.root.position);
     for (const e of this.enemies.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || this.enemyOutsideSeal(e.root.position)) continue;
       push(`e${e.root.id}`, "enemy", e.root.position, e);
     }
     const front = out.filter(o => Math.abs(o.ang) < 1.9);
@@ -887,6 +888,14 @@ export class Game {
     return pool.map(o => o.kind === "enemy"
       ? { id: o.id, kind: "enemy" as const, enemy: o.enemy as EnemyBase }
       : { id: o.id, kind: "boss" as const });
+  }
+
+  /** 封门已生效，且点在可走圆外。没封门时恒为 false。边界与仇恨一致：距圆心 ≥ walk。 */
+  private enemyOutsideSeal(pos: THREE.Vector3): boolean {
+    const s = this.bossSeal;
+    if (!s) return false;
+    const dx = pos.x - s.x, dz = pos.z - s.z;
+    return dx * dx + dz * dz >= s.walk * s.walk;
   }
 
   private updateCamera(rdt: number): void {
