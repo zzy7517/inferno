@@ -58,6 +58,9 @@ export abstract class EnemyBase {
   protected cds: Record<string, number> = {};
   protected hitFired = 0;
   protected hurtT = 0;          // 受击硬直（打断移动/选招）
+  private airborne = false;     // 上挑浮空：只积分 y，落回 0 结束
+  private launchY = 0;
+  private launchVy = 0;
   protected walkPhase = 0;      // 步态相位
   protected walking = false;
   protected elapsed = 0;
@@ -145,28 +148,62 @@ export abstract class EnemyBase {
   get alive(): boolean { return this.state !== "dead" && !this.gone; }
 
   // ---------------- 公共 API ----------------
-  /** 玩家命中敌人。fromDir=玩家→敌人方向（击退用）。返回 blocked=打盾被弹开（不掉血） */
-  takeHit(dmg: number, poise = 0, feelKey = "pR1a", fromDir?: THREE.Vector3): { died: boolean; blocked: boolean } {
+  /** 玩家命中敌人。fromDir=玩家→敌人方向（击退用）。返回 blocked=打盾被弹开（不掉血）。
+   *  opts.isKick：正面盾挡被踢崩（按本次伤害掉血，结束格挡）。opts.launcher：向上浮空，落回 y=0 结束。 */
+  takeHit(dmg: number, poise = 0, feelKey = "pR1a", fromDir?: THREE.Vector3, opts?: { isKick?: boolean; launcher?: boolean }): { died: boolean; blocked: boolean } {
     void poise;   // 小怪无削韧系统：受击即打断（hurtT），见 enemies.md
     if (this.state === "dead" || this.gone) return { died: false, blocked: false };
-    // 盾挡弹开：持盾敌人在盾挡姿态 act 窗口内、攻击来自正面 → 不掉血，触发弹开手感
-    if (this.stats.guard && this.state === "combat" && this.sub === "act" && this.move?.name === this.stats.guardMove) {
-      const frontal = !fromDir || angleWithin(Math.atan2(fromDir.x, fromDir.z), this.yaw + Math.PI, 1.1);
-      if (frontal) {
-        this.host.onHit("eGuard", this.hitPoint());
-        return { died: false, blocked: true };
-      }
+    // 盾挡：持盾敌人在盾挡姿态 act 窗口内、攻击来自正面。普通攻击弹开；踢击打崩该姿态。
+    const guarding = !!(this.stats.guard && this.state === "combat" && this.sub === "act" && this.move?.name === this.stats.guardMove);
+    const frontal = !fromDir || angleWithin(Math.atan2(fromDir.x, fromDir.z), this.yaw + Math.PI, 1.1);
+    if (guarding && frontal && !opts?.isKick) {
+      this.host.onHit("eGuard", this.hitPoint());
+      return { died: false, blocked: true };
     }
+    const brokeGuard = guarding && frontal && !!opts?.isKick;
     this.hp = Math.max(0, this.hp - dmg);
     this.host.onHit(feelKey, this.hitPoint());
     if (this.hp <= 0) { this.die(); return { died: true, blocked: false }; }
-    // 受击硬直 + 打断前摇/后摇（判定段已出招不打断）
-    this.hurtT = 0.22;
-    if (this.state === "idle" || this.state === "alert") { this.state = "combat"; this.sub = "idle"; }
-    if (this.sub === "tel" || this.sub === "rec") { this.sub = "idle"; this.move = null; }
+    if (brokeGuard) {
+      // 踢击打崩盾挡：掉血就是这次传入的伤害，结束格挡姿态，硬直长于普通受击 0.22s
+      this.hurtT = 0.6;
+      this.sub = "idle";
+      this.move = null;
+      this.t = 0;
+    } else {
+      // 受击硬直 + 打断前摇/后摇（判定段已出招不打断）
+      this.hurtT = 0.22;
+      if (this.state === "idle" || this.state === "alert") { this.state = "combat"; this.sub = "idle"; }
+      if (this.sub === "tel" || this.sub === "rec") { this.sub = "idle"; this.move = null; }
+    }
     if (fromDir) this.root.position.addScaledVector(fromDir, 0.25);
+    if (opts?.launcher) this.beginLaunch();
     return { died: false, blocked: false };
   }
+
+  /** 上挑：只给向上初速。重力与玩家击飞相同（18），地面敌人约 0.67s 落回 y=0。不加水平速度。 */
+  private beginLaunch(): void {
+    if (!this.airborne) this.launchY = Math.max(0, this.root.position.y);
+    this.airborne = true;
+    this.launchVy = 6;
+  }
+
+  /** 浮空只写 root.y。察觉距离、视锥、alert 0.45s、脱战 16m 都不在这里改。 */
+  private stepLaunch(dt: number): void {
+    if (!this.airborne || this.state === "dead") return;
+    this.launchVy -= 18 * dt;
+    this.launchY += this.launchVy * dt;
+    if (this.launchY <= 0) {
+      this.launchY = 0;
+      this.launchVy = 0;
+      this.airborne = false;
+    }
+    this.root.position.y = this.launchY;
+    this.onFloatY(this.launchY);
+  }
+
+  /** 子类同步自身高度缓存。乌鸦用它把 flyY 跟到浮空高度，落地后从 0 爬回悬停。 */
+  protected onFloatY(y: number): void { void y; }
 
   /** 背刺：玩家在敌人背后 ±backstabArc、距离 ≤ backstabRange、敌人非判定段 → 一次 3× 伤害 + 1.2s 硬直。
    *  game 接线：interact 里对最近敌人调用（或走 EnemyManager.tryBackstab） */
@@ -195,6 +232,8 @@ export abstract class EnemyBase {
 
   protected die(): void {
     this.state = "dead"; this.sub = "idle"; this.move = null; this.t = 0;
+    this.airborne = false;
+    this.launchVy = 0;
     this.host.onDeath(this.stats.souls, this.root.position.clone());
   }
 
@@ -230,6 +269,7 @@ export abstract class EnemyBase {
         break;
       }
     }
+    this.stepLaunch(dt);
     this.applyPose();
   }
 
@@ -684,6 +724,8 @@ export class Crow extends EnemyBase {
     this.eyeMat.emissiveIntensity = 0.8 + Math.sin(this.elapsed * 5) * 0.25;
   }
 
+  protected override onFloatY(y: number): void { this.flyY = y; }
+
   protected override movePose(m: MoveDef, sub: EnemySub, t: number): void {
     // 俯仰：扑击/俯冲 tel 仰头爬升、act 头朝下扑咬、rec 拉起
     let pitch = 0;
@@ -770,8 +812,9 @@ export class EnemyManager {
   }
 
   /** 玩家攻击扇面命中（几何同 player.tryHitBoss：距离+±63° 夹角）。
-   *  对每个命中的敌人结算 takeHit（含盾挡弹开），返回命中/弹开数——接线侧据此给玩家格挡硬直等。 */
-  tryHit(pos: THREE.Vector3, yaw: number, dmg: number, poise = 0, feelKey = "pR1a"): { hits: number; blocked: number } {
+   *  对每个命中的敌人结算 takeHit（含盾挡弹开），返回命中/弹开数——接线侧据此给玩家格挡硬直等。
+   *  def 只把 isKick / launcher 交给 takeHit。Boss 不走这条。 */
+  tryHit(pos: THREE.Vector3, yaw: number, dmg: number, poise = 0, feelKey = "pR1a", def?: { isKick?: boolean; launcher?: boolean }): { hits: number; blocked: number } {
     let hits = 0, blocked = 0;
     for (const e of this.enemies) {
       if (e.state === "dead" || e.gone) continue;
@@ -781,7 +824,7 @@ export class EnemyManager {
       let diff = Math.atan2(to.x, to.z) - yaw;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       if (Math.abs(diff) > 1.1) continue;
-      const r = e.takeHit(dmg, poise, feelKey, to.normalize());
+      const r = e.takeHit(dmg, poise, feelKey, to.normalize(), { isKick: def?.isKick, launcher: def?.launcher });
       if (r.blocked) blocked++;
       else hits++;
     }
