@@ -1,0 +1,25 @@
+web/src/boss-vordt.ts
+  s_0d1dc1cc1e1864::t_edad3d19ea8f50 194
+  s_0d1dc1cc1e1864::t_84ee161e6ebbad 185,198,202,204,209,232,239,244,249-250
+  s_0d1dc1cc1e1864::t_cbf9bed92c3a23 196-197,199-201,203,205-208,210-224,226-231
+  s_0d1dc1cc1e1864::t_f977dbfac68e00 150
+  s_0d1dc1cc1e1864::t_61d2b92105cd40 146-149,151-160
+  s_0d1dc1cc1e1864::t_49164509577244 182,184,186-190
+  s_0d1dc1cc1e1864::t_c8b8046236aa36 180,183,191-192,235,238,240-243,245-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "2c53beaaee8c5a060487f4ddff90f59cadc8d77f",
+  "prompts": {},
+  "sessions": {
+    "s_0d1dc1cc1e1864": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f0a12981-b9d1-4f68-b73e-c33aedd37eef",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
