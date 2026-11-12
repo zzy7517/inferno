@@ -543,11 +543,19 @@ export class Hollow extends EnemyBase {
     else if (this.state === "backstab") { hunch = 1.0 + Math.min(0.3, this.t * 0.5); armRx = 1.2; armRz = 0.6; headX = 0.4; }
     else if (this.state === "dead") { hunch = 1.35; armRx = 1.5; armRz = 0.9; headX = 0.55; twist = 0.3; }
 
-    if (this.hurtT > 0 && this.state !== "dead") { hunch += 0.2; headX += 0.3; }
+    // 受击：佝偻躯干甩成短后仰，双肩内收。hurtT 归零后回到上面算出的姿态。
+    let armLz = -0.2;
+    if (this.hurtT > 0 && this.state !== "dead") {
+      hunch -= 0.8;
+      headX -= 0.35;
+      armRx += 0.4;
+      armRz -= 0.55;
+      armLz = 0.35;
+    }
     this.torso.rotation.set(hunch, twist, 0);
     this.headG.rotation.x = headX;
     this.armR.rotation.set(armRx, 0, armRz);
-    this.armL.rotation.set(-0.45 - hunch * 0.3, 0, -0.2);
+    this.armL.rotation.set(-0.45 - hunch * 0.3, 0, armLz);
     this.swordG.rotation.x = 0.5;
   }
 
@@ -647,6 +655,7 @@ export class Squire extends EnemyBase {
     this.root.rotation.y = this.yaw;
     // 站姿基准：立正持盾，剑尖朝下斜
     let hunch = 0.08, twist = 0, armRx = -0.4, armLx = -1.0, armLy = 0.5, reach = 0;
+    let armRz = 0.1, armLz = -0.15;
     if (this.walking) {
       this.legR.rotation.x = Math.sin(this.walkPhase) * 0.4;
       this.legL.rotation.x = -Math.sin(this.walkPhase) * 0.4;
@@ -687,12 +696,19 @@ export class Squire extends EnemyBase {
     else if (this.state === "backstab") { hunch = 0.7 + Math.min(0.3, this.t * 0.5); armLx = -0.3; armRx = 0.8; }
     else if (this.state === "dead") { hunch = 1.2; armLx = 0.4; armRx = 1.0; twist = 0.35; }
 
-    if (this.hurtT > 0 && this.state !== "dead") hunch += 0.15;
+    // 受击：胸甲短促后仰，剑臂与盾臂同时收肩。hurtT 归零后回到上面算出的姿态。
+    if (this.hurtT > 0 && this.state !== "dead") {
+      hunch -= 0.8;
+      armRx += 0.45;
+      armLx += 0.6;
+      armRz = -0.55;
+      armLz = 0.5;
+    }
     this.torso.rotation.set(hunch, twist, 0);
     this.torso.position.z = reach;
     this.headG.rotation.x = -hunch * 0.5;
-    this.armR.rotation.set(armRx, 0, 0.1);
-    this.armL.rotation.set(armLx, armLy, -0.15);
+    this.armR.rotation.set(armRx, 0, armRz);
+    this.armL.rotation.set(armLx, armLy, armLz);
   }
 
   protected override updateDeathPose(dt: number): void {
@@ -797,6 +813,17 @@ export class Crow extends EnemyBase {
   protected override applyPose(): void {
     this.root.rotation.y = this.yaw;
     if (this.state !== "combat") this.bodyG.rotation.x *= 0.9;   // 非战斗段俯仰缓回
+    // 受击：整鸟短促后仰，双翼上收。不改 bodyG 俯仰（扑击仍归 movePose）。
+    // hurtT 归零后根节点俯仰归零，翅膀交回 updateVisuals 的扑扇。
+    if (this.hurtT > 0 && this.state !== "dead") {
+      this.root.rotation.x = -0.7;
+      this.headG.rotation.x = -0.35;
+      this.wingR.rotation.z = 1.2;
+      this.wingL.rotation.z = -1.2;
+    } else {
+      this.root.rotation.x = 0;
+      this.headG.rotation.x = 0;
+    }
   }
 
   /** 飞行步进：逼近到站距外，被贴脸（<1.8m）则拉开距离重新起飞 */
