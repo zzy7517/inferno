@@ -20,7 +20,6 @@ const DARKMOON = 0xb9a6ff;    // 暗月矢 / 月焰投射物（微紫冷光）
 const FIRE = 0xff5a20;        // 二阶段右剑焰（与监视者燃焰同源——罪业火焰）
 const DARKFLAME = 0x7a4d9e;   // 二阶段左剑暗紫焰
 const GHOST_COLOR = 0x9a86d8; // 投影分身 / 眼光
-const SLASH_COOL = 0xd7e3ec;  // 一阶段刀光（冷白）
 
 /** 投射物参数（发射走 host.fireProjectile，飞行/命中/消散由 game 侧 Projectiles 池负责） */
 const ARROW_PROJ: ProjDef = { speed: 10, radius: 0.4, dmg: 22, feelKey: "sMagic", life: 2.2, color: DARKMOON };
@@ -105,37 +104,38 @@ const GHOST_MAT = new THREE.MeshBasicMaterial({
 // ---------------- 姿态（Pose）：双剑臂各自 lift/swing ----------------
 interface Pose {
   y: number; lean: number; twist: number; crouch: number; reach: number;
-  rLift: number; rSwing: number;   // 右剑臂：lift 正=前甩 负=上举；swing 正=向左抡
-  lLift: number; lSwing: number;   // 左剑臂（镜像）
+  rLift: number; rSwing: number;   // 右臂：lift 正=前送 负=后举；swing 负=外展 正=向中线收
+  lLift: number; lSwing: number;   // 左臂同一套符号（负=外展）。两臂同号才会真的张开/合拢
   nod: number;                     // 头部俯仰（正=低头）
   spin: number;                    // 整体附加旋转（大回旋转体）
 }
-const STANCE: Pose = { y: 0, lean: 0.07, twist: -0.1, crouch: 0, reach: 0, rLift: 0.3, rSwing: 0.18, lLift: 0.3, lSwing: -0.18, nod: 0.08, spin: 0 };
-const STATUE: Pose = { ...STANCE, lean: 0.04, twist: 0, rLift: 0.1, rSwing: 0.05, lLift: 0.1, lSwing: -0.05, nod: 0.52 };  // 垂剑伫立低头（双剑拄地交叉）
+const STANCE: Pose = { y: 0, lean: 0.07, twist: -0.1, crouch: 0, reach: 0, rLift: 0.92, rSwing: -0.58, lLift: 0.92, lSwing: -0.58, nod: 0.08, spin: 0 };
+const STATUE: Pose = { ...STANCE, lean: 0.04, twist: 0, rLift: 1.2, rSwing: 0.1, lLift: 1.2, lSwing: 0.1, nod: 0.52 };  // 低头，双剑向前交汇拄地
 // 双剑四连四拍（拍内 wind→strike；1 右横斩 / 2 左回斩 / 3 右力劈 / 4 双剑交剪收尾）
-const B1W: Pose = { ...STANCE, twist: 0.55, rLift: -0.75, rSwing: -0.85, nod: 0.12 };
-const B1K: Pose = { ...STANCE, twist: -0.5, rLift: 0.55, rSwing: 0.95, lean: 0.16 };
-const B2W: Pose = { ...STANCE, twist: -0.55, lLift: -0.75, lSwing: 0.85, nod: 0.12 };
-const B2K: Pose = { ...STANCE, twist: 0.5, lLift: 0.55, lSwing: -0.95, lean: 0.14 };
-const B3W: Pose = { ...STANCE, twist: 0.35, rLift: -1.55, rSwing: -0.3, lean: -0.08, crouch: 0.06 };
-const B3K: Pose = { ...STANCE, twist: -0.6, rLift: 0.75, rSwing: 0.6, lean: 0.3, crouch: 0.1 };
-const B4W: Pose = { ...STANCE, twist: 0.7, rLift: -0.9, rSwing: -1.0, lLift: -0.9, lSwing: 1.0 };
-const B4K: Pose = { ...STANCE, twist: -0.75, rLift: 0.7, rSwing: 1.25, lLift: 0.7, lSwing: -1.25, lean: 0.24, crouch: 0.12 };
-// 突刺→上挑两拍（与判定时刻 0.30/0.65 对齐）
-const TW: Pose = { ...STANCE, crouch: 0.22, twist: 0.5, rLift: -0.55, rSwing: -0.35, lean: 0.1 };
-const T1K: Pose = { ...STANCE, twist: -0.15, rLift: 1.2, rSwing: 0.05, lean: 0.38, reach: 0.45, crouch: 0.15 };
-const T2W: Pose = { ...STANCE, twist: 0.1, rLift: 0.45, rSwing: 0.1, lean: 0.2, crouch: 0.2 };
-const T2K: Pose = { ...STANCE, rLift: -2.1, rSwing: 0.1, lean: -0.14, y: 0.12, nod: -0.1 };   // 上挑剑走立圆，人随势拔起
+// 蓄力把出剑的那只手外展，命中再收到身前；另一只手留在站架的外展上，远处仍能看见两把剑。
+const B1W: Pose = { ...STANCE, twist: 0.55, rLift: -0.95, rSwing: -1.2, nod: 0.12 };
+const B1K: Pose = { ...STANCE, twist: -0.5, rLift: 1.45, rSwing: 0.62, lean: 0.16 };
+const B2W: Pose = { ...STANCE, twist: -0.55, lLift: -0.95, lSwing: -1.2, nod: 0.12 };
+const B2K: Pose = { ...STANCE, twist: 0.5, lLift: 1.45, lSwing: 0.62, lean: 0.14 };
+const B3W: Pose = { ...STANCE, twist: 0.35, rLift: -1.65, rSwing: -0.75, lean: -0.08, crouch: 0.06 };
+const B3K: Pose = { ...STANCE, twist: -0.6, rLift: 1.35, rSwing: 0.2, lean: 0.3, crouch: 0.1 };
+const B4W: Pose = { ...STANCE, twist: 0.7, rLift: -1.15, rSwing: -1.15, lLift: -1.15, lSwing: -1.15 };
+const B4K: Pose = { ...STANCE, twist: -0.75, rLift: 1.4, rSwing: 0.16, lLift: 1.4, lSwing: 0.16, lean: 0.24, crouch: 0.12 };
+// 突刺→上挑两拍（与判定时刻 0.30/0.65 对齐）。右剑出手，左剑保持外展。
+const TW: Pose = { ...STANCE, crouch: 0.22, twist: 0.5, rLift: -0.35, rSwing: -1.05, lean: 0.1 };
+const T1K: Pose = { ...STANCE, twist: -0.15, rLift: 1.55, rSwing: -0.18, lean: 0.38, reach: 0.45, crouch: 0.15 };
+const T2W: Pose = { ...STANCE, twist: 0.1, rLift: 1.15, rSwing: -0.35, lean: 0.2, crouch: 0.2 };
+const T2K: Pose = { ...STANCE, rLift: -1.75, rSwing: -0.48, lean: -0.14, y: 0.12, nod: -0.1 };   // 上挑剑走立圆，人随势拔起
 // 暗月矢：左剑高举后曳（剑尖朝后，这一拍不能出矢）→ 左剑刺到正面（剑尖 yaw=面向，矢沿同一方向离手）
-const AW: Pose = { ...STANCE, twist: -0.5, lLift: -1.85, lSwing: 0.65, lean: -0.1, nod: 0.12, rLift: 0.2, rSwing: 0.35 };
-const AK: Pose = { ...STANCE, twist: -0.2, lLift: 1.5, lSwing: 0.4, lean: 0.18, reach: 0.25, nod: 0.02, rLift: 0.15, rSwing: 0.12 };
-// 纵横月焰：双剑高举交叉（剑尖在身后上方）→ 双剑前送，尖端落在 yaw±0.22，与扇形矢同一方向
-const VW: Pose = { ...STANCE, rLift: -1.7, rSwing: -0.55, lLift: -1.7, lSwing: 0.55, lean: -0.12, crouch: 0.12, nod: -0.08 };
-const VK: Pose = { ...STANCE, rLift: 1.4, rSwing: 0.5, lLift: 1.4, lSwing: -0.5, twist: 0.5, lean: 0.16, nod: 0.04 };
-// 四连第 1 刀之后的假收势：剑放下、头低下，读成「连段结束」——停住再起第 2 刀
-const FEINT: Pose = { ...STANCE, lean: 0.06, twist: 0.04, crouch: 0.08, nod: 0.28, rLift: 0.18, rSwing: 0.12, lLift: 0.18, lSwing: -0.12, y: -0.02 };
+const AW: Pose = { ...STANCE, twist: -0.5, lLift: -1.7, lSwing: -0.8, lean: -0.1, nod: 0.12, rLift: 0.45, rSwing: -0.65 };
+const AK: Pose = { ...STANCE, twist: -0.2, lLift: 1.55, lSwing: -0.08, lean: 0.18, reach: 0.25, nod: 0.02, rLift: 0.4, rSwing: -0.65 };
+// 纵横月焰：双剑高举外展 → 双剑前送，尖端仍分开，扇形矢从两刃之间离手
+const VW: Pose = { ...STANCE, rLift: -1.55, rSwing: -0.95, lLift: -1.55, lSwing: -0.95, lean: -0.12, crouch: 0.12, nod: -0.08 };
+const VK: Pose = { ...STANCE, rLift: 1.35, rSwing: -0.7, lLift: 1.35, lSwing: -0.35, twist: 0.5, lean: 0.16, nod: 0.04 };
+// 四连第 1 刀之后的假收势：双剑收到中线、头低下，读成「连段结束」——停住再起第 2 刀
+const FEINT: Pose = { ...STANCE, lean: 0.06, twist: 0.04, crouch: 0.08, nod: 0.28, rLift: 1.15, rSwing: 0.12, lLift: 1.15, lSwing: 0.12, y: -0.02 };
 // 大回旋回旋过后的力竭：剑仍敞着、身子压低，后摇前 0.7s 停在这里
-const SPIN_SPENT: Pose = { ...STANCE, rSwing: -1.45, lSwing: 1.45, rLift: 0.15, lLift: 0.15, lean: 0.46, crouch: 0.26, twist: 0.42, nod: 0.32 };
+const SPIN_SPENT: Pose = { ...STANCE, rSwing: -1.05, lSwing: -1.05, rLift: 0.3, lLift: 0.3, lean: 0.46, crouch: 0.26, twist: 0.42, nod: 0.32 };
 
 export class Sulyvahn extends BossBase {
   private body = new THREE.Group();
@@ -147,6 +147,10 @@ export class Sulyvahn extends BossBase {
   private shinL = new THREE.Group();
   private armR = new THREE.Group();
   private armL = new THREE.Group();
+  private swordR!: THREE.Group;
+  private swordL!: THREE.Group;
+  private tipR = new THREE.Object3D();
+  private tipL = new THREE.Object3D();
   private eyeMat!: THREE.MeshStandardMaterial;
   private bladeFire!: THREE.MeshStandardMaterial;   // 右剑身（二阶段燃焰）
   private bladeDark!: THREE.MeshStandardMaterial;   // 左剑身（二阶段暗紫焰）
@@ -194,8 +198,9 @@ export class Sulyvahn extends BossBase {
     const clothDark = new THREE.MeshStandardMaterial({ color: 0x16131e, roughness: 1, flatShading: true });
     const steel = new THREE.MeshStandardMaterial({ color: 0x494f5c, roughness: 0.6, metalness: 0.4, flatShading: true });
     const gold = new THREE.MeshStandardMaterial({ color: 0xe6c37a, roughness: 0.45, metalness: 0.6, emissive: 0x241a08, flatShading: true });
-    this.bladeFire = new THREE.MeshStandardMaterial({ color: 0x8b94a2, roughness: 0.35, metalness: 0.7, flatShading: true, emissive: FIRE, emissiveIntensity: 0 });
-    this.bladeDark = new THREE.MeshStandardMaterial({ color: 0x837c95, roughness: 0.35, metalness: 0.7, flatShading: true, emissive: DARKFLAME, emissiveIntensity: 0 });
+    // 一阶段就用火 / 暗紫本体色，远处能分开；二阶段点燃仍只抬 emissiveIntensity（见 updateVisuals）。
+    this.bladeFire = new THREE.MeshStandardMaterial({ color: FIRE, roughness: 0.46, metalness: 0.22, flatShading: true, emissive: FIRE, emissiveIntensity: 0 });
+    this.bladeDark = new THREE.MeshStandardMaterial({ color: DARKFLAME, roughness: 0.5, metalness: 0.22, flatShading: true, emissive: DARKFLAME, emissiveIntensity: 0 });
     this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x0a0710, roughness: 0.5, emissive: GHOST_COLOR, emissiveIntensity: 0.9 });
 
     const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
@@ -262,34 +267,46 @@ export class Sulyvahn extends BossBase {
     }
     this.torso.add(this.head);
 
-    // 双臂 + 细长巨剑（剑长 1.6 比例夸张；右火左暗，剑身 emissive 二阶段点燃）
-    const buildSword = (mat: THREE.MeshStandardMaterial, side: 1 | -1, light: THREE.PointLight) => {
+    // 双臂 + 细长巨剑。刃比原来长一截，剑格用钢和金，和着色的刃断开；右火左暗紫。
+    const buildSword = (mat: THREE.MeshStandardMaterial, side: 1 | -1, light: THREE.PointLight, tip: THREE.Object3D) => {
       const g = new THREE.Group();
-      g.position.set(0, -0.92, 0.06);
-      g.rotation.x = 0.35;                       // 剑尖前下曳——垂剑时恰好拄地
-      g.rotation.z = side * 0.14;                // 双剑内倾——拄地时剑尖交叉
-      g.add(box(0.05, 0.22, 0.055, clothDark));  // 柄
-      g.add(box(0.07, 0.06, 0.075, steel, 0, 0.14, 0));                       // 柄头
-      g.add(box(0.34, 0.045, 0.07, steel, 0, -0.12, 0));                      // 护手
-      g.add(box(0.075, 1.6, 0.03, mat, 0, -0.95, 0));                         // 剑身
-      g.add(box(0.05, 0.24, 0.026, mat, 0, -1.84, 0));                        // 剑尖收锋
-      light.position.set(0, -1.0, 0);
+      g.position.set(0, -0.88, 0.04);
+      g.rotation.x = 0.22;
+      g.rotation.z = side * 0.12;                // 外撇，两尖不要叠成一根
+      g.add(box(0.05, 0.26, 0.055, clothDark, 0, 0.02, 0));                   // 握柄
+      g.add(box(0.09, 0.07, 0.09, gold, 0, 0.18, 0));                         // 柄头
+      g.add(box(0.68, 0.09, 0.12, steel, 0, -0.15, 0));                       // 剑格：比刃宽出一截
+      g.add(box(0.1, 0.14, 0.14, gold, 0.32, -0.15, 0));
+      g.add(box(0.1, 0.14, 0.14, gold, -0.32, -0.15, 0));
+      const quillonR = box(0.26, 0.045, 0.07, steel, 0.2, -0.22, 0);
+      quillonR.rotation.z = 0.6;
+      const quillonL = box(0.26, 0.045, 0.07, steel, -0.2, -0.22, 0);
+      quillonL.rotation.z = -0.6;
+      g.add(quillonR, quillonL);                                              // 下斜护翼，和直刃断开
+      g.add(box(0.1, 0.14, 0.05, steel, 0, -0.28, 0));                        // 茎：钢，刃色从下面才开始
+      g.add(box(0.16, 2.08, 0.055, mat, 0, -1.4, 0));                         // 刃
+      g.add(box(0.08, 0.32, 0.036, mat, 0, -2.56, 0));                        // 收锋
+      tip.position.set(0, -2.74, 0);
+      g.add(tip);
+      light.position.set(0, -1.35, 0);
       g.add(light);
       return g;
     };
     this.fireLight = new THREE.PointLight(FIRE, 0, 5, 2);
     this.darkLight = new THREE.PointLight(DARKFLAME, 0, 5, 2);
-    this.armR.position.set(0.36, 0.68, 0);
+    this.armR.position.set(0.44, 0.68, 0);
     this.armR.add(box(0.12, 0.42, 0.13, clothDark, 0, -0.19, 0));
     this.armR.add(box(0.105, 0.4, 0.115, cloth, 0, -0.54, 0.02));
     this.armR.add(box(0.125, 0.15, 0.135, steel, 0, -0.82, 0.04));            // 铁手套
-    this.armR.add(buildSword(this.bladeFire, 1, this.fireLight));
+    this.swordR = buildSword(this.bladeFire, 1, this.fireLight, this.tipR);
+    this.armR.add(this.swordR);
     this.torso.add(this.armR);
-    this.armL.position.set(-0.36, 0.68, 0);
+    this.armL.position.set(-0.44, 0.68, 0);
     this.armL.add(box(0.12, 0.42, 0.13, clothDark, 0, -0.19, 0));
     this.armL.add(box(0.105, 0.4, 0.115, cloth, 0, -0.54, 0.02));
     this.armL.add(box(0.125, 0.15, 0.135, steel, 0, -0.82, 0.04));
-    this.armL.add(buildSword(this.bladeDark, -1, this.darkLight));
+    this.swordL = buildSword(this.bladeDark, -1, this.darkLight, this.tipL);
+    this.armL.add(this.swordL);
     this.torso.add(this.armL);
 
     this.root.add(this.body);
@@ -332,8 +349,8 @@ export class Sulyvahn extends BossBase {
     this.body.position.set(0, p.y - p.crouch * 0.3, p.reach);
     this.torso.rotation.set(p.lean, p.twist, 0);
     this.head.rotation.x = p.nod;
-    this.armR.rotation.set(-p.rLift, 0, -p.rSwing);
-    this.armL.rotation.set(-p.lLift, -0.15, p.lSwing);
+    this.armR.rotation.set(-p.rLift, -0.16, -p.rSwing);
+    this.armL.rotation.set(-p.lLift, 0.16, p.lSwing);
     // 蹲伏：前腿弓、后腿屈（膝枢轴随 crouch 弯折）
     this.legR.rotation.x = -p.crouch * 0.65;
     this.shinR.rotation.x = p.crouch * 1.25;
@@ -358,8 +375,8 @@ export class Sulyvahn extends BossBase {
 
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
     if (m.name === "sulyvahnSpin") {   // 双剑水平展开蓄势 → 转体横扫（spin 转整圈）
-      wind.rSwing = -1.35; wind.lSwing = 1.35; wind.rLift = 0.1; wind.lLift = 0.1; wind.lean = 0.14; wind.crouch = 0.1;
-      strike.rSwing = -1.5; strike.lSwing = 1.5; strike.rLift = 0.2; strike.lLift = 0.2; strike.lean = 0.3; strike.crouch = 0.16;
+      wind.rSwing = -1.2; wind.lSwing = -1.2; wind.rLift = 0.28; wind.lLift = 0.28; wind.lean = 0.14; wind.crouch = 0.1;
+      strike.rSwing = -1.35; strike.lSwing = -1.35; strike.rLift = 0.36; strike.lLift = 0.36; strike.lean = 0.3; strike.crouch = 0.16;
     } else if (m.name === "sulyvahnThrustUp") {
       Object.assign(wind, TW);
     }
@@ -559,13 +576,14 @@ export class Sulyvahn extends BossBase {
       s.rotation.x = 0.04 + Math.sin(now * 0.003 + i * 1.3) * 0.05 + this.pose.lean * 0.16;
       s.rotation.z = Math.sin(now * 0.0023 + i * 1.9) * 0.04;
     }
-    // 刀光：近战多段每段一刀光（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）
+    // 刀光：近战多段每段仍只补一刀（hitFired 无条件按节拍推进，躲开也照画）。颜色和半径贴着当拍那把剑。
     if (this.state === "combat" && this.sub === "act" && this.move &&
       (this.move.name === "sulyvahnCombo4" || this.move.name === "sulyvahnThrustUp")) {
       while (this.slashFired < this.hitFired) {
         this.slashFired++;
-        const col = p2 ? (this.slashFired % 2 ? GHOST_COLOR : FIRE) : SLASH_COOL;   // 二阶段火/暗交替
-        this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.8, false, col);
+        if (this.move.name === "sulyvahnThrustUp" || this.slashFired === 1 || this.slashFired === 3) this.slashOnBlade(1, false);
+        else if (this.slashFired === 2) this.slashOnBlade(-1, false);
+        else this.slashOnCross();
       }
     }
     // 二阶段数值：进入写一次，离开（重置把 phase 拨回 1）立刻还回。死在二阶段时 phase 仍为 2，
@@ -612,14 +630,58 @@ export class Sulyvahn extends BossBase {
     }
   }
 
-  /** 判定段开始：回旋宽弧。投射物不在这里发——这一帧姿态还是举剑蓄力，剑尖朝后。 */
+  /** 判定段开始：回旋两道宽弧，各贴一把剑。投射物不在这里发——这一帧姿态还是举剑蓄力，剑尖朝后。 */
   protected override onMoveActive(m: MoveDef): void {
     if (m.name === "sulyvahnSpin") {
-      // 双剑水平回旋：宽弧 ×2 反向（二阶段火/暗双色）
-      const c = this.chestWorld();
-      this.vfx.slash(c, this.yaw + 0.25, m.range * 0.9, true, this.phase === 2 ? FIRE : SLASH_COOL);
-      this.vfx.slash(c.clone().setY(Math.max(0.5, c.y - 0.75)), this.yaw - 0.25, m.range * 0.85, true, this.phase === 2 ? GHOST_COLOR : 0xaeb9c6);
+      this.slashOnBlade(1, true, 1.05);
+      this.slashOnBlade(-1, true, 0.98);
     }
+  }
+
+  /** 环带（0.5r–r）压在外刃上：弧心退到剑尖之后，颜色跟那把剑（右火、左暗紫）。 */
+  private slashOnBlade(side: 1 | -1, wide: boolean, radiusMul = 1): void {
+    this.applyPose();
+    this.root.updateMatrixWorld(true);
+    const hilt = new THREE.Vector3();
+    const tip = new THREE.Vector3();
+    (side > 0 ? this.swordR : this.swordL).getWorldPosition(hilt);
+    (side > 0 ? this.tipR : this.tipL).getWorldPosition(tip);
+    const dx = tip.x - hilt.x;
+    const dz = tip.z - hilt.z;
+    const flat = Math.hypot(dx, dz);
+    const yaw = flat > 0.4 ? Math.atan2(dx, dz) : this.yaw + side * 0.45;
+    const radius = Math.min(2.35, Math.max(1.15, (flat > 0.4 ? flat * 0.78 : 1.25) * radiusMul));
+    const origin = tip.clone();
+    origin.x -= Math.sin(yaw) * radius * 0.86;
+    origin.z -= Math.cos(yaw) * radius * 0.86;
+    origin.y = hilt.y + (tip.y - hilt.y) * 0.7;
+    this.vfx.slash(origin, yaw, radius, wide, side > 0 ? FIRE : DARKFLAME);
+  }
+
+  /** 四连收尾交剪仍是一次刀光，弧心落在两刃之间。 */
+  private slashOnCross(): void {
+    this.applyPose();
+    this.root.updateMatrixWorld(true);
+    const hiltR = new THREE.Vector3();
+    const hiltL = new THREE.Vector3();
+    const tipR = new THREE.Vector3();
+    const tipL = new THREE.Vector3();
+    this.swordR.getWorldPosition(hiltR);
+    this.swordL.getWorldPosition(hiltL);
+    this.tipR.getWorldPosition(tipR);
+    this.tipL.getWorldPosition(tipL);
+    const hilt = hiltR.add(hiltL).multiplyScalar(0.5);
+    const tip = tipR.add(tipL).multiplyScalar(0.5);
+    const dx = tip.x - hilt.x;
+    const dz = tip.z - hilt.z;
+    const flat = Math.hypot(dx, dz);
+    const yaw = flat > 0.35 ? Math.atan2(dx, dz) : this.yaw;
+    const radius = Math.min(2.2, Math.max(1.3, flat * 0.8));
+    const origin = tip.clone();
+    origin.x -= Math.sin(yaw) * radius * 0.84;
+    origin.z -= Math.cos(yaw) * radius * 0.84;
+    origin.y = Math.max(0.45, hilt.y + (tip.y - hilt.y) * 0.72);
+    this.vfx.slash(origin, yaw, radius, false, FIRE);
   }
 
   /** 沿面向发射。速度用 sin/cos(yaw)，与近战 dirYaw、剑尖在离手帧的水平朝向同一约定；出生点沿该方向推出，矢从剑前离开而不是从胸口倒飞。 */
@@ -655,12 +717,12 @@ export class Sulyvahn extends BossBase {
 
   /** 破绽：高瘦身形前倾垮伏，双剑垂荡 */
   protected override updateStaggerPose(): void {
-    this.lerpPose(STANCE, { ...STANCE, lean: 0.48, crouch: 0.36, y: -0.28, nod: 0.36, rLift: 0.18, rSwing: 0.5, lLift: 0.18, lSwing: -0.5 }, Math.min(1, this.t * 5));
+    this.lerpPose(STANCE, { ...STANCE, lean: 0.48, crouch: 0.36, y: -0.28, nod: 0.36, rLift: 1.35, rSwing: -0.85, lLift: 1.35, lSwing: -0.85 }, Math.min(1, this.t * 5));
   }
 
   /** 弹反踉跄：后仰 + 双剑上荡（弹反考试 Boss 的代价姿态） */
   protected override updateParriedPose(): void {
-    this.lerpPose(STANCE, { ...STANCE, lean: -0.42, crouch: 0.28, y: -0.34, nod: -0.2, rLift: -0.85, rSwing: 0.35, lLift: -0.85, lSwing: -0.35 }, Math.min(1, this.t * 8));
+    this.lerpPose(STANCE, { ...STANCE, lean: -0.42, crouch: 0.28, y: -0.34, nod: -0.2, rLift: -1.15, rSwing: -0.85, lLift: -1.15, lSwing: -0.85 }, Math.min(1, this.t * 8));
   }
 
   /** 变身：蜷身蓄势 → 0.6s 爆发波（基类回调 onBossTransform 交 game 结算）→ 双焰点燃 + 投影亮相 → 怒张展剑 */
@@ -669,17 +731,17 @@ export class Sulyvahn extends BossBase {
       this.phase = 2;          // 眼/剑/灯燃焰与数值 buff 由 updateVisuals 跟随 phase 写入
       // 投影不在变身时站出来——那会变成第二个会跟着做完全套动作的 Boss。等四连再召。
     }
-    const crouch = { ...STANCE, crouch: 0.35, y: -0.3, lean: 0.32, nod: 0.38, rLift: -1.15, lLift: -1.15 };
+    const crouch = { ...STANCE, crouch: 0.35, y: -0.3, lean: 0.32, nod: 0.38, rLift: -1.15, lLift: -1.15, rSwing: 0.18, lSwing: 0.18 };
     if (this.t < this.transformHitAt) {
       this.lerpPose(STANCE, crouch, smooth(this.t / this.transformHitAt));
     } else {
-      this.lerpPose(crouch, { ...STANCE, lean: -0.14, nod: -0.14, y: 0.08, rLift: -1.5, rSwing: 0.95, lLift: -1.5, lSwing: -0.95 }, smooth(seg(this.t, this.transformHitAt, this.transformDur)));
+      this.lerpPose(crouch, { ...STANCE, lean: -0.14, nod: -0.14, y: 0.08, rLift: -1.4, rSwing: -1.05, lLift: -1.4, lSwing: -1.05 }, smooth(seg(this.t, this.transformHitAt, this.transformDur)));
     }
   }
 
   /** 死亡：前倾垮塌 + 余烬 */
   protected override updateDeath(dt: number): void {
-    this.lerpPose(this.pose, { ...STANCE, lean: 1.25, y: -0.85, crouch: 0.55, nod: 0.55, rLift: 0.3, lLift: 0.3 }, dt * 3.5);
+    this.lerpPose(this.pose, { ...STANCE, lean: 1.25, y: -0.85, crouch: 0.55, nod: 0.55, rLift: 0.55, rSwing: -0.5, lLift: 0.55, lSwing: -0.5 }, dt * 3.5);
     if (Math.random() < dt * 20) this.vfx.embers.burst(this.chestWorld(), 3, 3, 1.2);
   }
 
