@@ -143,6 +143,21 @@ export class Vordt extends BossBase {
       m.castShadow = true;
       return m;
     };
+    // 两端半径不同的一段。+Y 朝 dir，粗的一头在 a。
+    const link = (a: THREE.Vector3, b: THREE.Vector3, rA: number, rB: number, mat: THREE.Material) => {
+      const dir = new THREE.Vector3().subVectors(b, a);
+      const len = dir.length();
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rB, rA, Math.max(len, 1e-3), 6), mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      m.castShadow = true;
+      return m;
+    };
+    const cone = (r: number, h: number, mat: THREE.Material) => {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), mat);
+      m.castShadow = true;
+      return m;
+    };
 
     // 后肢（兽形后腿，crouch 折叠）
     for (const [g, sx] of [[this.legR, 1], [this.legL, -1]] as [THREE.Group, number][]) {
@@ -162,36 +177,77 @@ export class Vordt extends BossBase {
     this.torso.add(box(1.1, 0.62, 0.75, dark, 0, -0.05, -0.42));            // 骨盆
     this.torso.add(box(1.2, 0.8, 1.2, plate, 0, 0.18, 0.42));               // 胸甲
     this.torso.add(box(1.05, 0.28, 1.05, steel, 0, 0.62, 0.35));            // 脊背护甲层
-    // 肩甲层叠（每侧两层外扩）
+    // 肩甲圆盘轴沿左右，侧面是一块圆甲，底边压在脊甲上，不和胸块合成方砖。
     for (const s of [-1, 1]) {
-      const p1 = box(0.55, 0.24, 0.78, steel, s * 0.82, 0.55, 0.42);
-      p1.rotation.z = -s * 0.15;
-      const p2 = box(0.46, 0.2, 0.64, trim, s * 0.86, 0.34, 0.48);
-      p2.rotation.z = -s * 0.3;
-      this.torso.add(p1, p2);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.62, 8), steel);
+      cap.rotation.z = s * Math.PI / 2;
+      cap.position.set(s * 0.78, 1.1, 0.24);
+      cap.castShadow = true;
+      const beak = cone(0.14, 0.42, trim);
+      beak.position.set(s * 0.78, 0.9, 0.66);
+      beak.rotation.x = Math.PI / 2 + 0.35;
+      const stud = cone(0.09, 0.34, ice);
+      stud.position.set(s * 0.78, 1.5, 0.22);
+      stud.rotation.x = -0.35;
+      this.torso.add(cap, beak, stud);
     }
-    // 头（低伏前伸 + 冰蓝眼 + 弯角）
+    // 盔：实心圆颅、短盔檐、粗吻和下颚。头心锚点不动。
     this.headG.position.set(0, 0.5, 1.02);
-    this.head = box(0.56, 0.52, 0.62, plate, 0, 0, 0);
-    this.headG.add(this.head, box(0.32, 0.28, 0.4, dark, 0, -0.12, 0.42));
+    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), plate);
+    this.head.scale.set(1.02, 0.9, 1.05);
+    this.head.castShadow = true;
+    const brim = box(0.42, 0.08, 0.18, trim, 0, 0.18, 0.28);
+    brim.rotation.x = 0.25;
+    const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 0.46, 6), dark);
+    snout.rotation.x = Math.PI / 2;
+    snout.position.set(0, -0.04, 0.46);
+    snout.castShadow = true;
+    const nose = box(0.18, 0.14, 0.1, dark, 0, -0.05, 0.7);
+    const jaw = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.1, 0.34, 5), plate);
+    jaw.rotation.x = Math.PI / 2 + 0.55;
+    jaw.position.set(0, -0.2, 0.44);
+    jaw.castShadow = true;
+    const gorget = box(0.36, 0.16, 0.14, steel, 0, -0.28, 0.02);
+    this.headG.add(this.head, brim, snout, nose, jaw, gorget);
+    const bez = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, n: number) => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const u = 1 - t;
+        pts.push(new THREE.Vector3(
+          u * u * a.x + 2 * u * t * b.x + t * t * c.x,
+          u * u * a.y + 2 * u * t * b.y + t * t * c.y,
+          u * u * a.z + 2 * u * t * b.z + t * t * c.z,
+        ));
+      }
+      return pts;
+    };
     for (const s of [-1, 1]) {
-      const eye = box(0.11, 0.07, 0.05, this.eyeMat, s * 0.14, 0.06, 0.32);
-      const horn = box(0.1, 0.34, 0.12, trim, s * 0.26, 0.32, -0.08);
-      horn.rotation.z = -s * 0.55;
-      this.headG.add(eye, horn);
+      this.headG.add(box(0.1, 0.05, 0.04, this.eyeMat, s * 0.13, 0.04, 0.36));
+      // 左右角一条朝前扬、一条往后钩，侧面能看见两根，而不是叠成一根刺。
+      const horn = s > 0
+        ? bez(new THREE.Vector3(s * 0.08, 0.28, 0.04), new THREE.Vector3(s * 0.16, 0.58, 0.12), new THREE.Vector3(s * 0.1, 0.86, -0.02), 5)
+        : bez(new THREE.Vector3(s * 0.06, 0.26, -0.02), new THREE.Vector3(s * 0.12, 0.56, -0.18), new THREE.Vector3(s * 0.04, 0.48, -0.46), 5);
+      const radii = [0.14, 0.11, 0.08, 0.055, 0.035, 0.018];
+      for (let i = 0; i < horn.length - 1; i++) this.headG.add(link(horn[i], horn[i + 1], radii[i], radii[i + 1], trim));
     }
     this.eyeLight = new THREE.PointLight(ICE, 0, 4.5, 2);
-    this.eyeLight.position.set(0, 0.1, 0.5);
+    this.eyeLight.position.set(0, 0.04, 0.42);
     this.headG.add(this.eyeLight);
     this.torso.add(this.headG);
-    // 背脊 / 肩甲冰晶尖刺（常驻装饰）
-    for (let i = 0; i < 4; i++) {
-      this.torso.add(tetra(0.2 - i * 0.02, ice, (i % 2 ? 0.16 : -0.16), 0.8, 0.72 - i * 0.3));
-    }
-    for (const s of [-1, 1]) {
-      this.torso.add(tetra(0.11, ice, s * 0.78, 0.76, 0.3));
-      this.torso.add(tetra(0.09, ice, s * 0.7, 0.78, 0.62));
-    }
+    // 冰晶排在肩甲后面的脊线上，侧面是一串后掠的锯齿。
+    const ridge: readonly (readonly [number, number, number])[] = [
+      [-0.02, 0.78, 0.58],
+      [-0.26, 0.62, 0.74],
+      [-0.48, 0.46, 0.56],
+      [-0.68, 0.34, 0.4],
+    ];
+    ridge.forEach(([z, base, h], i) => {
+      const c = cone(h * 0.22, h, ice);
+      c.position.set(i % 2 ? 0.06 : -0.06, base + h * 0.32, z);
+      c.rotation.x = -0.48;
+      this.torso.add(c);
+    });
 
     // 右前肢（持锤）+ 方头重锤。杆仍是一根；重量在厚锤头、颈箍和短刺上。
     this.armR.position.set(0.8, 0.42, 0.5);
