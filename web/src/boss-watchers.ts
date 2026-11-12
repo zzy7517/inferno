@@ -229,7 +229,8 @@ export class Watchers extends BossBase {
     sword.add(this.swordLight);
     this.armR.add(sword);
     this.torso.add(this.armR);
-    // 左臂 + 圆匕（盘形护手）
+    // 左臂 + 短匕。小柄、小格、尖刃，整长仍明显短于大剑（柄头到尖约 0.74，大剑约 2.1）。
+    // 刃全部用 bladeMat：二阶段和长剑一起燃，点燃时机不改。不新开灯。
     this.armL.position.set(-0.33, 0.66, 0);
     this.armL.add(box(0.11, 0.42, 0.13, ironDark, 0, -0.19, 0));
     this.armL.add(box(0.1, 0.4, 0.11, iron, 0, -0.55, 0.02));
@@ -237,11 +238,26 @@ export class Watchers extends BossBase {
     const dagger = new THREE.Group();
     dagger.position.set(0, -0.88, 0.04);
     dagger.rotation.x = 0.35;
-    dagger.add(box(0.035, 0.14, 0.04, ironDark));
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.02, 10), iron);
-    disc.rotation.z = Math.PI / 2; disc.castShadow = true;
-    dagger.add(disc);
-    dagger.add(box(0.04, 0.5, 0.015, this.bladeMat, 0, -0.32, 0));
+    dagger.add(box(0.036, 0.16, 0.042, ironDark, 0, 0.015, 0));            // 小柄
+    dagger.add(box(0.046, 0.024, 0.05, iron, 0, 0.05, 0));                  // 柄缠
+    dagger.add(box(0.046, 0.024, 0.05, iron, 0, -0.02, 0));
+    dagger.add(box(0.052, 0.04, 0.05, ironDark, 0, 0.112, 0));              // 柄头
+    dagger.add(box(0.2, 0.032, 0.046, iron, 0, -0.078, 0));                 // 小格
+    dagger.add(box(0.058, 0.048, 0.054, ironDark, 0, -0.078, 0));
+    const dl = box(0.024, 0.06, 0.03, iron, -0.09, -0.098, 0);
+    dl.rotation.z = 0.65;
+    const dr = box(0.024, 0.06, 0.03, iron, 0.09, -0.098, 0);
+    dr.rotation.z = -0.65;
+    dagger.add(dl, dr);                                                     // 格端略下垂
+    dagger.add(box(0.09, 0.12, 0.036, this.bladeMat, 0, -0.155, 0));        // 刃根
+    dagger.add(box(0.046, 0.24, 0.03, this.bladeMat, 0, -0.32, 0));         // 脊
+    dagger.add(box(0.036, 0.2, 0.014, this.bladeMat, -0.028, -0.31, 0));    // 左刃
+    dagger.add(box(0.036, 0.2, 0.014, this.bladeMat, 0.028, -0.31, 0));     // 右刃
+    dagger.add(box(0.04, 0.12, 0.022, this.bladeMat, 0, -0.47, 0));         // 收窄
+    dagger.add(box(0.024, 0.1, 0.012, this.bladeMat, -0.024, -0.47, 0));
+    dagger.add(box(0.024, 0.1, 0.012, this.bladeMat, 0.024, -0.47, 0));
+    dagger.add(box(0.02, 0.07, 0.014, this.bladeMat, 0, -0.545, 0));        // 尖
+    dagger.add(box(0.01, 0.045, 0.008, this.bladeMat, 0, -0.59, 0));        // 末端约 y=-0.61
     this.armL.add(dagger);
     this.torso.add(this.armL);
     // 破烂黑披风：三片 Plane，跟随摆动（updateVisuals）
