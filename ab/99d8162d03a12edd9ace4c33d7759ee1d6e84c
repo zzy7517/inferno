@@ -1,0 +1,19 @@
+web/src/game.ts
+  s_eb3e785bcb9cea::t_3a5eeccdb5806e 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ab99d8162d03a12edd9ace4c33d7759ee1d6e84c",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
