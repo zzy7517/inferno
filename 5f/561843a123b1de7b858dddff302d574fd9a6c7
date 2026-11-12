@@ -1,0 +1,19 @@
+web/src/boss-sulyvahn.ts
+  s_eb3e785bcb9cea::t_8e6cbc4f3c4686 5,10,99-102,104,107-160,318-322,381,387,390-400,404-415,864,877,879-882,891,925,955
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5f561843a123b1de7b858dddff302d574fd9a6c7",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
