@@ -360,6 +360,13 @@ export class Player {
         break;
       }
       case "block": {
+        // 举盾可直接翻滚取消；精力不够则留下预输入（破防仍只走 applyHit）
+        if (this.buffered?.kind === "roll" && this.canSpend(P.rollCost)) {
+          this.buffered = null;
+          this.setDodgeDir(inputDir, camYaw);
+          this.enter("roll");
+          break;
+        }
         if (!this.rmbDown) { this.enter("idle"); break; }
         if (moving) this.pos.addScaledVector(inputDir, P.walk * 0.42 * slowK * dt);
         break;
