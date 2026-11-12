@@ -362,43 +362,109 @@ export function buildBonfire(scene: THREE.Scene, pos: THREE.Vector3): Bonfire {
   return { group: g, light, pos: pos.clone() };
 }
 
-/** 雾门：冷灰雾墙；门缘一圈余烬（关上才清楚，打开收掉）。不加点光。 */
+/** 雾门：冷灰石柱托一道石梁，门洞里仍是雾。关上时雾中见铁栅，打开时栅收进梁底、雾变淡。不加点光。 */
 export class FogGate {
   readonly group = new THREE.Group();
   solid = true;
   private readonly sheets: THREE.Mesh[] = [];
   private readonly emberMat: THREE.MeshBasicMaterial;
+  private readonly coalMat: THREE.MeshStandardMaterial;
+  /** 枢轴在梁底。scale.y = 1 栅落下，趋近 0 时收进石梁。 */
+  private readonly bars: THREE.Group;
+  private grate = 1;
+  private lastT = -1;
 
   constructor(scene: THREE.Scene, pos: THREE.Vector3) {
     this.group.position.copy(pos);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xcfd8e8, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+    const stone = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 1, flatShading: true });
+    const stoneDark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
+    const iron = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLORS.steel).multiplyScalar(0.45),
+      roughness: 0.42, metalness: 0.7, flatShading: true,
+    });
+    this.coalMat = new THREE.MeshStandardMaterial({
+      color: COLORS.stoneDark, emissive: COLORS.ember, emissiveIntensity: 0.65,
+      roughness: 1, flatShading: true,
+    });
+    const add = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material): void => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      this.group.add(m);
+    };
+
+    // 净空约 3×3.5：柱内缘钉在 z=±1.5，梁底 y=3.5。石只占两侧和顶上。
+    for (const s of [-1, 1]) {
+      const courses: [number, number, number, number, number, THREE.Material][] = [
+        [0.98, 0.36, 0.72, 0.18, 0, stoneDark],
+        [0.70, 1.14, 0.50, 0.91, 0.03, stone],
+        [0.64, 1.08, 0.54, 2.00, -0.04, stoneDark],
+        [0.72, 0.96, 0.48, 3.00, 0.02, stone],
+        [0.90, 0.26, 0.64, 3.39, 0, stone],
+      ];
+      for (const [w, h, d, y, xo, mat] of courses) add(w, h, d, xo * s, y, s * (1.5 + d / 2), mat);
+    }
+    const voussoirs: [number, number, number, THREE.Material][] = [
+      [-1.88, 0.44, 0.88, stone],
+      [-0.94, 0.52, 0.90, stoneDark],
+      [0, 0.68, 1.02, stone],
+      [0.94, 0.52, 0.90, stoneDark],
+      [1.88, 0.44, 0.88, stone],
+    ];
+    for (const [z, h, w, mat] of voussoirs) add(w, h, 0.96, 0, 3.5 + h / 2, z, mat);
+    for (const x of [-0.52, 0.52]) {
+      const coal = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.18), this.coalMat);
+      coal.position.set(x, 3.86, 0);
+      this.group.add(coal);
+    }
+
+    const fogMat = new THREE.MeshBasicMaterial({
+      color: 0xcfd8e8, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+    });
     for (let i = 0; i < 3; i++) {
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.4), mat.clone());
-      p.position.set((i - 1) * 0.12, 1.7, 0);
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(2.96, 3.28), fogMat.clone());
+      p.position.set([-0.22, 0.12, 0.28][i], 1.7, 0);
       p.rotation.y = Math.PI / 2;
       p.userData.phase = i * 2.1;
       this.sheets.push(p);
       this.group.add(p);
     }
-    // 贴在雾片外缘的细框。冷灰雾不动；余烬只勾轮廓，亮度压得很低。
+
+    // 余烬只勾门洞内缘，关上才亮。贴在石面上，不挡 3 米净空。
     this.emberMat = new THREE.MeshBasicMaterial({
       color: COLORS.ember, transparent: true, opacity: 0.4,
       depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
-    const t = 0.1;
-    const y0 = 0.06;
-    const y1 = 3.4;
-    const sideH = y1 - y0;
-    const vGeo = new THREE.BoxGeometry(0.02, sideH, t);
-    const hGeo = new THREE.BoxGeometry(0.02, t, 3.6 - t);
-    const midY = (y0 + y1) / 2;
-    const x = -0.05; // 略偏走廊侧，避免和中间那片雾共面
-    for (const [geo, y, z] of [[vGeo, midY, -1.8], [vGeo, midY, 1.8], [hGeo, y1, 0], [hGeo, y0, 0]] as const) {
-      const rim = new THREE.Mesh(geo, this.emberMat);
-      rim.position.set(x, y, z);
-      rim.renderOrder = 1;
-      this.group.add(rim);
+    for (const s of [-1, 1]) {
+      const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.05, 0.035), this.emberMat);
+      jamb.position.set(0, 1.82, s * 1.518);
+      jamb.renderOrder = 1;
+      this.group.add(jamb);
     }
+    for (const x of [-0.46, 0.46]) {
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.025, 2.88), this.emberMat);
+      lip.position.set(x, 3.475, 0);
+      lip.renderOrder = 1;
+      this.group.add(lip);
+    }
+
+    this.bars = new THREE.Group();
+    this.bars.position.set(0, 3.46, 0);
+    const barH = 3.32;
+    const z0 = -1.22;
+    const z1 = 1.22;
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const z = z0 + (z1 - z0) * (i / (n - 1));
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, barH, 0.08), iron);
+      bar.position.set(0, -barH / 2, z);
+      this.bars.add(bar);
+    }
+    for (const ly of [-0.85, -1.85, -3.05]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, z1 - z0 + 0.06), iron);
+      rail.position.set(0, ly, 0);
+      this.bars.add(rail);
+    }
+    this.group.add(this.bars);
     scene.add(this.group);
   }
 
@@ -406,14 +472,23 @@ export class FogGate {
   close(): void { this.solid = true; }
 
   update(t: number): void {
-    const o = this.solid ? 0.16 : 0.02;
+    const dt = this.lastT < 0 ? 0 : Math.min(0.05, Math.max(0, t - this.lastT));
+    this.lastT = t;
+    const target = this.solid ? 1 : 0;
+    const k = dt > 0 ? 1 - Math.exp(-8 * dt) : 1;
+    this.grate += (target - this.grate) * k;
+    this.bars.scale.y = Math.max(this.grate, 0.001);
+    this.bars.visible = this.grate > 0.04;
+
+    const o = this.solid ? 0.16 : 0.04;
+    const amp = this.solid ? 0.05 : 0.012;
     for (const p of this.sheets) {
       const ph = p.userData.phase as number;
-      (p.material as THREE.MeshBasicMaterial).opacity = o + Math.sin(t * 1.7 + ph) * 0.05;
-      p.position.y = 1.7 + Math.sin(t * 0.8 + ph) * 0.08;
+      (p.material as THREE.MeshBasicMaterial).opacity = o + Math.sin(t * 1.7 + ph) * amp;
+      p.position.y = 1.7 + Math.sin(t * 0.8 + ph) * 0.06;
     }
     this.emberMat.opacity = this.solid ? 0.4 + Math.sin(t * 0.85) * 0.05 : 0;
-    this.group.visible = o > 0.03 || this.solid;
+    this.coalMat.emissiveIntensity = this.solid ? 0.62 + Math.sin(t * 0.85) * 0.12 : 0;
   }
 }
 
