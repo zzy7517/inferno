@@ -1,0 +1,19 @@
+web/src/boss.ts
+  s_eb3e785bcb9cea::t_be7589a8d8eadd 40-41,71-88,90-109,111-123,126,143,145-147,175,177-179,233,473-474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b304a8df65f55676d9a574d068e7769e7ed67b04",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
