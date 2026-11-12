@@ -409,6 +409,15 @@ export class Player {
             "pR2",
           );
         }
+        // 后摇 cancelFrom 之后可翻滚取消；精力不够则留下预输入
+        const m = this.meta;
+        const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
+        if (tt >= cancelAt && this.buffered?.kind === "roll" && this.canSpend(P.rollCost)) {
+          this.buffered = null;
+          this.setDodgeDir(inputDir, camYaw);
+          this.enter("roll");
+          break;
+        }
         if (tt >= this.meta.total / this.heavySpeed - 1e-3) this.enter("idle");
         this.t += dt;
         break;
