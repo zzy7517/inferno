@@ -14,6 +14,14 @@
     #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 40; }
     #vig { position: fixed; inset: 0; pointer-events: none; z-index: 5;
       background: radial-gradient(ellipse at center, transparent 55%, rgba(5,6,9,0.55) 100%); }
+    /* 低血：四边红色压边，中心留空 */
+    #vig.danger {
+      background:
+        linear-gradient(to bottom, rgba(168, 28, 20, 0.72), transparent 18%),
+        linear-gradient(to top, rgba(168, 28, 20, 0.72), transparent 18%),
+        linear-gradient(to right, rgba(168, 28, 20, 0.5), transparent 13%),
+        linear-gradient(to left, rgba(168, 28, 20, 0.5), transparent 13%);
+    }
 
     /* ---- 左下：血条/精力/瓶/魂 ---- */
     .hud-bl { position: fixed; left: 22px; bottom: 20px; z-index: 10; width: min(340px, 38vw); }
@@ -27,6 +35,7 @@
     .meters { display: flex; gap: 18px; margin-top: 8px; font-size: 14px; letter-spacing: 1px; }
     .meters .flask { color: var(--gold); }
     .meters .flask b { font-size: 16px; margin-right: 4px; }
+    .meters .flask b.empty { color: var(--blood); }
     .meters .souls { color: #9aa3b2; }
     .meters .souls b { color: #cfd6e2; font-weight: 500; }
 

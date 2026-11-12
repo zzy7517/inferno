@@ -970,7 +970,9 @@ export class Game {
     ($("hpFl") as HTMLElement).style.width = `${Math.max(0, this.player.hp / P.hp * 100)}%`;
     ($("stFl") as HTMLElement).style.width = `${Math.max(0, this.player.stamina / P.stamina * 100)}%`;
     document.querySelector(".bar.st")?.classList.toggle("empty", this.player.stamina < P.rollCost);
+    $("vig").classList.toggle("danger", this.player.hp / P.hp < 0.3);
     $("estusN").textContent = String(this.player.estus);
+    $("estusN").classList.toggle("empty", this.player.estus <= 0);
     $("soulN").textContent = String(this.player.souls);
     // Boss 条（白条延迟；比率按各 Boss 自己的血量上限）
     const lag = $("bossLag"), fill = $("bossFill");
