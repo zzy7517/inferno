@@ -1,0 +1,22 @@
+web/src/projectile.ts
+  s_c16f37a5b6f7ca::t_135930b7a8ae35 2-3,5
+  s_c16f37a5b6f7ca::t_692e9c1de2e07f 24-27
+  s_c16f37a5b6f7ca::t_7600aa7882fbe5 77
+  s_c16f37a5b6f7ca::t_fb6463df99f691 113,121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "64db53199181997e9f110d91ffdb27db48d78d3b",
+  "prompts": {},
+  "sessions": {
+    "s_c16f37a5b6f7ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "714a2357-59de-4f98-8767-0e5b6666297a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
