@@ -76,7 +76,7 @@ ok("古达击败入档", k.defeated?.includes("gundyr"), JSON.stringify({ cls: k
 let cur = { cur: "cemetery", to: "高墙" };
 let sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("旅行高墙+Boss=玻尔多@B房", sc === "highwall" && st.id === "vordt" && Math.abs(st.bx - 8.9) < 0.8, JSON.stringify({ sc, ...st }));
+ok("旅行高墙+Boss=玻尔多@B房", sc === "highwall" && st.id === "vordt" && Math.abs(st.bx - 17.9) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("vordt");
 ok("玻尔多击败(解锁城垣+E区)", k.defeated?.includes("vordt"), JSON.stringify(k.defeated));
 st = await p.evaluate(() => ({ scenes: window.__game.progress.unlockedScenes, zones: window.__game.progress.zoneUnlocks }));
@@ -130,7 +130,7 @@ ok("拉塔恩击败(解锁高墙D)", k.defeated?.includes("radahn"), JSON.string
 cur = { cur: "cemetery", to: "高墙" };
 sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("再入高墙+Boss=沙力万@D月坛", sc === "highwall" && st.id === "sulyvahn" && Math.abs(st.bx - 75.9) < 0.8, JSON.stringify({ sc, ...st }));
+ok("再入高墙+Boss=沙力万@D月坛", sc === "highwall" && st.id === "sulyvahn" && Math.abs(st.bx - 100.9) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("sulyvahn");
 ok("沙力万击败=8/8全通", k.defeated?.length === 8, JSON.stringify(k.defeated));
 st = await p.evaluate(() => ({

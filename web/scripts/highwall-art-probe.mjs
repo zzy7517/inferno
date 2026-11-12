@@ -82,13 +82,13 @@ async function main() {
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check("① legacy 锚点六字段不变",
     eq(anchors.spawn, [-276, 0, 1.3]) && eq(anchors.bonfire, [-276, 0, 0]) && eq(anchors.fogGate, [-4, 0, 0]) &&
-    eq(anchors.bossArena, [7.1, 0, 0]) && anchors.arenaRadius === 12 && anchors.corridorMinX === -282,
+    eq(anchors.bossArena, [16.1, 0, 0]) && anchors.arenaRadius === 21 && anchors.corridorMinX === -282,
     `spawn=${anchors.spawn} fogGate=${anchors.fogGate} boss=${anchors.bossArena} r=${anchors.arenaRadius} minX=${anchors.corridorMinX}`);
   const zonesExp = [
     { id: "highwall:B", kind: "corridor", minX: -282, maxX: -4, half: 2.4, cx: null, cz: null, r: null },
-    { id: "highwall:B", kind: "arena", minX: 7.1 - 12 + 0.9, maxX: 18, half: null, cx: 7.1, cz: 0, r: 12 },
-    { id: "highwall:D", kind: "corridor", minX: 18, maxX: 63, half: 2.4, cx: null, cz: null, r: null },
-    { id: "highwall:D", kind: "arena", minX: 74.1 - 12 + 0.9, maxX: 74.1 + 12 + 0.4, half: null, cx: 74.1, cz: 0, r: 12 },
+    { id: "highwall:B", kind: "arena", minX: 16.1 - 21 + 0.9, maxX: 36, half: null, cx: 16.1, cz: 0, r: 21 },
+    { id: "highwall:D", kind: "corridor", minX: 36, maxX: 81, half: 2.4, cx: null, cz: null, r: null },
+    { id: "highwall:D", kind: "arena", minX: 99.1 - 19 + 0.9, maxX: 99.1 + 19 + 0.4, half: null, cx: 99.1, cz: 0, r: 19 },
   ];
   check("① zones 数组逐值不变（B 走廊/B 房/D 走廊/D 房）", eq(anchors.zones, zonesExp), `${anchors.zones.length} zones（期望 ${zonesExp.length}）`);
 

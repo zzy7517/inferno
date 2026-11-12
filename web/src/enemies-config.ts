@@ -125,9 +125,9 @@ export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
     { kind: "squire", at: [-8.5, 0.4], facing: -Math.PI / 2 },
     { kind: "crow", at: [-10.2, 2.2], facing: -Math.PI / 2 },
     { kind: "hollow", at: [-6.6, -1.2], facing: -Math.PI / 2 },
-    { kind: "squire", at: [28, 0.8], facing: -Math.PI / 2, zone: "highwall:D" },
-    { kind: "squire", at: [44, -0.9], facing: -Math.PI / 2, zone: "highwall:D" },
-    { kind: "hollow", at: [55, 1.0], facing: -Math.PI / 2, zone: "highwall:D" },
+    { kind: "squire", at: [46, 0.8], facing: -Math.PI / 2, zone: "highwall:D" },
+    { kind: "squire", at: [62, -0.9], facing: -Math.PI / 2, zone: "highwall:D" },
+    { kind: "hollow", at: [73, 1.0], facing: -Math.PI / 2, zone: "highwall:D" },
   ],
   // 城垣 E 区：之字坡活尸×2 + 乌鸦×1 + 雾门侍从；E4 接肢教堂暗廊（玛尔基特胜后）
   stormveil: [

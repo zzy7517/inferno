@@ -170,7 +170,7 @@ test("⑥ 回归：fresh=1 玻尔多雾门流程完好（E 跨门 → E 拔剑 �
   await page.keyboard.press("KeyE");
   await page.waitForFunction(() => (window as unknown as { __game: { flow: string } }).__game.flow === "fight", undefined, { timeout: 5_000 });
   const bossX = await page.evaluate(() => (window as unknown as { __game: { boss: { root: { position: { x: number } } } } }).__game.boss.root.position.x);
-  expect(Math.abs(bossX - 8.9)).toBeLessThan(0.5);                      // 玻尔多立于扩建后的场心东侧
+  expect(Math.abs(bossX - 17.9)).toBeLessThan(0.5);                      // 玻尔多立于场心东侧（圆心 16.1 + 1.8）
 });
 
 test("③ B 区步程：spawn→雾门直跑 ∈ [40,60] s（@6.2 m/s）", async ({ page }) => {
@@ -216,10 +216,10 @@ test("②b 逐区钳制（D 解锁）：可进 D 区并抵达沙力万房心", a
   const dz = await teleport(page, 40, 5, 8);
   expect(dz.z).toBeCloseTo(2.4, 1);                                     // D 廊道 z ±2.4
   // 直达沙力万房圆心
-  const r = await drive(page, [{ x: 40, z: 0 }, { x: 74.1, z: 0 }]);
-  const center = await teleport(page, 74.1, 0, 6);
-  expect(Math.hypot(center.x - 74.1, center.z)).toBeLessThan(1.0);
-  console.log(`[T4] D 区纵深 drive 40→74.1 = ${r.total.toFixed(1)}m`);
+  const r = await drive(page, [{ x: 50, z: 0 }, { x: 99.1, z: 0 }]);
+  const center = await teleport(page, 99.1, 0, 6);
+  expect(Math.hypot(center.x - 99.1, center.z)).toBeLessThan(1.0);
+  console.log(`[T4] D 区纵深 drive 50→99.1 = ${r.total.toFixed(1)}m`);
   // D 房东缘封口：传送超界推回可走圆（r−0.9 = 11.1 → x ≤ 85.2）
   const pe = await teleport(page, 120, 0, 8);
   expect(pe.x).toBeLessThanOrEqual(85.3);
