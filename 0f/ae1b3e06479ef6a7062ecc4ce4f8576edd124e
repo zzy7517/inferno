@@ -1,0 +1,21 @@
+web/index.html
+  s_cfca6cc4e7f0e9::t_a9ca3336774f10 17-24,38
+web/src/game.ts
+  s_cfca6cc4e7f0e9::t_f3b246e6f9750d 973,975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "0fae1b3e06479ef6a7062ecc4ce4f8576edd124e",
+  "prompts": {},
+  "sessions": {
+    "s_cfca6cc4e7f0e9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a75cf56-11bf-40a4-bb96-fe6bd03bb6a8",
+        "model": "unknown"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
