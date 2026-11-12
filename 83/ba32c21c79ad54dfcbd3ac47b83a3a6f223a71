@@ -1,0 +1,21 @@
+web/src/boss-vordt.ts
+  s_eb3e785bcb9cea::t_2f92e3ab0f94bc 83-84,123,194,201-205,207-220,271-272,274-276,451-456
+web/src/boss-watchers.ts
+  s_eb3e785bcb9cea::t_be01184fb3f9e0 94-97,99-105,192-193,200-221,223,299-300,303-304,307-308,312-313,357-359,367,372-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "83ba32c21c79ad54dfcbd3ac47b83a3a6f223a71",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
