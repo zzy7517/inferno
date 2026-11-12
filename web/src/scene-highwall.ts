@@ -81,8 +81,8 @@ const D_CORR = { minX: 18 + B_EAST_DX, maxX: 63 + B_EAST_DX, half: 2.4 };
 const ARENA_D = { cx: 63 + B_EAST_DX + (19 - 0.9), r: 19 };
 /** B 走廊空间分块（合批边界=frustum 剔剪边界） */
 const B_CHUNKS: [number, number][] = [[-282, -226.4], [-226.4, -170.8], [-170.8, -115.2], [-115.2, -59.6], [-59.6, -4]];
-/** 环墙开门半角：墙根净宽保持约 6.4m（旧 2×12.3×sin0.26），盖过走廊 4.8m，不随半径撑开。 */
-const doorPhi = (r: number): number => Math.asin(3.2 / (r + 0.3));
+/** 环墙开门半角：可走圆（r−0.9）上的弦宽等于走廊净宽。B/D 的 half 都是 2.4。 */
+const doorPhi = (r: number): number => Math.asin(B_CORR.half / (r - 0.9));
 
 // ---------------- 确定性随机（场景每次构建一致） ----------------
 let seed = 20260317;
@@ -852,22 +852,88 @@ export function buildHighWall(scene: THREE.Scene): {
     root.add(batch(G, stoneMat, "both"));
   });
 
+  /** 环墙：内侧面贴可走圆，向外加厚；门口两端用垛封住空腔，不吃进门洞。
+   *  arcs 用 CylinderGeometry 的 [t0, tl]（门洞已挖掉）；doors 用 XZ 角（0 东、π 西）。
+   *  只有内壁 cyl 带 jitter，段数与原来一致，后面的 rnd 序列不变。 */
+  const addRingShell = (
+    G: THREE.BufferGeometry[],
+    cx: number,
+    walk: number,
+    thick: number,
+    height: number,
+    arcs: ReadonlyArray<readonly [number, number]>,
+    doors: readonly number[],
+    phi: number,
+    color: number,
+    segs: number,
+  ): void => {
+    const wallOut = walk + thick;
+    const mid = (walk + wallOut) / 2;
+    const jambW = 0.48;
+    const jambArc = jambW / mid;
+    for (const [t0, tl] of arcs) {
+      const tStart = t0 + jambArc;
+      const tLen = tl - 2 * jambArc;
+      G.push(cylG(walk, walk, height, segs, cx, height / 2, 0, color, { open: true, t0: tStart, tl: tLen, jitter: 0.09 }));
+      G.push(cylG(wallOut, wallOut, height, segs, cx, height / 2, 0, color, { open: true, t0: tStart, tl: tLen }));
+      G.push(paint(
+        new THREE.RingGeometry(walk, wallOut, 36, 1, tStart - Math.PI / 2, tLen).rotateX(-Math.PI / 2).translate(cx, height + 0.01, 0),
+        color,
+      ));
+      for (const side of [-1, 1] as const) {
+        const end = side < 0 ? t0 : t0 + tl;
+        const th = end - side * (jambArc / 2);             // 垛落在墙弧里，门洞弦宽仍是走廊净宽
+        const x = cx + Math.sin(th) * mid;
+        const z = Math.cos(th) * mid;
+        const a = Math.atan2(z, x - cx);
+        G.push(boxG(jambW, height, thick, x, height / 2, z, color, { ry: Math.PI / 2 - a }));
+      }
+    }
+    const barT = 0.12;
+    const barRad = walk + barT / 2;                        // 栅内侧面贴可走圆，厚向外
+    for (const door of doors) {
+      const half = Math.max(0, phi - 0.05 / walk);
+      const span = 2 * half * barRad;
+      const n = Math.max(3, Math.round(span / 0.42) + 1);
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1;
+        const a = door + t * half;
+        G.push(boxG(0.12, height, barT, cx + Math.cos(a) * barRad, height / 2, Math.sin(a) * barRad, PAL.metal, { ry: Math.PI / 2 - a }));
+      }
+      const steps = Math.max(4, Math.round(span / 0.65));
+      for (const hy of [0.7, height * 0.5, height - 0.62]) {
+        for (let i = 0; i < steps; i++) {
+          const t = ((i + 0.5) / steps) * 2 - 1;
+          const a = door + t * half;
+          const seg = (span / steps) * 0.96;
+          G.push(boxG(seg, 0.08, barT, cx + Math.cos(a) * barRad, hy, Math.sin(a) * barRad, PAL.metal, { ry: Math.PI / 2 - a }));
+        }
+      }
+    }
+  };
+
   // ================================================================
-  // B3 玻尔多房（圆心随 r 东移，西可走边仍是雾门）：环墙双门 + 双塔 + 断剑雕像
+  // B3 玻尔多房（圆心随 r 东移，西可走边仍是雾门）：环墙内侧面贴可走圆，双门留走廊宽并落铁栅
   // ================================================================
   {
     const G: THREE.BufferGeometry[] = [];
     const cx = ARENA_B.cx;
     const r = ARENA_B.r;
     const phi = doorPhi(r);
-    const wallIn = r + 0.3, wallOut = r + 0.75, lip = r + 0.5, cren = r + 0.68;
-    const butt = r + 1.25, orbit = r + 1.9, pierR = r + 0.1;
-    const brim = r - 0.4;                               // 旧 11.6：可走圆（r−0.9）之外、环墙之内
+    const walk = r - 0.9;                               // 人被挡住的位置。内侧面落在这圈上
+    const thick = 0.7;                                  // 从可走圆向外加厚，不削进圆里
+    const wallOut = walk + thick, lip = walk + 0.28, cren = walk + 0.46;
+    const butt = wallOut + 0.42, orbit = r + 1.9, pierR = walk - 0.2;
+    const brim = walk - 0.57;                           // 雕像 / 火盆背贴内侧面，立在圆内
     const k = r / 12;                                   // 环纹按旧 r=12 的比例铺到新圆
-    // 环墙两弧（西/东各开门）：XZ 角 φ——0=+X 东门、π=−X 西门
+    // 环墙两弧（西/东各开门）：XZ 角 φ——0=+X 东门、π=−X 西门。弦宽 = 走廊 4.8m
     const arcLen = Math.PI - 2 * phi;
-    G.push(cylG(wallIn, wallOut, 2.7, 44, cx, 1.35, 0, PAL.stoneDark, { open: true, t0: -Math.PI / 2 + phi, tl: arcLen, jitter: 0.09 }));
-    G.push(cylG(wallIn, wallOut, 2.7, 44, cx, 1.35, 0, PAL.stoneDark, { open: true, t0: Math.PI / 2 + phi, tl: arcLen, jitter: 0.09 }));
+    const arcs: ReadonlyArray<readonly [number, number]> = [
+      [-Math.PI / 2 + phi, arcLen],
+      [Math.PI / 2 + phi, arcLen],
+    ];
+    const wallH = 2.7;
+    addRingShell(G, cx, walk, thick, wallH, arcs, [Math.PI, 0], phi, PAL.stoneDark, 44);
     // 墙顶步道 + 雉堞 + 扶壁（沿两弧；门口留空）
     const N = 46;
     for (let i = 0; i <= N; i++) {
@@ -907,7 +973,7 @@ export function buildHighWall(scene: THREE.Scene): {
     };
     tower(-1, false);                                     // 北塔：完好锥顶（旗）
     tower(1, true);                                       // 南塔：断顶
-    // —— 断剑雕像（南缘墙龛；贴在可走圆外，不挡战斗）——
+    // —— 断剑雕像（南缘；背贴环墙内侧）——
     G.push(boxG(1.7, 0.5, 1.1, cx, 0.25, -brim, PAL.stoneDark, { jitter: 0.1 }));
     G.push(boxG(1.3, 0.4, 0.9, cx, 0.7, -brim, PAL.stoneMid));
     for (const s of [-1, 1]) G.push(boxG(0.34, 1.5, 0.42, cx + s * 0.28, 1.65, -(brim + 0.05), PAL.stone, { jitter: 0.08 }));
@@ -923,8 +989,8 @@ export function buildHighWall(scene: THREE.Scene): {
       G.push(cylG(0.34, 0.18, 0.26, 9, x, 1.18, z, PAL.metal));
       addFlames([[x, 1.55, z]], 1, 8, 11, 3.3);
     }
-    // —— 地面：铺装圆 + 环纹 + 场心暗金徽环 ——
-    G.push(paint(new THREE.CircleGeometry(wallIn, 56).rotateX(-Math.PI / 2).translate(cx, 0.012, 0), COLORS.ground, 0.06));
+    // —— 地面：铺装圆 + 环纹 + 场心暗金徽环（铺装半径仍是旧内圈 r+0.3，墙根不露空）——
+    G.push(paint(new THREE.CircleGeometry(r + 0.3, 56).rotateX(-Math.PI / 2).translate(cx, 0.012, 0), COLORS.ground, 0.06));
     {
       const ringTones = [0x262a30, 0x1b1e23, 0x262a30, 0x1b1e23, 0x262a30, 0x1b1e23, 0x262a30];
       const rings: [number, number][] = [[1.45, 1.75], [2.95, 3.25], [4.45, 4.75], [5.95, 6.3], [7.45, 7.8], [8.95, 9.3], [10.45, 10.8]];
@@ -1038,18 +1104,22 @@ export function buildHighWall(scene: THREE.Scene): {
   }
 
   // ================================================================
-  // D2 沙力万房（西可走边钉在月坛东口）：苍白月石环墙 + 断柱（全通终点）
+  // D2 沙力万房（西可走边钉在月坛东口）：环墙内侧面贴可走圆，西门留走廊宽并落铁栅
   // ================================================================
   {
     const G: THREE.BufferGeometry[] = [];
     const cx = ARENA_D.cx;
     const r = ARENA_D.r;
     const phi = doorPhi(r);
-    const wallIn = r + 0.3, wallOut = r + 0.75, lip = r + 0.5, cren = r + 0.68;
-    const butt = r + 1.2;
+    const walk = r - 0.9;
+    const thick = 0.7;
+    const wallOut = walk + thick, lip = walk + 0.28, cren = walk + 0.46;
+    const butt = wallOut + 0.42;
     const k = r / 12;
-    // 环墙单开门（西，XZ 角 π）：整圈减去 π±phi
-    G.push(cylG(wallIn, wallOut, 2.9, 52, cx, 1.45, 0, 0x3a3f47, { open: true, t0: -Math.PI / 2 + phi, tl: Math.PI * 2 - 2 * phi, jitter: 0.09 }));
+    // 环墙单开门（西，XZ 角 π）：整圈减去 π±phi。东侧是终点，不另开口
+    const arcs: ReadonlyArray<readonly [number, number]> = [[-Math.PI / 2 + phi, Math.PI * 2 - 2 * phi]];
+    const wallH = 2.9;
+    addRingShell(G, cx, walk, thick, wallH, arcs, [Math.PI], phi, 0x3a3f47, 52);
     const N = 44;
     for (let i = 0; i <= N; i++) {
       const a = (Math.PI * 2 * i) / N;
@@ -1066,9 +1136,9 @@ export function buildHighWall(scene: THREE.Scene): {
       if (dWest < phi + 0.75) continue;                                          // 让开西门
       G.push(boxG(0.55, 3.5, 1.0, cx + Math.cos(a) * butt, 0.6, Math.sin(a) * butt, PAL.stoneDeep, { ry: a + Math.PI / 2, jitter: 0.08 }));
     }
-    // 断柱 ×2（贴可走圆外缘，柱身不伸进可走半径）
+    // 断柱 ×2（贴环墙内侧，不埋进墙厚）
     {
-      const colR = r - 0.475;
+      const colR = walk - 0.49;
       const colL = Math.hypot(7.5, 8.75);
       const ux = 7.5 / colL, uz = 8.75 / colL;
       for (const [px, pz] of [[cx - ux * colR, -uz * colR], [cx + ux * colR, uz * colR]] as const) {
@@ -1076,8 +1146,8 @@ export function buildHighWall(scene: THREE.Scene): {
         G.push(cylG(0.3, 0.36, rr(2.2, 3.2), 10, px, 1.6, pz, 0x3f444d, { rz: rr(-0.1, 0.1), jitter: 0.1 }));
       }
     }
-    // 地面：月纹环 + 暗金弦月徽（铺到新圆边）
-    G.push(paint(new THREE.CircleGeometry(wallIn, 56).rotateX(-Math.PI / 2).translate(cx, 0.012, 0), 0x20242b, 0.06));
+    // 地面：月纹环 + 暗金弦月徽（铺装半径仍是旧内圈 r+0.3，墙根不露空）
+    G.push(paint(new THREE.CircleGeometry(r + 0.3, 56).rotateX(-Math.PI / 2).translate(cx, 0.012, 0), 0x20242b, 0.06));
     {
       const tones = [0x2e3440, 0x252a33, 0x2e3440, 0x252a33, 0x2e3440, 0x252a33];
       const rings: [number, number][] = [[1.45, 1.75], [2.95, 3.25], [4.45, 4.75], [5.95, 6.3], [7.45, 7.8], [8.95, 9.3]];
