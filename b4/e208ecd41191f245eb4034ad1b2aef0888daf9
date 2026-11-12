@@ -1,0 +1,28 @@
+web/src/scene-geom.ts
+  s_fcd38fd107d09d::t_15d68b8cea7ad0 1-75
+web/src/scene-highwall.ts
+  s_fcd38fd107d09d::t_c224ec2c590519 30
+  s_fcd38fd107d09d::t_f2468d0bc913a6 94-95
+web/src/scene-cemetery.ts
+  s_fcd38fd107d09d::t_6ed6366edf7236 28
+  s_fcd38fd107d09d::t_3d9f47c395ce7b 52-53
+web/src/scene-stormveil.ts
+  s_fcd38fd107d09d::t_d8991c5fbd32c3 88-89
+  s_fcd38fd107d09d::t_33d03dc8a20c9b 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b4e208ecd41191f245eb4034ad1b2aef0888daf9",
+  "prompts": {},
+  "sessions": {
+    "s_fcd38fd107d09d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ac70c2a6-dd67-4d67-9e50-bcc75d7e3dac",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
