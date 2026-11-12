@@ -1,0 +1,36 @@
+web/src/boss-watchers.ts
+  s_be1176eb009d73::t_ffd3c89965970c 377
+  s_be1176eb009d73::t_4b3204ef1e37c7 531-533,536-539,542,544-545,548-552,554,557-558,560-561,563,565,570-576
+  s_be1176eb009d73::t_13f89112abdd0a 515-516
+  s_be1176eb009d73::t_f5d0733abcdbdd 393
+  s_be1176eb009d73::t_f89d154ab03c4b 418-423,427,435-437
+  s_be1176eb009d73::t_ea72907c5ce880 98,103-104
+  s_be1176eb009d73::t_705fbc19ce5712 271-277,292-294,298-303,305,307-308,312-313,319-320,324-329,338-340,342-358
+  s_be1176eb009d73::t_723ef3811a62b9 18-20,23-24,27-30,32-39
+  s_be1176eb009d73::t_d0265b2fa6f25f 304,306,309-311
+  s_be1176eb009d73::t_be17a874a3e441 11
+  s_be1176eb009d73::t_63e3f967a0c388 31
+  s_be1176eb009d73::t_e5fe2da8f477a5 491-492,496-497
+  s_be1176eb009d73::t_ac2272edf0ba78 26
+  s_be1176eb009d73::t_7049ff7ef80fae 534-535
+  s_be1176eb009d73::t_2c1c1ee8c63832 21-22
+  s_be1176eb009d73::t_4288cc6a74efb9 128-129
+  s_be1176eb009d73::t_e7a4d144b71de1 400
+  s_be1176eb009d73::t_2c6de85008b8b2 555-556,562
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ef8373b706e6d5f9e7ce357b8cae2fb8cef3afb4",
+  "prompts": {},
+  "sessions": {
+    "s_be1176eb009d73": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b13d6c72-a0c2-4bcc-8c6a-5be7706f2ad1",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
