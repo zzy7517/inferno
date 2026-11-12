@@ -93,7 +93,7 @@ interface WPose {
 }
 const STANCE: WPose = { y: 0, lean: 0.08, twist: -0.12, crouch: 0, reach: 0, armLift: 0.28, armSwing: -0.62, armL: -0.25, nod: 0.06, spin: 0 }; // 大剑垂在身侧，尖落在地面附近
 const STATUE_W: WPose = { ...STANCE, lean: 0.1, twist: 0, armLift: 0.15, armSwing: -0.64, armL: 0.05, nod: 0.5 };  // 垂剑而立、低头（监视者是站像）
-const KNEEL: WPose = { ...STANCE, y: -0.62, lean: 0.5, crouch: 0.55, nod: 0.75, armLift: 1.7, armSwing: -0.5, armL: 0.3 };  // 单膝跪地，大剑向前拄地
+const KNEEL: WPose = { ...STANCE, y: -0.45, lean: 0.5, crouch: 0.55, nod: 0.75, armLift: 1.7, armSwing: -0.5, armL: 0.3 };  // 单膝跪地，大剑向前拄地。身子变矮后下沉少 0.17，膝和剑尖仍贴地
 const RISE: WPose = { ...STANCE, lean: -0.12, armLift: -1.15, armSwing: -0.45, nod: -0.12, twist: 0.1 };                   // 红焰站起，把长剑挑起来
 // 三连斩三刀姿态（1 右→左斜劈 / 2 左→右回斩 / 3 躯干连剑一起扔开——轮廓必须比前两刀宽一档）
 // 手臂行程比旧姿态大，判定拍上的挥幅才盖得住这把剑；时间比例不改。
@@ -138,13 +138,16 @@ export class Watchers extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：瘦长人形剑士（肩宽 1.1 / 高 2.6，黑铁层叠甲 + 破披风 + 眼缝红点） ----------------
+  // ---------------- 外观：瘦长剑士。量过旧网格脚底 0.07、盔脊顶 2.64（脚到盔顶 2.57），收到 2.15；兜帽尖约 2.27 ----------------
   protected override buildBody(): void {
     const iron = new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.75, metalness: 0.35, flatShading: true });
     const ironDark = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.9, metalness: 0.2, flatShading: true });
     const cloth = new THREE.MeshStandardMaterial({ color: 0x121014, roughness: 1, side: THREE.DoubleSide, flatShading: true });
     this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.35, metalness: 0.7, flatShading: true, emissive: 0xff5a20, emissiveIntensity: 0 });
     this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a0505, roughness: 0.6, emissive: 0xff3b30, emissiveIntensity: 0.8 });
+    // 脚到盔顶 2.57 → 2.15，脚踩在 0。剑、匕、兜帽、斗篷只乘这一档。肩腰另收，腿另加长。
+    const S = 2.15 / 2.57;
+    const u = (n: number) => n * S;
 
     const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -168,45 +171,45 @@ export class Watchers extends BossBase {
     const quad = (faces: number[][], a: number, b: number, c: number, d: number) => {
       faces.push([a, c, b], [b, c, d]);
     };
-    // 腿（髋枢轴 + 膝枢轴两组：跪地/蹲伏的弯折）——腿根 y 1.38
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.14], [this.legL, this.shinL, -0.14]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.38, 0);
-      leg.add(box(0.17, 0.66, 0.2, ironDark, 0, -0.33, 0));                 // 大腿
-      shin.position.set(0, -0.66, 0);
-      shin.add(box(0.14, 0.6, 0.16, ironDark, 0, -0.3, 0.01));             // 小腿
-      shin.add(box(0.17, 0.3, 0.19, iron, 0, -0.26, 0.03));                // 胫甲
-      shin.add(box(0.16, 0.1, 0.32, ironDark, 0, -0.6, 0.07));             // 脚
+    // 腿（髋枢轴 + 膝枢轴：跪地/蹲伏的弯折）。髋在 1.20，约占身长 56%，比缩过的躯干长一截。脚底贴 0。
+    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.085], [this.legL, this.shinL, -0.085]] as [THREE.Group, THREE.Group, number][]) {
+      leg.position.set(sx, 1.2, 0);
+      leg.add(box(0.1, 0.64, 0.12, ironDark, 0, -0.32, 0));                  // 细长大腿
+      shin.position.set(0, -0.64, 0);
+      shin.add(box(0.08, 0.5, 0.1, ironDark, 0, -0.25, 0.008));             // 小腿
+      shin.add(box(0.09, 0.26, 0.11, iron, 0, -0.2, 0.02));                 // 胫甲，薄片不是方柱
+      shin.add(box(0.11, 0.07, 0.22, ironDark, 0, -0.525, 0.05));           // 脚，底 = 1.2-0.64-0.525-0.035 = 0
       leg.add(shin);
       this.body.add(leg);
     }
-    // 骨盆 / 腰带 / 裙甲三片
-    this.body.add(box(0.4, 0.26, 0.28, iron, 0, 1.46, 0));
-    this.body.add(box(0.44, 0.08, 0.32, ironDark, 0, 1.36, 0));
-    for (const [fx, fy, ry] of [[0, 0.17, 0], [0.2, 0.1, 0.6], [-0.2, 0.1, -0.6]] as [number, number, number][]) {
-      const plate = box(0.34, 0.3, 0.04, iron, fx, 1.26, fy);
-      plate.rotation.set(0.3, ry, 0);
+    // 细腰：窄骨盆、窄腰带、短裙甲。不再用一块 0.4 宽的方骨盆。
+    this.body.add(box(0.2, 0.12, 0.14, iron, 0, 1.22, 0));
+    this.body.add(box(0.22, 0.04, 0.16, ironDark, 0, 1.15, 0));
+    for (const [fx, fz, ry] of [[0, 0.08, 0], [0.09, 0.05, 0.55], [-0.09, 0.05, -0.55]] as [number, number, number][]) {
+      const plate = box(0.12, 0.16, 0.02, iron, fx, 1.1, fz);
+      plate.rotation.set(0.4, ry, 0);
       this.body.add(plate);
     }
-    // 躯干（层叠甲片）——底座 y 1.52
-    this.torso.position.y = 1.52;
-    this.torso.add(box(0.42, 0.34, 0.28, ironDark, 0, 0.05, 0));           // 腹甲
-    this.torso.add(box(0.5, 0.44, 0.32, iron, 0, 0.4, 0));                 // 胸甲
-    this.torso.add(box(0.56, 0.3, 0.36, iron, 0, 0.52, 0.01));             // 上层甲片
-    this.torso.add(box(0.44, 0.4, 0.06, ironDark, 0, 0.42, -0.19));        // 背板（披风锚点）
-    this.torso.add(box(0.3, 0.12, 0.26, ironDark, 0, 0.7, 0));             // 护颈
-    this.torso.add(box(0.1, 0.12, 0.04, ironDark, 0, 0.52, 0.19));         // 胸口扣
-    // 肩甲
+    // 躯干。底座仍是缩过的 1.45：腹窄、胸只宽一圈、上层甲不再比胸更宽更深。
+    this.torso.position.y = u(1.45);
+    this.torso.add(box(0.18, u(0.34), 0.13, ironDark, 0, u(0.05), 0));       // 腰
+    this.torso.add(box(0.28, u(0.44), 0.17, iron, 0, u(0.4), 0));             // 胸甲，扁，不是方块
+    this.torso.add(box(0.26, u(0.3), 0.15, iron, 0, u(0.52), u(0.01)));       // 上层甲，收在胸的轮廓里
+    this.torso.add(box(0.2, u(0.4), 0.03, ironDark, 0, u(0.42), -0.105));    // 背板（斗篷锚点）
+    this.torso.add(box(0.1, u(0.12), 0.1, ironDark, 0, u(0.7), 0));           // 细颈
+    this.torso.add(box(0.05, u(0.08), 0.025, ironDark, 0, u(0.5), 0.095));   // 胸口扣
+    // 肩甲窄，斜着贴在胸外，不把肩撑成横方块。持剑肩轴在 x=±0.155，甲片包住轴但比旧的 0.38 收进一截。
     for (const s of [-1, 1]) {
-      const p = box(0.26, 0.16, 0.32, iron, s * 0.38, 0.66, 0);
-      p.rotation.z = -s * 0.25;
+      const p = box(0.13, 0.06, 0.14, iron, s * 0.175, u(0.66), 0);
+      p.rotation.z = -s * 0.32;
       this.torso.add(p);
     }
-    // 头盔：只在眼缝处露两个红点
-    this.head.position.set(0, 0.88, 0.03);
-    this.head.add(box(0.26, 0.32, 0.3, iron, 0, 0, 0));
-    this.head.add(box(0.05, 0.1, 0.26, ironDark, 0, 0.19, 0));             // 盔脊
-    this.head.add(box(0.24, 0.09, 0.05, ironDark, 0, 0.03, 0.15));         // 眼缝暗槽
-    for (const ex of [-0.062, 0.062]) this.head.add(box(0.05, 0.032, 0.02, this.eyeMat, ex, 0.03, 0.175));
+    // 头盔：只在眼缝处露两个红点。盔脊顶 = 躯干 1.45S + 头 0.88S + 脊 0.24S = 2.15。
+    this.head.position.set(0, u(0.88), u(0.03));
+    this.head.add(box(u(0.26), u(0.32), u(0.3), iron, 0, 0, 0));
+    this.head.add(box(u(0.05), u(0.1), u(0.26), ironDark, 0, u(0.19), 0));   // 盔脊
+    this.head.add(box(u(0.24), u(0.09), u(0.05), ironDark, 0, u(0.03), u(0.15))); // 眼缝暗槽
+    for (const ex of [-0.062, 0.062]) this.head.add(box(u(0.05), u(0.032), u(0.02), this.eyeMat, u(ex), u(0.03), u(0.175)));
     // 兜帽罩在盔外，额前开口留着眼缝。侧面是后倾的尖顶，布顺着后颈垂下来。
     {
       const pts: [number, number, number][] = [
@@ -232,94 +235,96 @@ export class Watchers extends BossBase {
       faces.push([3, flap + 1, 6], [6, flap + 1, flap + 2], [6, flap + 2, 9]);
       quad(faces, 2, 5, flap + 3, flap + 4);
       faces.push([5, 8, flap + 4], [8, flap + 4, flap + 5], [8, 11, flap + 5]);
+      for (const p of pts) { p[0] *= S; p[1] *= S; p[2] *= S; }             // 兜帽形状不动，只随头缩。尖在头本地 y=0.38S，世界约 2.27
       this.head.add(clothMesh(pts, faces));
     }
     this.torso.add(this.head);
     // 右臂 + 大剑。长握柄露出拳头以下一截，宽剑格，厚脊薄刃，尖端逐级收窄。
     // 刃全部用 bladeMat：二阶段整刃一起燃，点燃时机不改。不新开灯。
-    this.armR.position.set(0.33, 0.66, 0);
-    this.armR.add(box(0.12, 0.44, 0.14, ironDark, 0, -0.2, 0));
-    this.armR.add(box(0.105, 0.42, 0.12, iron, 0, -0.58, 0.03));
-    this.armR.add(box(0.125, 0.16, 0.14, iron, 0, -0.86, 0.05));           // 铁手套
+    this.armR.position.set(0.155, u(0.66), 0);
+    this.armR.add(box(u(0.12), u(0.44), u(0.14), ironDark, 0, u(-0.2), 0));
+    this.armR.add(box(u(0.105), u(0.42), u(0.12), iron, 0, u(-0.58), u(0.03)));
+    this.armR.add(box(u(0.125), u(0.16), u(0.14), iron, 0, u(-0.86), u(0.05))); // 铁手套
     const sword = new THREE.Group();
-    sword.position.set(0, -0.94, 0.06);
+    sword.position.set(0, u(-0.94), u(0.06));
     sword.rotation.x = 0.3;                                                // 略后曳，身侧垂剑时尖落在地面附近
-    sword.add(box(0.05, 0.5, 0.056, ironDark, 0, -0.06, 0));               // 长柄：拳头以下还露出一截
-    for (const gy of [0.1, 0, -0.1, -0.2]) sword.add(box(0.064, 0.026, 0.07, iron, 0, gy, 0)); // 柄缠
-    sword.add(box(0.092, 0.07, 0.082, ironDark, 0, 0.185, 0));             // 柄头
-    sword.add(box(0.048, 0.04, 0.05, iron, 0, 0.24, 0));
-    sword.add(box(0.5, 0.07, 0.09, iron, 0, -0.34, 0));                    // 剑格
-    sword.add(box(0.12, 0.1, 0.11, ironDark, 0, -0.34, 0));
-    const ql = box(0.06, 0.15, 0.065, iron, -0.22, -0.4, 0);
+    sword.add(box(u(0.05), u(0.5), u(0.056), ironDark, 0, u(-0.06), 0));   // 长柄：拳头以下还露出一截
+    for (const gy of [0.1, 0, -0.1, -0.2]) sword.add(box(u(0.064), u(0.026), u(0.07), iron, 0, u(gy), 0)); // 柄缠
+    sword.add(box(u(0.092), u(0.07), u(0.082), ironDark, 0, u(0.185), 0)); // 柄头
+    sword.add(box(u(0.048), u(0.04), u(0.05), iron, 0, u(0.24), 0));
+    sword.add(box(u(0.5), u(0.07), u(0.09), iron, 0, u(-0.34), 0));        // 剑格
+    sword.add(box(u(0.12), u(0.1), u(0.11), ironDark, 0, u(-0.34), 0));
+    const ql = box(u(0.06), u(0.15), u(0.065), iron, u(-0.22), u(-0.4), 0);
     ql.rotation.z = 0.75;
-    const qr = box(0.06, 0.15, 0.065, iron, 0.22, -0.4, 0);
+    const qr = box(u(0.06), u(0.15), u(0.065), iron, u(0.22), u(-0.4), 0);
     qr.rotation.z = -0.75;
     sword.add(ql, qr);                                                     // 剑格两端下垂
-    sword.add(box(0.13, 0.22, 0.06, this.bladeMat, 0, -0.48, 0));          // 剑根
-    sword.add(box(0.08, 1.0, 0.052, this.bladeMat, 0, -1.05, 0));          // 脊
-    sword.add(box(0.072, 0.92, 0.018, this.bladeMat, -0.07, -1.05, 0));    // 左刃
-    sword.add(box(0.072, 0.92, 0.018, this.bladeMat, 0.07, -1.05, 0));     // 右刃
-    sword.add(box(0.028, 0.7, 0.012, ironDark, 0, -1.02, 0.032));          // 血槽，刃缘仍走 bladeMat
-    sword.add(box(0.05, 0.32, 0.034, this.bladeMat, 0, -1.6, 0));          // 收窄
-    sword.add(box(0.04, 0.26, 0.014, this.bladeMat, -0.038, -1.6, 0));
-    sword.add(box(0.04, 0.26, 0.014, this.bladeMat, 0.038, -1.6, 0));
-    sword.add(box(0.032, 0.16, 0.02, this.bladeMat, 0, -1.74, 0));         // 尖
-    sword.add(box(0.014, 0.08, 0.01, this.bladeMat, 0, -1.81, 0));         // 剑尖，末端 y=-1.85
-    this.swordHilt.position.set(0, -0.06, 0);
-    this.swordTip.position.set(0, -1.85, 0);
+    sword.add(box(u(0.13), u(0.22), u(0.06), this.bladeMat, 0, u(-0.48), 0)); // 剑根
+    sword.add(box(u(0.08), u(1.0), u(0.052), this.bladeMat, 0, u(-1.05), 0)); // 脊
+    sword.add(box(u(0.072), u(0.92), u(0.018), this.bladeMat, u(-0.07), u(-1.05), 0)); // 左刃
+    sword.add(box(u(0.072), u(0.92), u(0.018), this.bladeMat, u(0.07), u(-1.05), 0)); // 右刃
+    sword.add(box(u(0.028), u(0.7), u(0.012), ironDark, 0, u(-1.02), u(0.032))); // 血槽，刃缘仍走 bladeMat
+    sword.add(box(u(0.05), u(0.32), u(0.034), this.bladeMat, 0, u(-1.6), 0)); // 收窄
+    sword.add(box(u(0.04), u(0.26), u(0.014), this.bladeMat, u(-0.038), u(-1.6), 0));
+    sword.add(box(u(0.04), u(0.26), u(0.014), this.bladeMat, u(0.038), u(-1.6), 0));
+    sword.add(box(u(0.032), u(0.16), u(0.02), this.bladeMat, 0, u(-1.74), 0)); // 尖
+    sword.add(box(u(0.014), u(0.08), u(0.01), this.bladeMat, 0, u(-1.81), 0)); // 剑尖，末端 = -1.85S
+    this.swordHilt.position.set(0, u(-0.06), 0);                           // 仍钉在握柄中心
+    this.swordTip.position.set(0, u(-1.85), 0);                            // 仍钉在剑尖末端
     sword.add(this.swordHilt, this.swordTip);
     this.swordLight = new THREE.PointLight(0xff5a20, 0, 5, 2);
-    this.swordLight.position.set(0, -1.05, 0);
+    this.swordLight.position.set(0, u(-1.05), 0);
     sword.add(this.swordLight);
     this.armR.add(sword);
     this.torso.add(this.armR);
-    // 左臂 + 短匕。小柄、小格、尖刃，整长仍明显短于大剑（柄头到尖约 0.74，大剑约 2.1）。
+    // 左臂 + 短匕。小柄、小格、尖刃，整长仍明显短于大剑（柄头到尖约 0.62，大剑约 1.76，只随身体乘同一档）。
     // 刃全部用 bladeMat：二阶段和长剑一起燃，点燃时机不改。不新开灯。
-    this.armL.position.set(-0.33, 0.66, 0);
-    this.armL.add(box(0.11, 0.42, 0.13, ironDark, 0, -0.19, 0));
-    this.armL.add(box(0.1, 0.4, 0.11, iron, 0, -0.55, 0.02));
-    this.armL.add(box(0.12, 0.15, 0.13, iron, 0, -0.8, 0.04));
+    this.armL.position.set(-0.155, u(0.66), 0);
+    this.armL.add(box(u(0.11), u(0.42), u(0.13), ironDark, 0, u(-0.19), 0));
+    this.armL.add(box(u(0.1), u(0.4), u(0.11), iron, 0, u(-0.55), u(0.02)));
+    this.armL.add(box(u(0.12), u(0.15), u(0.13), iron, 0, u(-0.8), u(0.04)));
     const dagger = new THREE.Group();
-    dagger.position.set(0, -0.88, 0.04);
+    dagger.position.set(0, u(-0.88), u(0.04));
     dagger.rotation.x = 0.35;
-    dagger.add(box(0.036, 0.16, 0.042, ironDark, 0, 0.015, 0));            // 小柄
-    dagger.add(box(0.046, 0.024, 0.05, iron, 0, 0.05, 0));                  // 柄缠
-    dagger.add(box(0.046, 0.024, 0.05, iron, 0, -0.02, 0));
-    dagger.add(box(0.052, 0.04, 0.05, ironDark, 0, 0.112, 0));              // 柄头
-    dagger.add(box(0.2, 0.032, 0.046, iron, 0, -0.078, 0));                 // 小格
-    dagger.add(box(0.058, 0.048, 0.054, ironDark, 0, -0.078, 0));
-    const dl = box(0.024, 0.06, 0.03, iron, -0.09, -0.098, 0);
+    dagger.add(box(u(0.036), u(0.16), u(0.042), ironDark, 0, u(0.015), 0)); // 小柄
+    dagger.add(box(u(0.046), u(0.024), u(0.05), iron, 0, u(0.05), 0));      // 柄缠
+    dagger.add(box(u(0.046), u(0.024), u(0.05), iron, 0, u(-0.02), 0));
+    dagger.add(box(u(0.052), u(0.04), u(0.05), ironDark, 0, u(0.112), 0));  // 柄头
+    dagger.add(box(u(0.2), u(0.032), u(0.046), iron, 0, u(-0.078), 0));     // 小格
+    dagger.add(box(u(0.058), u(0.048), u(0.054), ironDark, 0, u(-0.078), 0));
+    const dl = box(u(0.024), u(0.06), u(0.03), iron, u(-0.09), u(-0.098), 0);
     dl.rotation.z = 0.65;
-    const dr = box(0.024, 0.06, 0.03, iron, 0.09, -0.098, 0);
+    const dr = box(u(0.024), u(0.06), u(0.03), iron, u(0.09), u(-0.098), 0);
     dr.rotation.z = -0.65;
     dagger.add(dl, dr);                                                     // 格端略下垂
-    dagger.add(box(0.09, 0.12, 0.036, this.bladeMat, 0, -0.155, 0));        // 刃根
-    dagger.add(box(0.046, 0.24, 0.03, this.bladeMat, 0, -0.32, 0));         // 脊
-    dagger.add(box(0.036, 0.2, 0.014, this.bladeMat, -0.028, -0.31, 0));    // 左刃
-    dagger.add(box(0.036, 0.2, 0.014, this.bladeMat, 0.028, -0.31, 0));     // 右刃
-    dagger.add(box(0.04, 0.12, 0.022, this.bladeMat, 0, -0.47, 0));         // 收窄
-    dagger.add(box(0.024, 0.1, 0.012, this.bladeMat, -0.024, -0.47, 0));
-    dagger.add(box(0.024, 0.1, 0.012, this.bladeMat, 0.024, -0.47, 0));
-    dagger.add(box(0.02, 0.07, 0.014, this.bladeMat, 0, -0.545, 0));        // 尖
-    dagger.add(box(0.01, 0.045, 0.008, this.bladeMat, 0, -0.59, 0));        // 末端约 y=-0.61
+    dagger.add(box(u(0.09), u(0.12), u(0.036), this.bladeMat, 0, u(-0.155), 0)); // 刃根
+    dagger.add(box(u(0.046), u(0.24), u(0.03), this.bladeMat, 0, u(-0.32), 0)); // 脊
+    dagger.add(box(u(0.036), u(0.2), u(0.014), this.bladeMat, u(-0.028), u(-0.31), 0)); // 左刃
+    dagger.add(box(u(0.036), u(0.2), u(0.014), this.bladeMat, u(0.028), u(-0.31), 0)); // 右刃
+    dagger.add(box(u(0.04), u(0.12), u(0.022), this.bladeMat, 0, u(-0.47), 0)); // 收窄
+    dagger.add(box(u(0.024), u(0.1), u(0.012), this.bladeMat, u(-0.024), u(-0.47), 0));
+    dagger.add(box(u(0.024), u(0.1), u(0.012), this.bladeMat, u(0.024), u(-0.47), 0));
+    dagger.add(box(u(0.02), u(0.07), u(0.014), this.bladeMat, 0, u(-0.545), 0)); // 尖
+    dagger.add(box(u(0.01), u(0.045), u(0.008), this.bladeMat, 0, u(-0.59), 0)); // 末端约 y=-0.61S
     this.armL.add(dagger);
     this.torso.add(this.armL);
-    // 一条破斗篷：从肩后贴背垂下，过腰后向后曳开，下摆参差。
-    // 右缘停在持剑肩（x=0.33）内侧，布不包住挥剑的肩轴；下摆让开贴背扫过的刃。
+    // 一条破斗篷：形状不动，只乘 S，再往前贴到收薄的背上。
+    // 右缘停在持剑肩轴（x=0.155）内侧，布不包住挥剑的肩轴；下摆让开贴背扫过的刃。
     {
       const cols = 4, rows = 8;
       const tears = [0.22, 0, 0.38, 0.08, 0.3];
+      const zBias = 0.06;                                                   // 背变薄之后，把整片往前送到背板上
       const pts: [number, number, number][] = [];
       for (let r = 0; r <= rows; r++) {
         const v = r / rows;
         for (let c = 0; c <= cols; c++) {
-          const u = c / cols;
-          const x = (-0.24 + v * 0.08) + ((0.12 - v * 0.04) - (-0.24 + v * 0.08)) * u;
+          const uu = c / cols;
+          const x = (-0.24 + v * 0.08) + ((0.12 - v * 0.04) - (-0.24 + v * 0.08)) * uu;
           const yFull = 0.76 - v * 1.78;
           const y = yFull + tears[c] * v * v * 0.7;
           const zS = y >= -0.02 ? -0.23 - (0.76 - y) * 0.32 : -0.64 - Math.min(1, (-0.02 - y) / 0.95) * 0.38;
-          const z = zS - Math.sin(u * Math.PI) * (0.08 + v * 0.06);
-          pts.push([x, y, z]);
+          const z = zS - Math.sin(uu * Math.PI) * (0.08 + v * 0.06);
+          pts.push([x * S, y * S, z * S + zBias]);
         }
       }
       const faces: number[][] = [];
@@ -332,18 +337,19 @@ export class Watchers extends BossBase {
     }
     // 肩后两片短破布，仍走 cape 的摆动。短，甩不开肩轴，也扫不到刃。
     const rag = (x0: number, x1: number, len: number) => {
+      x0 *= S; x1 *= S; len *= S;
       const pts: [number, number, number][] = [
-        [x0, 0, 0], [(x0 + x1) / 2, 0, -0.04], [x1, 0, 0],
-        [x0 + 0.01, -len * 0.55, -0.02], [(x0 + x1) / 2, -len * 0.5, -0.08], [x1 - 0.01, -len * 0.6, -0.02],
-        [x0 + 0.02, -len, 0], [(x0 + x1) / 2 + 0.01, -len * 0.85, -0.05], [x1, -len * 0.7, 0],
+        [x0, 0, 0], [(x0 + x1) / 2, 0, u(-0.04)], [x1, 0, 0],
+        [x0 + u(0.01), -len * 0.55, u(-0.02)], [(x0 + x1) / 2, -len * 0.5, u(-0.08)], [x1 - u(0.01), -len * 0.6, u(-0.02)],
+        [x0 + u(0.02), -len, 0], [(x0 + x1) / 2 + u(0.01), -len * 0.85, u(-0.05)], [x1, -len * 0.7, 0],
       ];
       const faces: number[][] = [];
       quad(faces, 0, 1, 3, 4); quad(faces, 1, 2, 4, 5);
       quad(faces, 3, 4, 6, 7); quad(faces, 4, 5, 7, 8);
       return clothMesh(pts, faces);
     };
-    const ragL = rag(-0.16, -0.04, 0.28); ragL.position.set(0, 0.42, -0.36);
-    const ragR = rag(-0.02, 0.08, 0.22); ragR.position.set(0, 0.38, -0.34);
+    const ragL = rag(-0.16, -0.04, 0.28); ragL.position.set(0, u(0.42), u(-0.36) + 0.06);
+    const ragR = rag(-0.02, 0.08, 0.22); ragR.position.set(0, u(0.38), u(-0.34) + 0.06);
     this.cape.push(ragL, ragR);
     this.torso.add(ragL, ragR);
     this.root.add(this.body);
@@ -476,17 +482,17 @@ export class Watchers extends BossBase {
     }
   }
 
-  /** 判定拍上剑尖到胸口的距离（剑尖本地 y=-1.85，与挥砍姿态一起量的） */
+  /** 判定拍上剑尖到胸口的距离（剑尖本地 y=-1.85S，缩身之后按挥砍姿态重测，弧内缘仍落在剑身上） */
   private slashReach(name: string): number {
     switch (name) {
-      case "watcherCombo": return 2.24;
-      case "watcherCombo2": return 2.41;
-      case "watcherSweep": return 2.61;
-      case "watcherDash": return 2.48;
-      case "watcherRiser": return 2.5;
-      case "watcherBackslash": return 2.31;
-      case "watcherFirenova": return 2.72;
-      default: return 2.45;
+      case "watcherCombo": return 1.92;
+      case "watcherCombo2": return 2.01;
+      case "watcherSweep": return 2.25;
+      case "watcherDash": return 2.04;
+      case "watcherRiser": return 2.06;
+      case "watcherBackslash": return 1.96;
+      case "watcherFirenova": return 2.32;
+      default: return 2.05;
     }
   }
 
