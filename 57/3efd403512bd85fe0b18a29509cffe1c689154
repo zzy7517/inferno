@@ -1,0 +1,24 @@
+web/src/scene-highwall.ts
+  s_26370a10f5694c::t_a56d267664b49a 141-142
+  s_26370a10f5694c::t_d051ea45569856 100-111,113-123,125-140,143-209
+  s_26370a10f5694c::t_3bce1bf30f963c 1178-1210
+  s_26370a10f5694c::t_d377dfacf9a891 112
+  s_26370a10f5694c::t_19a3af1ed26ac6 20
+  s_26370a10f5694c::t_1dc13cd0f7c6b6 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "573efd403512bd85fe0b18a29509cffe1c689154",
+  "prompts": {},
+  "sessions": {
+    "s_26370a10f5694c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "eef689a3-65a9-4977-a12c-fdcd3fd1224f",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
