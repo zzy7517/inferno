@@ -1,0 +1,27 @@
+web/src/boss-base.ts
+  s_eb3e785bcb9cea::t_0067a802c3fd2b 8,12-19
+  s_eb3e785bcb9cea::t_1a9b0cc2dee38a 310
+  s_eb3e785bcb9cea::t_19c2805c6d922d 3-4
+  s_eb3e785bcb9cea::t_d2b08f3f90edcc 334-336
+  s_eb3e785bcb9cea::t_2260ebb4b0846b 211
+  s_eb3e785bcb9cea::t_afdeabb6148411 118-124
+  s_eb3e785bcb9cea::t_d18c9c093c2e4f 354
+  s_eb3e785bcb9cea::t_c879707d3cacd0 362-422
+  s_eb3e785bcb9cea::t_55ceab72c0b978 59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9257d6bcb11b8d2021611f5477648ade75cf964b",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
