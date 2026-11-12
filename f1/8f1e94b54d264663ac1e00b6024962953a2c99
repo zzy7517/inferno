@@ -1,0 +1,23 @@
+tools/blender/build_character.py
+  s_eb3e785bcb9cea::t_f820bee85debc9 88,92-106
+  s_eb3e785bcb9cea::t_edcbbac0bd20e5 256-260
+  s_eb3e785bcb9cea::t_f9761b5d26bd5e 310
+  s_eb3e785bcb9cea::t_b4da315349d2bc 341-342
+  s_eb3e785bcb9cea::t_86711600f99b72 364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f18f1e94b54d264663ac1e00b6024962953a2c99",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
