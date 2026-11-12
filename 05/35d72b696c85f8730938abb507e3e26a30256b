@@ -1,0 +1,37 @@
+web/src/scene-highwall.ts
+  s_04af6f35c8906c::t_9fcb3446a25844 526
+  s_04af6f35c8906c::t_6f09db6e1388dc 711
+  s_04af6f35c8906c::t_b613e9763e4a6b 1085
+  s_04af6f35c8906c::t_7b33868f84259d 408
+  s_04af6f35c8906c::t_f23e620ba1d672 967-970,972
+  s_04af6f35c8906c::t_1b03aed16e8610 414,426-428
+  s_04af6f35c8906c::t_15a7963fbef303 1081
+  s_04af6f35c8906c::t_083c9e298b3613 661-662
+web/src/scene-stormveil.ts
+  s_04af6f35c8906c::t_59b9f251bbd125 1412
+  s_04af6f35c8906c::t_c6693938fdfd9e 1194
+  s_04af6f35c8906c::t_b6ee07ad847341 1409
+  s_04af6f35c8906c::t_a2e699592dbd27 1203
+  s_04af6f35c8906c::t_a47346d2b2e620 1259-1273
+web/src/scene-cemetery.ts
+  s_04af6f35c8906c::t_7bbbaff35b6741 849-853
+  s_04af6f35c8906c::t_37825c5225ee2e 945
+  s_04af6f35c8906c::t_948ed1861eda2c 942
+  s_04af6f35c8906c::t_f6168fa3f851e6 314-315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "0535d72b696c85f8730938abb507e3e26a30256b",
+  "prompts": {},
+  "sessions": {
+    "s_04af6f35c8906c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1c1d59d0-3e57-47ff-91bd-fe5ed9c4285c",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
