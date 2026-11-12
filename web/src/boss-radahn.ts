@@ -33,6 +33,8 @@ const IRON = 0x3a3e47;           // 暗铁甲
 const IRON_DARK = 0x2b2e36;
 const GOLD_TRIM = 0xa8783c;      // 将军甲金饰（稀疏点缀）
 const STEEL = 0x707888;          // 剑身钢色
+/** 旧刃握点到尖 2.67，新刃约 3.92。只放大刀光视觉半径，判定距离不动。 */
+const SWORD_VIS_SCALE = 3.92 / 2.67;
 
 /** 投射物参数（发射走 host.fireProjectile，飞行/命中/消散由 game 侧 Projectiles 池负责）
  *  命中高度带 0.15–1.85（projectile.ts）：狙击箭平飞 1.8 全程在带内；岩/箭雨自高处抛落，入带段=威胁距离带 */
@@ -183,12 +185,13 @@ interface Pose {
   nod: number;                     // 头部俯仰（正=低头）
   spin: number;                    // 整体附加旋转（拖剑旋风整圈）
 }
-const STANCE: Pose = { y: 0, lean: 0.12, twist: -0.06, crouch: 0.04, reach: 0, rLift: 0.26, rSwing: 0.14, lLift: 0.26, lSwing: -0.14, nod: 0.1, spin: 0 };
+const STANCE: Pose = { y: 0, lean: 0.12, twist: -0.06, crouch: 0.04, reach: 0, rLift: 0.26, rSwing: 0, lLift: 0.26, lSwing: 0, nod: 0.1, spin: 0 };
 const STATUE: Pose = { ...STANCE, lean: 0.3, crouch: 0.16, y: -0.1, nod: 0.55, rLift: 0.5, rSwing: 0.05, lLift: 0.5, lSwing: -0.05 };   // 双剑前拄垂首伫立
-// 交叉斩：双剑大开 → 合剪两拍（与判定 0.30/0.65 对齐）
-const XW: Pose = { ...STANCE, twist: 0.5, rLift: -1.3, rSwing: -1.1, lLift: -1.3, lSwing: 1.1, lean: -0.08, crouch: 0.1 };
-const X1: Pose = { ...STANCE, twist: -0.4, rLift: 0.5, rSwing: 0.9, lLift: 0.5, lSwing: -0.9, lean: 0.25, crouch: 0.12 };
-const X2: Pose = { ...STANCE, twist: -0.55, rLift: 0.62, rSwing: 1.15, lLift: 0.62, lSwing: -1.15, lean: 0.32, crouch: 0.18, reach: 0.2 };
+// 交叉斩：双剑大开 → 交错剪过两拍（与判定 0.30/0.65 对齐，时间比例不动）
+// swing 同号才是真正的镜像开合；异号会让两条臂同向滚，两剑并成一块
+const XW: Pose = { ...STANCE, twist: 0.02, rLift: 0.2, lLift: 0.2, rSwing: -1.2, lSwing: -1.2, lean: -0.12, crouch: 0.05 };
+const X1: Pose = { ...STANCE, twist: -0.1, rLift: 0.88, lLift: 0.42, rSwing: 1.5, lSwing: 1.5, lean: 0.26, crouch: 0.1, reach: 0.08 };
+const X2: Pose = { ...STANCE, twist: -0.18, rLift: 1.05, lLift: 0.7, rSwing: 1.7, lSwing: 1.7, lean: 0.4, crouch: 0.16, reach: 0.2 };
 // 三连三拍（与判定 0.68/1.18/1.68 对齐）：右单斩 / 左单斩 / 双剑下劈
 const T1W: Pose = { ...STANCE, twist: 0.5, rLift: -1.2, rSwing: -0.9, nod: 0.12 };
 const T1K: Pose = { ...STANCE, twist: -0.45, rLift: 0.6, rSwing: 1.1, lean: 0.2 };
@@ -344,19 +347,32 @@ export class Radahn extends BossBase {
     this.head.add(this.hairG);
     this.torso.add(this.head);
 
-    // 双臂 + 碎星大剑（一臂一剑各一件）：巨剑前下曳——垂剑时剑尖恰好拄地（拖剑）
-    const buildSword = (): THREE.Group => {
+    // 双臂 + 碎星大剑（一臂一剑各一件，仍各 1 mesh）：宽刃前下曳，垂剑时剑尖贴地。
+    // 剑格宽于刃、剑尖单独收锋；左右外张并前后错开，避免并成一块。
+    const buildSword = (side: 1 | -1): THREE.Group => {
       const g = new THREE.Group();
-      g.position.set(0, -1.34, 0.12);
-      g.rotation.x = 0.62;
+      const x = (n: number) => side * n;
+      g.position.set(x(0.02), -1.24, 0.12 + x(0.05));
+      g.rotation.set(-1.08, x(0.38), x(0.2));           // 负俯仰＝剑尖朝前下方；偏航/滚转把两刃撑开
       g.add(part([
-        boxG(0.1, 0.3, 0.1, 0, 0, 0, IRON_DARK),                                       // 柄
-        boxG(0.15, 0.12, 0.15, 0, 0.2, 0, GOLD_TRIM),                                  // 柄头
-        boxG(0.56, 0.09, 0.16, 0, -0.18, 0, GOLD_TRIM),                                // 护手
-        boxG(0.32, 2.1, 0.07, 0, -1.28, 0, STEEL, { jitter: 0.04 }),                    // 剑身
-        boxG(0.34, 1.7, 0.02, 0, -1.1, 0.045, GRAVITY_DEEP),                           // 剑缘紫辉条 ×2（重力淬锋）
-        boxG(0.34, 1.7, 0.02, 0, -1.1, -0.045, GRAVITY_DEEP),
-        boxG(0.26, 0.34, 0.06, 0, -2.5, 0, STEEL),                                     // 剑尖收锋
+        boxG(0.2, 0.16, 0.2, 0, 0.28, 0, GOLD_TRIM),                                   // 柄头
+        boxG(0.12, 0.36, 0.12, 0, 0.02, 0, IRON_DARK),                                 // 柄
+        boxG(1.18, 0.16, 0.28, 0, -0.26, 0, GOLD_TRIM),                                // 剑格（明显宽于刃）
+        boxG(0.14, 0.28, 0.16, x(0.52), -0.08, 0, GOLD_TRIM, { rz: x(-0.6) }),         // 格端上翘
+        boxG(0.12, 0.22, 0.14, x(-0.5), -0.1, 0, IRON, { rz: x(0.45) }),
+        boxG(0.2, 0.24, 0.1, 0, -0.48, 0, IRON_DARK),                                  // 剑颈，隔开剑格和宽刃
+        boxG(0.88, 1.45, 0.1, x(0.05), -1.4, 0, STEEL, { jitter: 0.05, rz: x(0.03) }), // 宽刃上段
+        boxG(0.14, 1.3, 0.04, x(0.05), -1.38, 0.055, IRON_DARK),                       // 血槽
+        boxG(0.14, 1.3, 0.04, x(0.05), -1.38, -0.055, IRON_DARK),
+        boxG(0.68, 1.2, 0.09, x(0.16), -2.55, 0, STEEL, { jitter: 0.05, rz: x(0.08) }), // 宽刃下段，向外弯
+        boxG(0.94, 1.35, 0.02, x(0.05), -1.36, 0.07, GRAVITY_GLOW),                    // 剑缘紫辉（emissive × 顶点色）
+        boxG(0.94, 1.35, 0.02, x(0.05), -1.36, -0.07, GRAVITY_GLOW),
+        boxG(0.74, 1.1, 0.018, x(0.16), -2.52, 0.06, GRAVITY),
+        boxG(0.74, 1.1, 0.018, x(0.16), -2.52, -0.06, GRAVITY),
+        boxG(0.26, 0.5, 0.06, x(0.24), -3.35, 0.01, STEEL, { rz: x(0.1) }),           // 剑尖收窄
+        boxG(0.12, 0.34, 0.04, x(0.28), -3.74, 0.01, STEEL, { rz: x(0.12) }),         // 尖锋，和宽刃断开一截
+        boxG(0.16, 0.42, 0.016, x(0.25), -3.32, 0.045, GRAVITY_GLOW, { rz: x(0.1) }),
+        boxG(0.16, 0.42, 0.016, x(0.25), -3.32, -0.02, GRAVITY_GLOW, { rz: x(0.1) }),
       ], this.swordMat));
       return g;
     };
@@ -366,7 +382,7 @@ export class Radahn extends BossBase {
       boxG(0.38, 0.58, 0.42, 0, -0.86, 0.03, IRON_DARK, { jitter: 0.05 }),              // 前臂
       boxG(0.44, 0.32, 0.48, 0, -1.24, 0.05, IRON),                                    // 铁手套
     ], bodyMat));
-    this.armR.add(buildSword());
+    this.armR.add(buildSword(1));
     this.torso.add(this.armR);
     this.armL.position.set(-1.06, 1.06, 0);
     this.armL.add(part([
@@ -374,7 +390,7 @@ export class Radahn extends BossBase {
       boxG(0.38, 0.58, 0.42, 0, -0.86, 0.03, IRON_DARK, { jitter: 0.05 }),
       boxG(0.44, 0.32, 0.48, 0, -1.24, 0.05, IRON),
     ], bodyMat));
-    this.armL.add(buildSword());
+    this.armL.add(buildSword(-1));
     this.torso.add(this.armL);
 
     // 召唤碎星大弓（snipe 显形；加色弓体 + 弦，一件 = 1 mesh，无阴影）
@@ -403,7 +419,7 @@ export class Radahn extends BossBase {
     this.torso.rotation.set(p.lean, p.twist, 0);
     this.head.rotation.x = p.nod;
     this.armR.rotation.set(-p.rLift, 0, -p.rSwing);
-    this.armL.rotation.set(-p.lLift, -0.12, p.lSwing);
+    this.armL.rotation.set(-p.lLift, 0, p.lSwing);         // 与右臂镜像；额外偏航会把两剑拧到同一侧
     this.legR.rotation.x = -p.crouch * 0.55;               // 无膝枢轴：整腿随蹲伏前倾
     this.legL.rotation.x = -p.crouch * 0.4;
     this.hairG.rotation.x = 0.06 + Math.sin(performance.now() * 0.0021) * 0.035 + p.lean * 0.3 + p.nod * 0.25;   // 鬃毛随俯仰/风摆
@@ -665,12 +681,17 @@ export class Radahn extends BossBase {
       (this.move.name === "radahnArrowRain" || this.move.name === "radahnGravityWave" || this.move.name === "radahnMeteor" || this.move.name === "radahnSnipe")) {
       this.swordMat.emissiveIntensity += 0.9 * clamp01(this.t / Math.max(0.01, this.move.startup));
     }
+    // 挥剑前摇同样在 startup 里渐亮，时间式不改，只把双剑招的增益加大
+    if (this.state === "combat" && this.sub === "tel" && this.move &&
+      (this.move.name === "radahnCross" || this.move.name === "radahnTriple" || this.move.name === "radahnVortex")) {
+      this.swordMat.emissiveIntensity += 1.6 * clamp01(this.t / Math.max(0.01, this.move.startup));
+    }
     // 剑光：交叉斩/三连每段一道（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）
     if (this.state === "combat" && this.sub === "act" && this.move &&
       (this.move.name === "radahnCross" || this.move.name === "radahnTriple")) {
       while (this.slashFired < this.hitFired) {
         this.slashFired++;
-        this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.82,
+        this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.82 * SWORD_VIS_SCALE,
           this.move.name === "radahnTriple" && this.slashFired === 3, p2 ? GRAVITY_GLOW : SLASH_COOL);
       }
     }
@@ -678,7 +699,7 @@ export class Radahn extends BossBase {
     if (this.state === "combat" && this.sub === "act" && this.move?.name === "radahnVortex") {
       while (this.slashFired < this.hitFired) {
         this.slashFired++;
-        this.vfx.slash(this.chestWorld().setY(1.1), this.yaw + (this.slashFired - 1) * 0.3, this.move.range * 0.9, true, GRAVITY_GLOW);
+        this.vfx.slash(this.chestWorld().setY(1.1), this.yaw + (this.slashFired - 1) * 0.3, this.move.range * 0.9 * SWORD_VIS_SCALE, true, GRAVITY_GLOW);
       }
     }
     // 相位回到 1 却还带着二阶段/狂暴改写（只改了 phase 字段、死亡重开漏走 reset）时，把共享表还回去
