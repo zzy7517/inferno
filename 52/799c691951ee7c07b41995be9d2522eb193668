@@ -1,0 +1,19 @@
+web/index.html
+  s_ff44ae3e4449b2::t_ff995bf2c1b2a4 155-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "52799c691951ee7c07b41995be9d2522eb193668",
+  "prompts": {},
+  "sessions": {
+    "s_ff44ae3e4449b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "36f34de6-40f3-41ca-affc-9106d18e7035",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
