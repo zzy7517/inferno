@@ -108,6 +108,8 @@ export class Game {
   private bossSeal: { x: number; z: number; walk: number } | null = null;
   /** 本场还可以封。解开后关掉，避免人还站在圆里时下一帧又封上；换 Boss 再打开。 */
   private bossSealArmed = true;
+  /** 上次封门撞墙反馈的 elapsed。贴墙时至少隔 0.35s，避免每帧连响。 */
+  private sealThudAt = -1;
   private hintT = 14;
 
   private stats = { hitsTaken: 0, parries: 0, ripostes: 0, deaths: 0 };
@@ -780,7 +782,8 @@ export class Game {
     return { x: room.x, z: room.z, r, playerInside: this.bossSeal !== null || inside };
   }
 
-  /** 封门后每帧钳在可走圆内，x 落进走廊区也不能退出去。 */
+  /** 封门后每帧钳在可走圆内，x 落进走廊区也不能退出去。
+   *  这一帧若把人从圆外拉回超过 2cm，闷响一声并在脚下闪余烬环；0.35s 内不连响。 */
   private clampInsideBossSeal(): void {
     const s = this.bossSeal;
     if (!s) return;
@@ -788,9 +791,15 @@ export class Game {
     const dx = p.x - s.x, dz = p.z - s.z;
     const dist = Math.hypot(dx, dz);
     if (dist > s.walk) {
+      const pull = dist - s.walk;
       const k = s.walk / dist;
       p.x = s.x + dx * k;
       p.z = s.z + dz * k;
+      if (pull > 0.02 && this.elapsed - this.sealThudAt >= 0.35) {
+        this.sealThudAt = this.elapsed;
+        AU.sealThud();
+        this.vfx.ring(p, 0.9);
+      }
     }
   }
 

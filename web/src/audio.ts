@@ -97,6 +97,8 @@ class AudioSys {
   victoryBell(): void { this.tone(660, 655, 1.4, "sine", 0.3); this.tone(880, 875, 1.6, "sine", 0.2, 0.25); this.tone(1320, 1310, 1.2, "sine", 0.1, 0.25); }
   soulGain(): void { this.tone(900, 1400, 0.25, "sine", 0.15); }
   fogGate(): void { this.noise(0.8, 600, 0.2, "bandpass", 0, 0.8); }
+  /** 撞上 Boss 房封门：极短低沉闷响。不经 hitPitch，命中变调序列保持原样。 */
+  sealThud(): void { this.tone(62, 34, 0.07, "sine", 0.32); this.noise(0.06, 150, 0.18, "lowpass"); }
   bonfireRest(): void { this.tone(520, 515, 1.2, "sine", 0.2); this.noise(0.6, 1400, 0.08, "highpass"); }
 }
 
