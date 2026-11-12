@@ -1,0 +1,29 @@
+web/src/scene-stormveil.ts
+  s_6adfea1a8382d2::t_9a9474b1aa0f46 840-841
+  s_6adfea1a8382d2::t_2eb6d3e35cb871 1147
+  s_6adfea1a8382d2::t_69281a99a57ce6 866,869-874,878,880,885
+  s_6adfea1a8382d2::t_6e19e2919fac0b 786-792
+  s_6adfea1a8382d2::t_a98fd447bc5920 1308-1320
+  s_6adfea1a8382d2::t_d7db4d3f16b1e5 228-229
+  s_6adfea1a8382d2::t_969a091e1b409c 1058-1146,1148-1153,1155-1220,1321
+  s_6adfea1a8382d2::t_5b57e25793bb31 795-796
+  s_6adfea1a8382d2::t_f6fab3a3bfd25e 1154
+web/src/enemies-config.ts
+  s_6adfea1a8382d2::t_f6454f96371952 139-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "8f066af759153378f38ca66712168923b1001b38",
+  "prompts": {},
+  "sessions": {
+    "s_6adfea1a8382d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf5f048-23b4-4424-8081-4b6499231e4c",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
