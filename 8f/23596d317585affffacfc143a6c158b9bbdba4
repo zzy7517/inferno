@@ -1,0 +1,33 @@
+web/src/boss-morgott.ts
+  s_5ae8ff766f59d9::t_3ca78d99bcfdfe 299-318
+  s_5ae8ff766f59d9::t_a4d018c7774415 352
+  s_5ae8ff766f59d9::t_6ea9419cb1fe47 465
+  s_5ae8ff766f59d9::t_ba51767d4c6079 677
+  s_5ae8ff766f59d9::t_4d864f92935b4d 954-980
+  s_5ae8ff766f59d9::t_c11ff445b4febf 398-399
+  s_5ae8ff766f59d9::t_7eadb367b73980 48-49
+  s_5ae8ff766f59d9::t_498dd54133dd85 213
+  s_5ae8ff766f59d9::t_ad30d5d2c9c5c0 214-224
+  s_5ae8ff766f59d9::t_e5c765c6f5d53a 442
+  s_5ae8ff766f59d9::t_12158e4c83712f 420
+  s_5ae8ff766f59d9::t_e1497ed114acf9 298
+  s_5ae8ff766f59d9::t_85f7e5cdf49ea0 432
+  s_5ae8ff766f59d9::t_c8f4d683ae6f00 23
+  s_5ae8ff766f59d9::t_b90a071fc0e176 1150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "8f23596d317585affffacfc143a6c158b9bbdba4",
+  "prompts": {},
+  "sessions": {
+    "s_5ae8ff766f59d9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4d4c8562-f8a1-48b0-9490-20cc39a3aed0",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
