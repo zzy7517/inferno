@@ -1,0 +1,21 @@
+web/src/boss-radahn.ts
+  s_c7afacb80a38d2::t_d6d06d3cb20db1 420-450
+  s_c7afacb80a38d2::t_164fc54106226b 171-188
+  s_c7afacb80a38d2::t_e021e63654a881 304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9bc07cf74928b1a248dcae706bda45c048273144",
+  "prompts": {},
+  "sessions": {
+    "s_c7afacb80a38d2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e7e63e39-a6e9-402d-bdc8-44a6dd7ba857",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
