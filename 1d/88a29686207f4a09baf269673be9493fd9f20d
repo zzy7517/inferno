@@ -1,0 +1,21 @@
+web/src/vfx.ts
+  s_b7344d6a0c025f::t_270cb102253731 445
+  s_b7344d6a0c025f::t_0ff3a5dff7a8f6 365,371-375,379-422,424,431-432,437-441,443-444,446-467,475-484,487-488,491
+  s_b7344d6a0c025f::t_66f5524d66e19c 425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1d88a29686207f4a09baf269673be9493fd9f20d",
+  "prompts": {},
+  "sessions": {
+    "s_b7344d6a0c025f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "63d6c3e2-ddac-415c-b811-a7274f409d97",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
