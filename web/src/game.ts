@@ -71,7 +71,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 export class Game {
   private renderer = new THREE.WebGLRenderer({ antialias: true });
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 120);
+  private camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 480);
   private vfx!: Vfx;
   private bonfire!: Bonfire;
   private fog!: FogGate;
