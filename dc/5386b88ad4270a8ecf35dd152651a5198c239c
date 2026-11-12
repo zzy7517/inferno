@@ -1,0 +1,45 @@
+web/index.html
+  s_ae715748fecf72::t_ea067a4d34bd2e 152
+web/src/tune.ts
+  s_ae715748fecf72::t_f5c4e122e99536 58
+  s_ae715748fecf72::t_c8165f89e6fd73 97-107
+  s_ae715748fecf72::t_6fad3830079a26 67-71
+web/src/weapon-hit.ts
+  s_ae715748fecf72::t_7082ff8a2b07b2 1-40,42,51,53,57-58
+  s_ae715748fecf72::t_8914d24f33cb8c 41,43-50,52,54-56
+web/src/enemy.ts
+  s_ae715748fecf72::t_a7298631599b91 907-912,915-918,921
+  s_ae715748fecf72::t_1b66ee763a9130 9
+web/src/player.ts
+  s_a98a0b34b732af::t_fd87e8426507b2 5,7,16-17,78,159,167,170,177,516,527-538,540,542-543,546-557,579-649,651
+  s_ae715748fecf72::t_c832b35c9b574c 3
+  s_ae715748fecf72::t_7e71b4575e8b2c 539,541,544-545
+web/src/game.ts
+  s_ae715748fecf72::t_86117004766f11 160
+tools/blender/build_character.py
+  s_a98a0b34b732af::t_fd87e8426507b2 345-349,351-354,356-358,902,904-906
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "dc5386b88ad4270a8ecf35dd152651a5198c239c",
+  "prompts": {},
+  "sessions": {
+    "s_a98a0b34b732af": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e663793b-df9f-4fc7-8a02-0762adbf823a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_ae715748fecf72": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8de0a075-a9c5-4ec7-8dc2-bbb46c1b4c9b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
