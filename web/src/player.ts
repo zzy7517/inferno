@@ -414,7 +414,9 @@ export class Player {
       }
       case "roll": {
         const T = 0.7;
-        const speed = 9.5 * Math.pow(1 - this.t / T, 0.6) + 1.5;
+        // Math.max(0,…)：退出检查在 t += dt 之前，收尾帧 t 会越过 T，负底数的非整数幂是 NaN，
+        // 一次就毒化 pos → 相机 NaN → 画面永久黑屏（M1 起每次翻滚必中）
+        const speed = 9.5 * Math.pow(Math.max(0, 1 - this.t / T), 0.6) + 1.5;
         this.pos.addScaledVector(this.dodgeDir, speed * dt);
         this.yaw = Math.atan2(this.dodgeDir.x, this.dodgeDir.z);
         // 翻滚攻：翻滚 60% 后缓冲的 R1 在此精确衔接（起身横扫）
@@ -430,9 +432,9 @@ export class Player {
       }
       case "backstep": {
         const T = this.clipNum("backstep", "total", 0.45);
-        // 线性衰减剖面：∫v dt = P.backstepDist（1.6m 后跃，面朝不变）
+        // 线性衰减剖面：∫v dt = P.backstepDist（1.6m 后跃，面朝不变）；Math.max 同 roll——防收尾帧过冲倒退
         const v0 = 2 * P.backstepDist / T;
-        this.pos.addScaledVector(this.dodgeDir, v0 * (1 - this.t / T) * dt);
+        this.pos.addScaledVector(this.dodgeDir, v0 * Math.max(0, 1 - this.t / T) * dt);
         // 后撤中 R1 → 后撤直刺（chainFrom 帧数据可调）
         const chainAt = this.clipNum("backstep", "chainFrom", 0.18);
         if (this.buffered?.kind === "r1" && this.t >= chainAt && this.canSpend(P.r1Cost)) {
