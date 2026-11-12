@@ -4,11 +4,11 @@
  * - MOVES_MARGIT/FEEL_MARGIT 模块加载即并入 config 总表（调校台/存档自动收录，不改现有文件）
  * - 金色召唤武器体系（身份标识）：金锤/金剑 emissive 半透明网格在招式开始时凭空显形（hammerShow/swordShow 缓动）
  * - 咒刃经 host.fireProjectile → game 侧 Projectiles 池；二连发惩罚中远距站桩/喝药贪刀（wiki：常在玩家回血时投掷）
- * - 欺诈性延迟前摇：杖背藏（Windup）拖到极限才爆发，近身砸地 / 远身前冲双旋（运行时按距离分支）
- * - 匕首退击（斩→后跳→投刃两段闪避）、跃空刺（悬停→下刺，落地大硬直=惩罚窗口）、绕背尾扫
- * - 连段按站位延长：杖剑三连近身 40% 接金锤收尾（chain=杖→剑→锤武器切换），咒刃后接突进挥击
+ * - 欺诈性延迟前摇：杖背藏先收到背后骗提前翻滚，命中前再短举过头才砸/旋；近身单砸 / 远身前冲双旋（运行时按距离分支）
+ * - 匕首退击（先斩、再后跳、再投刃）、跃空刺（悬停→下刺，落地才判定，9.5m 外不跳）、绕背尾扫（冷却内不强制）
+ * - 连段按站位延长：杖剑三连近身 40% 接金锤收尾（chain=杖→剑→锤武器切换），咒刃后接突进挥击；段间隔留翻滚窗
  * - 二阶段（hp≤65%）：变身即攻击演出「召锤扛肩→正面横扫→高跃→落锤冲击波」，之后金光披身：
- *   前摇 ×0.88 / 伤害 ×1.15 / 咒刃三连发 / 无预警锤跃；弹反收益降一档（parriedDur 1.45）
+ *   前摇 ×0.88 / 伤害 ×1.15 / 咒刃三连发 / 锤跃举锤悬停后砸（落点才判定）；弹反收益降一档（parriedDur 1.45）
  * 配色纪律：全局冷灰咒体 + 预言金光 0xd8b46a 点缀，无高饱和色。
  */
 import * as THREE from "three";
@@ -33,6 +33,17 @@ const WOOD = 0x4a3d2c;        // 咒杖木色
 /** 咒刃投射物：速度 12，drop 每秒下坠 1.1 制造抛物线弹道，life 1.6s ≈ 19m 射程后自散 */
 const DAGGER_PROJ: ProjDef = { speed: 12, radius: 0.4, dmg: 14, feelKey: "mMagic", life: 1.6, color: GOLD, drop: 1.1 };
 
+/** 多段间隔：玩家受击硬直 0.4s，翻滚无敌约从 0.44s 起。短于这个缝就是真连。 */
+const HIT_GAP = 0.62;
+/** 远身双旋 active：首段在 active*0.4，次段 +HIT_GAP，且次段必须 < active（否则基类钳到末帧）。 */
+const WINDUP_FAR_ACTIVE = 1.12;
+/** 近身单砸 active：接触帧仍是 active*0.4，砸实后立刻进后摇。 */
+const WINDUP_NEAR_ACTIVE = 0.32;
+const HAMMER_APEX = 1.75;
+const STAB_APEX = 1.55;
+/** 跃空刺出手上限。lunge 7、落点留 1.2：9.5m 静止目标余距 2.5 ≤ range 3.4 + 基类容差 0.45。再远走近。 */
+const LEAP_REACH = 9.5;
+
 // ---------------- 帧数据（键名 margit 前缀 / 手感键 m 开头；fextralife wiki 忠实校正） ----------------
 export const MOVES_MARGIT: Record<string, MoveDef> = {
   // 咒杖直击（Staff Stab）：直线前刺，可弹反；前冲 1.0m 在 movePose tel 段消费
@@ -40,19 +51,19 @@ export const MOVES_MARGIT: Record<string, MoveDef> = {
     name: "margitStaff", label: "咒杖直击", startup: 0.50, active: 0.16, recovery: 0.80,
     dmg: 20, range: 3.8, arc: 0.9, lunge: 1.0, parryable: true, cd: 2.2, feel: "mLight",
   },
-  // 杖剑三连（Staff Swing 连击 + 召唤剑收尾）：3 段判定，节奏 0.5s。
-  // 多段时间轴：第 k 段在 min(active*0.4 + k*0.5, active)，active ≥ 1.67 才能三段全触发 → 取 1.7（0.68/1.18/1.68）。
+  // 杖剑三连（Staff Swing 连击 + 召唤剑收尾）：3 段判定。
+  // 第 k 段在 active*0.4 + k*HIT_GAP。active 2.15 → 0.86 / 1.48 / 2.10，段间隔 0.62s 留翻滚窗。
   // 近身 40% 接金锤收尾（chain）＝wiki「武器切换连段 杖→剑→锤」的近身延长风味；第三段为左手召唤金剑挥斩
   margitCombo: {
-    name: "margitCombo", label: "杖剑三连", startup: 0.35, active: 1.7, recovery: 0.85,
-    dmg: 12, range: 3.2, arc: 1.6, hits: 3, hitInterval: 0.5, chain: "margitHammer",
+    name: "margitCombo", label: "杖剑三连", startup: 0.35, active: 2.15, recovery: 0.85,
+    dmg: 12, range: 3.2, arc: 1.6, hits: 3, hitInterval: HIT_GAP, chain: "margitHammer",
     parryable: true, cd: 4.2, feel: "mLight",   // 仅首段可弹反由引擎保证（首段命中关窗）
   },
-  // 杖背藏（Windup Attack·招牌欺诈延迟）：杖收到背后长前摇 1.25s（前 50% 就蓄好型然后静止骗提前翻滚），
-  // 末 20% 才爆发：近身（<3.2m 运行时判定）砸地出环 / 远身前冲 5m 顺时针双旋斩（2 段判定 0.35s 间隔）
+  // 杖背藏（Windup·招牌欺诈延迟）：背后藏杖长前摇 1.25s 骗提前翻滚，末段才短举过头。
+  // 表内 active/hits 是远身双旋（两段 HIT_GAP，冲程落在第一段判定上）。近身单砸在 onMoveStart 改 hits=1、active 缩短。
   margitWindup: {
-    name: "margitWindup", label: "杖背藏", startup: 1.25, active: 0.30, recovery: 1.0,
-    dmg: 26, range: 4.4, arc: 2.4, hits: 2, hitInterval: 0.35, lunge: 5.0,
+    name: "margitWindup", label: "杖背藏", startup: 1.25, active: WINDUP_FAR_ACTIVE, recovery: 1.05,
+    dmg: 26, range: 4.4, arc: 2.4, hits: 2, hitInterval: HIT_GAP, lunge: 5.0,
     parryable: true, cd: 6.5, feel: "mHeavy",
   },
   // 召唤金锤（Hammer Slam）：长前摇 1.1s（后半段金锤显形），抬左腿→巨锤下劈，收招硬直 1.5s 可贪刀；
@@ -61,9 +72,9 @@ export const MOVES_MARGIT: Record<string, MoveDef> = {
     name: "margitHammer", label: "召唤金锤", startup: 1.1, active: 0.16, recovery: 1.5,
     dmg: 34, range: 3.6, arc: 1.2, parryable: true, cd: 6.0, feel: "mHeavy",
   },
-  // 锤跃（Hammer Leap·二阶段）：无预警原地高跳 + 砸地金色冲击波；出手即显形（hammerShow 快速通道）
+  // 锤跃（Hammer Leap·二阶段）：先举锤再起跳悬停，落地那一帧才进判定。二阶段前摇仍 ×0.88，基线留够可读
   margitHammerLeap: {
-    name: "margitHammerLeap", label: "锤跃", startup: 0.40, active: 0.15, recovery: 1.5,
+    name: "margitHammerLeap", label: "锤跃", startup: 0.62, active: 0.22, recovery: 1.5,
     dmg: 36, range: 4.6, arc: 1.6, lunge: 3.0, parryable: false, cd: 8.0,
     phase2Only: true, feel: "mHeavy",
   },
@@ -75,15 +86,17 @@ export const MOVES_MARGIT: Record<string, MoveDef> = {
     dmg: 14, range: 0.2, arc: 0.9, parryable: false, cd: 5.5, chain: "margitStaff",
     proj: { speed: 12, radius: 0.4, life: 1.6 }, feel: "mMagic",
   },
-  // 匕首退击（Dagger Retreat）：贴身时斩一刀 → 后跳 1.5m → 投出咒刃（两段闪避节奏）；位移在 tel 段反向
+  // 匕首退击（Dagger Retreat）：先斩（还在贴身距离内）→ 后跳 1.5m → 再投咒刃。位移在收招，不在判定前
   margitRetreat: {
     name: "margitRetreat", label: "匕首退击", startup: 0.30, active: 0.14, recovery: 0.80,
     dmg: 14, range: 2.6, arc: 2.2, parryable: false, cd: 7.0, feel: "mLight",
   },
   // 横扫尾击（Tail Swipe）：贴身/绕背脱身用，小半径全周判定 + 小击飞（knockUp 由 player.applyHit 抛物线消费）
+  // arc 用 2π：写成 6.28 时半角 3.14 < π，正后方（绕背的正中）会漏出判定
+  // 击飞约 0.39s + 落地硬直 0.4s，后摇 1.45s 才能在玩家落地后还留下约 0.7s 惩罚窗
   margitTail: {
-    name: "margitTail", label: "横扫尾击", startup: 0.45, active: 0.22, recovery: 1.0,
-    dmg: 22, range: 3.0, arc: 6.28, knockUp: 3.5, parryable: false, cd: 6.5, feel: "mHeavy",
+    name: "margitTail", label: "横扫尾击", startup: 0.45, active: 0.22, recovery: 1.45,
+    dmg: 22, range: 3.0, arc: Math.PI * 2, knockUp: 3.5, parryable: false, cd: 6.5, feel: "mHeavy",
   },
   // 跃空刺（Leaping Stab）：远距起跳，空中悬停一瞬 → 向下突刺；落地硬直 1.6s 是最大惩罚窗口（wiki）
   margitLeap: {
@@ -137,6 +150,7 @@ const C3K: Pose = { ...STANCE, twist: -0.8, rLift: 0.4, rSwing: 1.3, lean: 0.28,
 // 杖背藏（欺诈前摇）：杖收到背后静止（wind＝蓄好型后僵住骗翻滚）→ 爆发双旋（strike）；近身分支改下砸（HW2）
 const WUW: Pose = { ...STANCE, twist: 0.7, rLift: -0.55, rSwing: -1.25, lean: 0.05, crouch: 0.18, nod: 0.24 };
 const WUK: Pose = { ...STANCE, twist: -0.9, rLift: 0.7, rSwing: 1.35, lean: 0.3, crouch: 0.1 };
+const WUK2: Pose = { ...WUK, twist: 0.85, rSwing: -1.35, lean: 0.34 }; // 远身双旋第二段
 const WU2W: Pose = { ...STANCE, twist: 0.55, rLift: -1.7, rSwing: -0.4, lean: -0.06, crouch: 0.2, nod: -0.1 };
 const WU2K: Pose = { ...STANCE, twist: -0.2, rLift: 1.05, rSwing: 0.1, lean: 0.55, crouch: 0.4, nod: 0.3, reach: 0.4, y: -0.22 };
 // 金锤：抬左腿高举过顶（金光显形，侧摆让扛锤位从前方可见）→ 劈落砸地
@@ -195,6 +209,7 @@ export class Margit extends BossBase {
   private moveDir = new THREE.Vector3(0, 0, 1);
   private moveLen = 0;
   private windupFar = false;                      // 杖背藏运行时分支：远身前冲双旋 / 近身砸地
+  private lastMoveName = "";                      // 同招连续降权
   private slashFired = 0;                         // 已补画杖光的判定段数（与 hitFired 对齐）
   private daggerFired = 0;                        // 已发出的咒刃数
   private daggerTotal = 2;                        // 本轮连发总数（二阶段 3）
@@ -400,6 +415,11 @@ export class Margit extends BossBase {
     p.tail = a.tail + (b.tail - a.tail) * k; p.legL = a.legL + (b.legL - a.legL) * k;
   }
 
+  /** 基类首段判定在 active*0.4。接触姿态在这一刻走完：之前举着，落点才吃伤害。 */
+  private contactK(t: number, active: number): number {
+    return smooth(clamp01(t / Math.max(0.04, active * 0.4)));
+  }
+
   protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
     // 咒刃后续补发：act 起点 +0.32s/发（active 0.2 ⇒ 第 2/3 发落在 rec 段；tel 段不参与——首发归 onMoveActive；
     // 与战斗时间同源，暂停不脱钩）
@@ -410,7 +430,7 @@ export class Margit extends BossBase {
       }
     }
     if (m.name === "margitLeap") {
-      // 跃空刺专属：深蹲 → 前扑+升空 → 空中悬停（欺诈延迟：最高点停一瞬）→ act 段下刺钉地
+      // 跃空刺：深蹲 → 前扑升到顶点悬停 → 下刺在判定帧钉地（不再整段慢慢扎，命中时人还在半空）
       if (sub === "tel") {
         this.lerpPose(STANCE, LWIND, smooth(Math.min(1, t / (m.startup * 0.3))));
         const k = clamp01(seg(t, m.startup * 0.3, m.startup * 0.9));
@@ -418,33 +438,40 @@ export class Margit extends BossBase {
         if (k > 0) {
           this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * ks);
           this.lerpPose(LWIND, LHOVER, ks);
-          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * 1.55;       // 升到顶点后悬停不落（须在 lerp 之后）
-          if (Math.random() < 0.4) this.vfx.dust.burst(this.root.position.clone().setY(0.2), 2, 2, 0.6);
+          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * STAB_APEX; // 升到顶点后悬停不落
+          if (k < 0.1) this.vfx.dust.burst(this.root.position.clone().setY(0.2), 2, 2, 0.6);
         }
         return;
       }
       if (sub === "act") {
-        this.lerpPose(LHOVER, LSTAB, seg(t, 0, m.active));
-        this.pose.y = 1.55 * Math.max(0, 1 - t / m.active);                  // 下刺：整段钉到地（须在 lerp 之后）
+        const k = this.contactK(t, m.active);
+        this.lerpPose(LHOVER, LSTAB, k);
+        this.pose.y = STAB_APEX * (1 - k) + LSTAB.y * k;                    // 判定帧才着地
         return;
       }
       this.lerpPose(LSTAB, STANCE, smooth(seg(t, m.recovery * 0.25, m.recovery)));   // 落地大硬直（惩罚窗口）
       return;
     }
     if (m.name === "margitHammerLeap") {
-      // 锤跃专属（二阶段无预警）：急蹲 → 原地高跳（微前扑）→ 落锤金爆
+      // 锤跃：先举锤，再跳向落点并停在最高点；下落与判定同帧，前摇里不再先落地
+      const upAt = m.startup * 0.34;
       if (sub === "tel") {
-        this.lerpPose(STANCE, HLW, smooth(Math.min(1, t / (m.startup * 0.5))));
-        const k = smooth(seg(t, m.startup * 0.5, m.startup));
-        if (k > 0) {
-          this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
+        if (t < upAt) {
+          this.lerpPose(STANCE, HLW, smooth(t / Math.max(0.04, upAt)));
+        } else {
+          const k = smooth(seg(t, upAt, m.startup));
           this.lerpPose(HLW, HLAIR, k);
-          this.pose.y = Math.sin(k * Math.PI) * 1.8;                          // 高跳抛物线（须在 lerp 之后）
+          this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * HAMMER_APEX;
+          const travel = smooth(Math.min(1, k / 0.82));                      // 末段悬停，让落点可读
+          this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * travel);
+          if (k > 0 && k < 0.12) this.vfx.dust.burst(this.root.position.clone().setY(0.2), 3, 2.2, 0.5);
         }
         return;
       }
       if (sub === "act") {
-        this.lerpPose(HLAIR, HLSLAM, seg(t, 0, m.active));
+        const k = this.contactK(t, m.active);
+        this.lerpPose(HLAIR, HLSLAM, k);
+        this.pose.y = HAMMER_APEX * (1 - k) + HLSLAM.y * k;
         this.hammerImpact(t, m, 5.5);
         return;
       }
@@ -452,32 +479,73 @@ export class Margit extends BossBase {
       return;
     }
     if (m.name === "margitWindup") {
-      // 杖背藏专属（欺诈延迟）：前 50% 蓄好型 → 僵住骗提前翻滚 → 末 20% 才爆发
+      // 杖背藏：前段杖收到背后僵住骗翻滚，末段才短举过头。冲程/下砸都发生在判定帧。
+      const raiseAt = m.startup * 0.68;
       if (sub === "tel") {
-        const near = !this.windupFar;
-        const coil = near ? WU2W : WUW;
-        this.lerpPose(STANCE, coil, smooth(Math.min(1, t / (m.startup * 0.5))));   // 蓄到位后静止
-        if (!near) {
-          const k = smooth(clamp01((t - m.startup * 0.78) / (m.startup * 0.22)));   // 远身：末 20% 爆发前冲
-          if (k > 0) this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
+        if (t < raiseAt) {
+          this.lerpPose(STANCE, WUW, smooth(Math.min(1, t / (m.startup * 0.36))));
+        } else {
+          this.lerpPose(WUW, WU2W, smooth(seg(t, raiseAt, m.startup)));
         }
         return;
       }
       if (sub === "act") {
         if (this.windupFar) {
-          // 远身：顺时针双旋斩（两拍与判定 0.12/0.30 对齐）
-          const firstAt = m.active * 0.4;
-          const ph = clamp01((t - firstAt) / Math.max(0.01, m.active - firstAt)) * 2;
-          const idx = Math.min(1, Math.floor(ph));
-          this.lerpPose(idx === 0 ? WUW : WUK, idx === 0 ? WUK : { ...WUK, twist: 0.85, rSwing: -1.35, lean: 0.34 }, smooth(clamp01(ph - idx)));
+          const t0 = m.active * 0.4;
+          const t1 = Math.min(t0 + (m.hitInterval ?? HIT_GAP), m.active);
+          const travel = smooth(clamp01(t / Math.max(0.04, t0)));
+          this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * travel);
+          if (t <= t0) this.lerpPose(WU2W, WUK, smooth(clamp01(t / Math.max(0.04, t0))));
+          else this.lerpPose(WUK, WUK2, smooth(clamp01((t - t0) / Math.max(0.04, t1 - t0))));
+          const gold = this.phase === 2 ? GOLD : GOLD_SLASH;
+          if (this.slashFired < 1 && t >= t0) {
+            this.slashFired = 1;
+            this.vfx.slash(this.chestWorld(), this.yaw + 0.2, m.range * 0.85, true, gold);
+          }
+          if (this.slashFired < 2 && t >= t1) {
+            this.slashFired = 2;
+            this.vfx.slash(this.chestWorld(), this.yaw - 0.2, m.range * 0.8, true, gold);
+          }
         } else {
-          // 近身：收杖过头 → 砸地出环
-          this.lerpPose(WU2W, WU2K, seg(t, 0, m.active));
+          this.lerpPose(WU2W, WU2K, this.contactK(t, m.active));
           this.hammerImpact(t, m, 3.6);
         }
         return;
       }
-      this.lerpPose(this.windupFar ? WUK : WU2K, STANCE, smooth(seg(t, m.recovery * 0.3, m.recovery)));
+      this.lerpPose(this.windupFar ? WUK2 : WU2K, STANCE, smooth(seg(t, m.recovery * 0.3, m.recovery)));
+      return;
+    }
+    if (m.name === "margitHammer") {
+      // 召锤：前 62% 举过顶，后段停在最高点，act 的判定帧才劈落
+      if (sub === "tel") {
+        const raiseEnd = m.startup * 0.62;
+        this.lerpPose(STANCE, HW, t < raiseEnd ? smooth(t / Math.max(0.04, raiseEnd)) : 1);
+        return;
+      }
+      if (sub === "act") {
+        this.lerpPose(HW, HK, this.contactK(t, m.active));
+        this.hammerImpact(t, m, 5.0);
+        return;
+      }
+      this.lerpPose(HK, STANCE, smooth(seg(t, m.recovery * 0.3, m.recovery)));
+      return;
+    }
+    if (m.name === "margitRetreat") {
+      // 先斩再跳：判定在原地，后跳和咒刃放到收招，避免人已经退出射程刀才落下
+      if (sub === "tel") {
+        this.lerpPose(STANCE, RTW, smooth(clamp01(t / Math.max(0.04, m.startup))));
+        return;
+      }
+      if (sub === "act") {
+        this.lerpPose(RTW, RTK, this.contactK(t, m.active));
+        return;
+      }
+      const hopEnd = m.recovery * 0.42;
+      const hop = smooth(clamp01(t / Math.max(0.04, hopEnd)));
+      this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * hop);
+      this.lerpPose(RTK, STANCE, smooth(seg(t, hopEnd, m.recovery)));
+      this.pose.y += Math.sin(hop * Math.PI) * 0.32;                         // 后跳弧，落地后再投
+      if (this.daggerFired === 0 && t >= hopEnd) this.fireDagger(0);
       return;
     }
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
@@ -486,51 +554,62 @@ export class Margit extends BossBase {
         wind.twist = 0.5; wind.rLift = -0.7; wind.rSwing = -0.5; wind.crouch = 0.16; wind.lean = 0.1;
         strike.twist = -0.25; strike.rLift = 1.25; strike.rSwing = 0.1; strike.reach = 0.5; strike.lean = 0.4; strike.crouch = 0.12;
         break;
-      case "margitHammer":
-        Object.assign(wind, HW); Object.assign(strike, HK);
+      case "margitCombo":
+        Object.assign(wind, C1W); Object.assign(strike, C3K);
         break;
       case "margitDaggers":
         Object.assign(wind, DW); Object.assign(strike, DK);
-        break;
-      case "margitRetreat":
-        Object.assign(wind, RTW); Object.assign(strike, RTK);
         break;
       case "margitTail":
         Object.assign(wind, TW); Object.assign(strike, TK);
         break;
     }
     if (sub === "tel") {
-      this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
-      // 咒杖直击前戳步 / 匕首退击后跳（位移基准与方向在 onMoveStart 记录）
+      // 尾扫要把整段前摇用来蓄尾；其他招仍留出前半段的静止，避免所有前摇都在动
+      const windAt = m.name === "margitTail" ? m.startup * 0.08 : m.startup * 0.45;
+      this.lerpPose(STANCE, wind, smooth(seg(t, windAt, m.startup)));
       if (this.moveLen !== 0) {
         const k = smooth(clamp01((t - m.startup * 0.3) / (m.startup * 0.7)));
         this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
       }
     } else if (sub === "act") {
       if (m.name === "margitCombo") this.comboPose(t, m);
-      else this.lerpPose(wind, strike, seg(t, 0, m.active));
-      if (m.name === "margitHammer") this.hammerImpact(t, m, 5.0);
+      else this.lerpPose(wind, strike, this.contactK(t, m.active));
+      if (m.name === "margitTail" && this.slashFired === 0 && t >= m.active * 0.4) {
+        this.slashFired = 1;
+        this.vfx.slash(this.chestWorld().setY(0.7), this.yaw, m.range * 0.9, true, this.phase === 2 ? GOLD : GOLD_SLASH);
+        this.vfx.dust.burst(this.root.position.clone().setY(0.25), 8, 2.4, 0.7);
+      }
     } else {
       this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
     }
     void total;
   }
 
-  /** 杖剑三连判定段姿态：三拍与引擎判定时刻对齐（首段 active*0.4=0.68，其后每 0.5s）；
-   *  前两拍右杖抡、第三拍左手召唤金剑横收（杖→剑武器切换风味） */
+  /** 杖剑三连：每一拍在该段判定帧砍实。两拍之间先收回蓄力再砍，避免判定落在抬手姿势上。 */
   private comboPose(t: number, m: MoveDef): void {
-    const firstAt = m.active * 0.4;
-    const ph = clamp01((t - firstAt) / (m.active - firstAt)) * 3;
-    const idx = Math.min(2, Math.floor(ph));
-    const s = smooth(clamp01(ph - idx));
-    const w = idx === 0 ? C1W : idx === 1 ? C2W : C3W;
-    const k = idx === 0 ? C1K : idx === 1 ? C2K : C3K;
-    this.lerpPose(w, k, s);
+    const interval = m.hitInterval ?? HIT_GAP;
+    const n = Math.min(3, m.hits ?? 3);
+    const winds = [C1W, C2W, C3W];
+    const strikes = [C1K, C2K, C3K];
+    const at = (k: number) => Math.min(m.active * 0.4 + k * interval, m.active);
+    let idx = 0;
+    for (let k = 0; k < n; k++) {
+      if (t <= at(k) || k === n - 1) { idx = k; break; }
+    }
+    const start = idx === 0 ? 0 : at(idx - 1);
+    const u = clamp01((t - start) / Math.max(0.04, at(idx) - start));
+    if (idx === 0) {
+      this.lerpPose(winds[0], strikes[0], smooth(u));
+      return;
+    }
+    if (u < 0.45) this.lerpPose(strikes[idx - 1], winds[idx], smooth(u / 0.45));
+    else this.lerpPose(winds[idx], strikes[idx], smooth((u - 0.45) / 0.55));
   }
 
   /** 金色落点表现：冲击环 + 金斑 + 震屏（金锤/锤跃/杖背藏近砸共用；与命中判定解耦——打中/躲开都应砸出坑） */
   private hammerImpact(t: number, m: MoveDef, radius: number): void {
-    if (this.fxStep !== 0 || t < m.active * 0.5) return;
+    if (this.fxStep !== 0 || t < m.active * 0.4) return;
     this.fxStep = 1;
     const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const at = this.root.position.clone().addScaledVector(fwd, 2.0).setY(0.1);
@@ -551,7 +630,7 @@ export class Margit extends BossBase {
     this.updateSummons(dt);
   }
 
-  /** 召唤武器显形：金锤——长前摇后半段渐显（咒力凝聚）/ 锤跃出手即显（无预警快速通道）/ 变身演出全程；
+  /** 召唤武器显形：金锤——举锤时渐显（咒力凝聚）/ 锤跃在悬停前摇里凝出 / 变身演出全程；
    *  金剑——杖剑三连 tel+act（左手召剑收尾）。半透明凭空浮现 → 凝成实体，凝聚时抽金尘 */
   private updateSummons(dt: number): void {
     const now = performance.now();
@@ -561,14 +640,14 @@ export class Margit extends BossBase {
     } else if (this.state === "combat" && this.move) {
       const n = this.move.name;
       if (n === "margitHammer") {
-        hammerTarget = this.sub === "tel" ? (this.t >= this.move.startup * 0.45 ? 1 : 0) : this.sub === "act" ? 1 : 0;
+        hammerTarget = this.sub === "act" || (this.sub === "tel" && this.t >= this.move.startup * 0.12) ? 1 : 0;
       } else if (n === "margitHammerLeap") {
         hammerTarget = this.sub === "tel" || this.sub === "act" ? 1 : 0;
       } else if (n === "margitCombo") {
         swordTarget = this.sub === "tel" || this.sub === "act" ? 1 : 0;
       }
     }
-    const hammerRate = this.move?.name === "margitHammerLeap" ? 14 : 9;
+    const hammerRate = 9;
     this.hammerShow += (hammerTarget - this.hammerShow) * Math.min(1, dt * hammerRate);
     this.swordShow += (swordTarget - this.swordShow) * Math.min(1, dt * 12);
     const show = this.hammerShow;
@@ -662,8 +741,9 @@ export class Margit extends BossBase {
     this.pose.lean = 0.17 + Math.sin(w * 2) * 0.035;
   }
 
-  /** 位移基准与段计数复位：直击戳步 / 杖背藏远身前冲（运行时分支）/ 跃空刺前扑 / 锤跃微前扑 / 匕首退击后跳（不越过玩家） */
+  /** 位移基准与段计数复位：直击戳步 / 杖背藏远身前冲（冲到第一段判定才到位）/ 跃空刺前扑 / 锤跃落点 / 匕首退击后跳 */
   protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
+    this.lastMoveName = m.name;
     this.moveFrom.copy(this.root.position);
     this.slashFired = 0;
     this.daggerFired = 0;
@@ -671,40 +751,51 @@ export class Margit extends BossBase {
     this.fxStep = 0;
     this.moveLen = 0;
     this.windupFar = false;
+    // 尾扫要留在当前朝向（绕背才有意义）。其他招出手时把判定朝向对准玩家，避免前冲方向和扇形朝向拧着空挥。
+    if (m.name !== "margitTail" && toPlayer.lengthSq() > 1e-6) {
+      this.yaw = Math.atan2(toPlayer.x, toPlayer.z);
+    }
+    const aim = () => {
+      if (toPlayer.lengthSq() > 1e-6) this.moveDir.copy(toPlayer).setY(0).normalize();
+      else this.moveDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    };
     if (m.name === "margitStaff") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
+      aim();
       this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.6));
     } else if (m.name === "margitWindup") {
       this.windupFar = dist > 3.2;                                          // wiki：近身砸地 / 远身前冲双旋
       if (this.windupFar) {
-        this.moveDir.copy(toPlayer).setY(0).normalize();
+        m.hits = 2;
+        m.active = WINDUP_FAR_ACTIVE;
+        aim();
         this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.2));
+      } else {
+        m.hits = 1;                                                          // 近身只砸一下，不把双旋的第二段钳进来
+        m.active = WINDUP_NEAR_ACTIVE;
       }
     } else if (m.name === "margitLeap") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
+      aim();
       this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.2));
     } else if (m.name === "margitHammerLeap") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
+      aim();
       this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.6));
     } else if (m.name === "margitRetreat") {
-      this.moveDir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));        // 沿面向反向后跳 1.5m
+      this.moveDir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));        // 面向玩家后，沿面向反向后跳 1.5m
       this.moveLen = 1.5;
     }
   }
 
-  /** 判定段开始：咒刃首发 / 匕首退击甩投 / 尾扫全周轨迹 / 杖背藏远身双旋宽弧 */
+  /** 共享表上的杖背藏时序回到远身双旋。近身单砸只在该次出手期间改写。 */
+  private restoreWindupTiming(): void {
+    const w = MOVES_MARGIT.margitWindup;
+    w.hits = 2;
+    w.hitInterval = HIT_GAP;
+    w.active = WINDUP_FAR_ACTIVE;
+  }
+
+  /** 判定段开始：咒刃首发。尾扫刀光跟判定帧走；退击的咒刃在后跳之后才投；双旋刀光也跟判定帧。 */
   protected override onMoveActive(m: MoveDef): void {
-    if (m.name === "margitDaggers") {
-      this.fireDagger(this.daggerFired);
-    } else if (m.name === "margitRetreat") {
-      this.fireDagger(0);                                                    // 后跳后追投一刀
-    } else if (m.name === "margitTail") {
-      this.vfx.slash(this.chestWorld().setY(0.7), this.yaw, m.range * 0.9, true, this.phase === 2 ? GOLD : GOLD_SLASH);
-      this.vfx.dust.burst(this.root.position.clone().setY(0.25), 8, 2.4, 0.7);
-    } else if (m.name === "margitWindup" && this.windupFar) {
-      this.vfx.slash(this.chestWorld(), this.yaw + 0.2, m.range * 0.85, true, this.phase === 2 ? GOLD : GOLD_SLASH);
-      this.vfx.slash(this.chestWorld().setY(1.1), this.yaw - 0.2, m.range * 0.8, true, GOLD_SLASH);
-    }
+    if (m.name === "margitDaggers") this.fireDagger(this.daggerFired);
   }
 
   /** 咒刃发射：首发正向，后续交替偏航 ±0.14 扇形撒布；自胸口高 1.7 甩出 */
@@ -771,6 +862,7 @@ export class Margit extends BossBase {
 
   protected override releaseSharedState(): void {
     if (this.p2Applied) this.restorePhase1Moves();
+    this.restoreWindupTiming();
   }
 
   protected override resetVisuals(): void {
@@ -780,6 +872,8 @@ export class Margit extends BossBase {
     this.daggerFired = 0;
     this.daggerTotal = 2;
     this.windupFar = false;
+    this.lastMoveName = "";
+    this.restoreWindupTiming();
     this.prevTfT = 0;
     this.hammerShow = 0;
     this.swordShow = 0;
@@ -801,25 +895,24 @@ export class Margit extends BossBase {
 
   // ---------------- 选招（守门人权重：绕背尾扫 / 贴身退击+尾击 / 中距杖压+杖背藏 / 远距咒刃+跃空刺压制） ----------------
   protected override pickMove(dist: number): MoveDef | null {
+    this.restoreWindupTiming();
     const M = MOVES_MARGIT;
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // 绕背优先甩尾（wiki Tail Swipe：身后来犯者）
     const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
     const dirYaw = Math.atan2(toP.x, toP.z);
-    if (dist < 2.8 && !angleWithin(this.yaw, dirYaw, 2.2) && ready(M.margitTail)) {
-      return M.margitTail;
-    }
+    // 绕背提高尾扫权重，但不在冷却结束的那一帧强制出手。冷却由 ready 守住。
+    const behind = dist < 2.8 && toP.lengthSq() > 0.04 && !angleWithin(this.yaw, dirYaw, 2.2);
     if (dist > 6) {
-      // 远档：咒刃压制（惩罚站桩/喝药）+ 跃空刺突进（冲程 lunge 7 + 接触余量 ≈ 2.5，9.5 外够不着就踱步逼近）
+      // 远档：咒刃压制（惩罚站桩/喝药）+ 跃空刺。超过 LEAP_REACH 不跳，走近再打。
       const far: [MoveDef, number][] = [
         [M.margitDaggers, 3],
-        [M.margitLeap, dist <= 9.5 ? 2.5 : 0],
+        [M.margitLeap, dist <= LEAP_REACH ? 2.5 : 0],
       ];
       const farCands = far.filter(([m, w]) => w > 0 && ready(m));
       return this.pickWeighted(farCands);
     }
     const pool: [MoveDef, number][] = dist < 2.2 ? [
-      [M.margitTail, 4.5],                                                    // 贴身脱身优先
+      [M.margitTail, behind ? 5.5 : 4.5],                                     // 绕背偏爱尾扫，贴身仍可脱身，但不是必出
       [M.margitStaff, 3],
       [M.margitCombo, 2.5],
       [M.margitRetreat, dist < 1.8 ? 2 : 0],                                  // 极贴身：斩→后跳→投刃
@@ -828,21 +921,30 @@ export class Margit extends BossBase {
       [M.margitCombo, 3],
       [M.margitWindup, 2.5],                                                  // 招牌欺诈延迟
       [M.margitHammer, this.phase === 2 ? 3 : 2.5],                           // 二阶段更爱召锤（收尾技）
-      [M.margitHammerLeap, this.phase === 2 && dist >= 2.5 ? 2 : 0],          // 二阶段无预警锤跃
+      [M.margitHammerLeap, this.phase === 2 && dist >= 2.5 ? 2 : 0],          // 二阶段锤跃：举锤悬停后砸
       [M.margitDaggers, dist >= 4.5 ? 1.5 : 0],                               // 中远缀咒刃骚扰
+      [M.margitTail, behind ? 5.5 : 0],
     ];
-    // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里
-    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
+    // 投射物不吃近战射程闸。带 lunge 的招用「射程 + 冲程」判断够不够得着，避免前冲技被原地射程误杀、或够不着还空挥。
+    const inReach = (m: MoveDef) => !!m.proj || dist < m.range * 0.95 + (m.lunge ?? 0);
+    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && inReach(m));
     if (!cands.length) return null;
     return this.pickWeighted(cands);
   }
 
   private pickWeighted(cands: [MoveDef, number][]): MoveDef | null {
     if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
+    const hasAlt = cands.some(([m]) => m.name !== this.lastMoveName);
+    let sum = 0;
+    const weighted = cands.map(([m, w]) => {
+      const adj = hasAlt && m.name === this.lastMoveName ? w * 0.2 : w;
+      sum += adj;
+      return [m, adj] as [MoveDef, number];
+    });
+    if (sum <= 0) return null;
     let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    for (const [m, w] of weighted) { r -= w; if (r <= 0) return m; }
+    return weighted[0][0];
   }
 }
 
