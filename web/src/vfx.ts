@@ -160,34 +160,113 @@ export class Vfx {
   }
 }
 
-/** 篝火：螺旋剑造型 + 火光 + 粒子 */
+/** 篝火：冷灰灰堆、碎石环、盘在灰里的弯刃、余烬火舌 */
 export interface Bonfire { group: THREE.Group; light: THREE.PointLight; pos: THREE.Vector3 }
 
 export function buildBonfire(scene: THREE.Scene, pos: THREE.Vector3): Bonfire {
   const g = new THREE.Group();
   g.position.copy(pos);
-  const ash = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.55, 0.75, 0.12, 12),
-    new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }),
-  );
-  ash.position.y = 0.06;
+
+  // 冷灰石底。暖色只留给火舌，灰堆不再是一圈立柱。
+  const ashMat = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
+  const ash = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.78, 0.14, 6), ashMat);
+  ash.position.y = 0.07;
   g.add(ash);
-  const boneMat = new THREE.MeshStandardMaterial({ color: 0x4a4436, roughness: 0.8 });
-  for (let i = 0; i < 4; i++) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), boneMat);
-    b.position.set(Math.sin(i * 1.9) * 0.22, 0.35, Math.cos(i * 1.9) * 0.22);
-    b.rotation.set((i % 2 ? 1 : -1) * 0.5, i, (i % 2 ? -1 : 1) * 0.35);
-    g.add(b);
+  const pit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.3, 0.05, 6),
+    new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1, flatShading: true }),
+  );
+  pit.position.y = 0.15;
+  g.add(pit);
+
+  // 碎石环把灰堆从地面上勾出来，远处先看见一圈石头。
+  const rockMat = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 1, flatShading: true });
+  const ring: number[][] = [
+    [0.2, 0.88, 0.22, 0.1, 0.16, 0.4, 0.12],
+    [0.95, 0.8, 0.14, 0.08, 0.12, 1.2, -0.18],
+    [1.6, 0.96, 0.26, 0.16, 0.18, 0.3, 0.16],
+    [2.3, 0.82, 0.13, 0.07, 0.11, 2.0, 0.08],
+    [2.95, 0.92, 0.2, 0.11, 0.15, 0.7, -0.14],
+    [3.6, 0.84, 0.16, 0.09, 0.13, 1.6, 0.2],
+    [4.3, 0.98, 0.22, 0.18, 0.16, 0.5, -0.1],
+    [5.05, 0.86, 0.15, 0.08, 0.12, 2.4, 0.15],
+    [5.75, 0.94, 0.18, 0.11, 0.14, 1.0, -0.22],
+  ];
+  for (let i = 0; i < ring.length; i++) {
+    const [a, rad, w, h, d, ry, rz] = ring[i];
+    const rock = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), i % 2 ? ashMat : rockMat);
+    rock.position.set(Math.cos(a) * rad, h * 0.4, Math.sin(a) * rad);
+    rock.rotation.set(0, ry, rz);
+    g.add(rock);
   }
-  const swordMat = new THREE.MeshStandardMaterial({ color: COLORS.steel, roughness: 0.4, emissive: 0xff8c3a, emissiveIntensity: 0.25 });
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.15, 0.014), swordMat);
-  blade.position.y = 0.95; blade.rotation.z = 0.12;
-  g.add(blade);
-  const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.05), swordMat);
-  hilt.position.y = 0.42; hilt.rotation.z = 0.12;
-  g.add(hilt);
+
+  // 弯刃盘进灰里：几段扁盒子绕成一圈多的弧，剪影不再是一根直木棍。
+  const steel = new THREE.MeshStandardMaterial({ color: COLORS.steel, roughness: 0.4, metalness: 0.5, flatShading: true });
+  const n = 6;
+  const turns = 1.08;
+  const y0 = 0.16, y1 = 0.5, r0 = 0.36, r1 = 0.18;
+  const sweep = Math.PI * 2 * turns;
+  const tangent = new THREE.Vector3();
+  const side = new THREE.Vector3();
+  const bladeUp = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const basis = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const a = t * sweep;
+    const r = r0 + (r1 - r0) * t;
+    const y = y0 + (y1 - y0) * t;
+    tangent.set(
+      (r1 - r0) * Math.cos(a) - r * Math.sin(a) * sweep,
+      y1 - y0,
+      (r1 - r0) * Math.sin(a) + r * Math.cos(a) * sweep,
+    );
+    const speed = tangent.length();
+    tangent.multiplyScalar(1 / speed);
+    side.crossVectors(tangent, up);
+    if (side.lengthSq() < 1e-8) side.set(0, 0, 1);
+    side.normalize();
+    bladeUp.crossVectors(side, tangent).normalize();
+    basis.makeBasis(tangent, bladeUp, side);
+    const len = speed / (n - 1) * 1.08;
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(len, 0.09 - t * 0.02, 0.04), steel);
+    seg.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+    seg.quaternion.setFromRotationMatrix(basis);
+    g.add(seg);
+    if (i === 0) {
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.22), steel);
+      guard.position.copy(seg.position).addScaledVector(tangent, -len * 0.5);
+      guard.quaternion.copy(seg.quaternion);
+      g.add(guard);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.046, 0.046), steel);
+      grip.position.copy(guard.position).addScaledVector(tangent, -0.1);
+      grip.quaternion.copy(seg.quaternion);
+      g.add(grip);
+    }
+  }
+
+  // 火舌：方锥，自发光只用余烬色。远处靠这团暖色认出篝火。
+  const flameMat = new THREE.MeshStandardMaterial({
+    color: COLORS.ember, emissive: COLORS.ember, emissiveIntensity: 1.6,
+    roughness: 1, flatShading: true,
+  });
+  const tongues: number[][] = [
+    [0, 0, 0.88, 0.11, 0.05, -0.04],
+    [-0.1, 0.07, 0.56, 0.07, -0.26, 0.14],
+    [0.09, -0.08, 0.64, 0.08, 0.2, 0.22],
+    [0.1, 0.1, 0.4, 0.06, 0.14, -0.3],
+    [-0.08, -0.1, 0.46, 0.055, -0.18, -0.12],
+    [0.02, 0.05, 0.3, 0.09, 0.08, 0.06],
+  ];
+  for (const [x, z, h, rad, rx, rz] of tongues) {
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 4), flameMat);
+    flame.position.set(x, 0.18 + h * 0.5, z);
+    flame.rotation.set(rx, 0, rz);
+    g.add(flame);
+  }
+
   const light = new THREE.PointLight(COLORS.ember, 10, 8, 2);
-  light.position.set(0, 0.9, 0);
+  light.position.set(0, 0.55, 0);
   g.add(light);
   scene.add(g);
   return { group: g, light, pos: pos.clone() };

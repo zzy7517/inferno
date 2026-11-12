@@ -11,6 +11,8 @@
  *   E5 接肢教堂  可走直径 50    巨厅随可走圆外扩，可走圆 r=25.1 中心 (62.5,0,0)=葛瑞克竞技场
  *   F1 谒见长廊  宽 z±2.6 不变  圣所东门→王座厅
  *   F2 王座厅    可走直径 60    圆形王座平台，中心 (131,0,0) r=31，西可走边 100.9 不动
+ *   三间房地面外圈另铺 1–3 米碎屑（场心半径约 6 米留空，纯视觉、无碰撞）：
+ *   玛尔基特风暴石碎与断矛；接肢教堂锁链、蜡泪、石板；王座厅残旗与矮石。暗金不进玛尔基特房。
  *
  * E4/E5 接肢教堂内景深加工（对标法环·接肢教堂「被亵渎的圣所」）：E5 教堂中厅竖向空间用足
  *   （三面墙高度 12.4 + 幸存桁架屋盖——E4 段塌顶露天，「教堂断成两截」天际线）、
@@ -1339,6 +1341,135 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
   const graceLight = new THREE.PointLight(0xe8c87c, 6.5, 18, 2);
   graceLight.position.set(gx(39.9), 2.8, 0);
   root.add(graceLight);
+
+  // ---------------- 三间 Boss 房地面外圈：人尺度碎屑（场心约 6 米留空） ----------------
+  // 房间加大后环纹之间没有 1–3 米的参照，步距读不出来。只铺外圈，并入既有石批 / 地面批 / 暖批。
+  // 铺完把 seed 还回去：风絮和雾片仍吃原来的 rnd 序列。不新增 PointLight，不加碰撞。
+  {
+    const seedHold = seed;
+    const TAU = Math.PI * 2;
+    const rIn = 7.8;
+    const scatter = (cx: number, r1: number, n: number, phase: number, ban: (x: number, z: number) => boolean): [number, number][] => {
+      const pts: [number, number][] = [];
+      for (let i = 0; i < n; i++) {
+        for (let k = 0; k < 6; k++) {
+          const a = phase + (i + 0.37 * k) / n * TAU + rr(-0.08, 0.08);
+          const rad = Math.min(r1, Math.max(rIn, rIn + ((i * 3 + k) % 5) / 4 * (r1 - rIn) + rr(-0.28, 0.28)));
+          const x = cx + Math.cos(a) * rad;
+          const z = Math.sin(a) * rad;
+          if (rad < 6.4 || ban(x, z)) continue;
+          pts.push([x, z]);
+          break;
+        }
+      }
+      return pts;
+    };
+
+    // 玛尔基特：风暴石碎 + 断矛。冷灰石 / 木 / 铁，不加金。徽环在 r≈8.3–9.2，件心不压上去。
+    {
+      const rOut = M_R - 0.9 - 2.8;
+      const ban = (x: number, z: number): boolean => {
+        const rad = Math.hypot(x - M_C, z);
+        if (rad > 8.0 && rad < 9.6) return true;
+        return Math.abs(z) < 4 && (x < M_C - 6 || x > M_C + 12);
+      };
+      const stones = [PAL.stone, PAL.stoneMid, PAL.stoneDark, PAL.stoneDeep, PAL.wall, PAL.wallDeep, PAL.cliff];
+      for (const [x, z] of scatter(M_C, rOut, 18, 0.2, ban)) {
+        const yaw = rnd() * TAU;
+        const w = rr(1.15, 2.2), h = rr(0.16, 0.42), d = rr(0.55, 1.25);
+        sE3.push(boxG(w, h, d, x, 0.05 + h * 0.5, z, pick(stones), { rx: rr(-0.07, 0.07), ry: yaw, rz: rr(-0.08, 0.08), jitter: 0.12 }));
+        sE3.push(dodG(rr(0.16, 0.34), x + Math.cos(yaw) * rr(0.35, 0.7), rr(0.1, 0.26), z + Math.sin(yaw) * rr(0.3, 0.6), pick(stones), { rx: rnd() * 3, ry: rnd() * 3, rz: rnd() * 3 }));
+      }
+      for (const [x, z] of scatter(M_C, rOut, 12, 1.7, ban)) {
+        const yaw = rnd() * TAU;
+        const len = rr(1.55, 2.2);
+        const dx = Math.sin(yaw), dz = Math.cos(yaw);
+        const shaft = len * 0.58, head = len * 0.22;
+        sE3.push(boxG(0.055, shaft, 0.048, x + dx * (-len / 2 + shaft / 2), 0.065, z + dz * (-len / 2 + shaft / 2), PAL.wood, { rx: Math.PI / 2, ry: yaw, jitter: 0.08 }));
+        sE3.push(boxG(0.04, head, 0.036, x + dx * (len / 2 - head / 2), 0.06, z + dz * (len / 2 - head / 2), PAL.metal, { rx: Math.PI / 2, ry: yaw + rr(-0.14, 0.14), jitter: 0.06 }));
+        sE3.push(coneG(0.038, 0.2, 5, x + dx * (len / 2 + 0.02), 0.065, z + dz * (len / 2 + 0.02), PAL.metal, { rx: Math.PI / 2, ry: yaw }));
+      }
+    }
+
+    // 接肢教堂：落地锁链、蜡泪、石板碎块（链环 / 蜡色 / 石板都是本文件已有的做法）。蜡上的微光进暖批。
+    {
+      const rOut = G_R - 0.9 - 3.2;
+      const ban = (x: number, z: number): boolean => {
+        const rad = Math.hypot(x - G_C, z);
+        if (rad > 8.8 && rad < 10.6) return true;                                 // 让开接肢暗金环
+        return Math.abs(z) < 3.6 && (x < G_C - 12 || x > G_C + 14);
+      };
+      const slabs = [PAL.stone, PAL.stoneMid, PAL.stoneDark, PAL.stoneHi, PAL.pathB];
+      for (const [x, z] of scatter(G_C, rOut, 10, 0.4, ban)) {
+        const yaw = rnd() * TAU;
+        const n = 8 + Math.floor(rnd() * 4);
+        const step = 0.22;
+        const span = (n - 1) * step;
+        const dx = Math.cos(yaw), dz = -Math.sin(yaw);                            // 与 box 的 rotateY 同向
+        for (let i = 0; i < n; i++) {
+          const t = -span / 2 + i * step;
+          sE5.push(boxG(0.2, 0.05, 0.08, x + dx * t, 0.07 + (i % 2) * 0.012, z + dz * t, PAL.metal, { ry: yaw + (i % 2 ? 0.85 : 0), jitter: 0.05 }));
+        }
+        sE5.push(boxG(0.28, 0.06, 0.1, x + dx * (span / 2 + 0.2), 0.075, z + dz * (span / 2 + 0.2), PAL.metal, { ry: yaw }));
+      }
+      const waxPts = scatter(G_C, rOut, 10, 2.2, ban);
+      waxPts.forEach(([x, z], i) => {
+        const yaw = rnd() * Math.PI;
+        const w = rr(1.05, 1.9), d = rr(0.65, 1.25);
+        fE45.push(boxG(w, 0.035, d, x, 0.062, z, PAL.wax, { ry: yaw, jitter: 0.08 }));
+        const drips = 2 + Math.floor(rnd() * 2);
+        for (let k = 0; k < drips; k++) {
+          const wl = rr(0.22, 0.85);
+          sE5.push(boxG(0.08, wl, 0.07, x + rr(-w * 0.28, w * 0.28), 0.05 + wl / 2, z + rr(-d * 0.28, d * 0.28), PAL.wax, { ry: rnd() * 3, rx: rr(-0.12, 0.12), jitter: 0.1 }));
+        }
+        if (i % 3 === 0) emisGeoms.push(boxG(0.16, 0.04, 0.11, x, 0.08, z, PAL.amber));
+      });
+      for (const [x, z] of scatter(G_C, rOut, 14, 4.1, ban)) {
+        const yaw = rnd() * TAU;
+        const w = rr(1.15, 2.45), h = rr(0.1, 0.22), d = rr(0.6, 1.35);
+        sE5.push(boxG(w, h, d, x, 0.05 + h / 2, z, pick(slabs), { rx: rr(-0.07, 0.07), ry: yaw, rz: rr(-0.08, 0.08), jitter: 0.1 }));
+        if (rnd() < 0.55) {
+          sE5.push(boxG(rr(0.4, 0.85), h * 0.85, rr(0.3, 0.55), x + Math.cos(yaw) * w * 0.42, 0.08, z - Math.sin(yaw) * w * 0.42, PAL.stoneDeep, { ry: yaw + rr(-0.4, 0.4), rz: rr(-0.2, 0.2), jitter: 0.12 }));
+        }
+      }
+    }
+
+    // 王座厅：倒伏残旗（青灰 / 焦炭，不加暗金）+ 矮石。
+    {
+      const rOut = T_R - 0.9 - 3.8;
+      const bx = tx(55.6);
+      const ban = (x: number, z: number): boolean => {
+        const rad = Math.hypot(x - T_C, z);
+        if (rad > 10.9 && rad < 12.4) return true;                                 // 让开王权暗金环
+        if (Math.abs(z) < 2.8) return true;
+        if (x > T_C + 16 && Math.abs(z) < 5.2) return true;
+        if (Math.hypot(x - bx, z - 3.6) < 2.4 || Math.hypot(x - bx, z + 3.6) < 2.4) return true;
+        return false;
+      };
+      for (const [x, z] of scatter(T_C, rOut, 12, 0.9, ban)) {
+        const yaw = rnd() * TAU;
+        const dx = Math.sin(yaw), dz = Math.cos(yaw);
+        const pole = rr(1.55, 2.25);
+        const snap = pole * rr(0.38, 0.58);
+        sE5.push(cylG(0.03, 0.04, snap, 5, x - dx * (pole - snap) * 0.2, 0.07, z - dz * (pole - snap) * 0.2, PAL.wood, { rx: Math.PI / 2, ry: yaw }));
+        sE5.push(cylG(0.025, 0.034, Math.max(0.45, pole - snap - 0.14), 5, x + dx * snap * 0.28, 0.06, z + dz * snap * 0.28, PAL.wood, { rx: Math.PI / 2, ry: yaw + rr(-0.4, 0.4) }));
+        const cloth = pick([PAL.flagSlate, PAL.flagChar]);
+        const clothB = cloth === PAL.flagSlate ? PAL.flagSlateB : PAL.flagCharB;
+        const sx = Math.cos(yaw), sz = -Math.sin(yaw);
+        for (let i = 0; i < 3; i++) {
+          const side = (i - 1) * 0.34;
+          const L = Math.max(0.7, rr(0.95, 1.7) - i * 0.16);
+          sE5.push(boxG(0.32 + i * 0.04, 0.02, L, x + sx * side + dx * 0.12, 0.05, z + sz * side + dz * 0.12, i === 1 ? clothB : cloth, { ry: yaw + rr(-0.16, 0.16), jitter: 0.06 }));
+        }
+      }
+      for (const [x, z] of scatter(T_C, rOut, 18, 3.4, ban)) {
+        const w = rr(1.0, 2.15), h = rr(0.22, 0.68), d = rr(0.6, 1.3);
+        sE5.push(boxG(w, h, d, x, 0.045 + h / 2, z, pick([PAL.stone, PAL.stoneMid, PAL.stoneDark, PAL.stoneDeep, PAL.wall]), { rx: rr(-0.06, 0.06), ry: rnd() * TAU, rz: rr(-0.07, 0.07), jitter: 0.1 }));
+        if (rnd() < 0.4) sE5.push(dodG(rr(0.16, 0.3), x + rr(-0.35, 0.35), rr(0.12, 0.26), z + rr(-0.3, 0.3), PAL.stoneDeep, { rx: rnd() * 3, ry: rnd() * 3, rz: rnd() * 3 }));
+      }
+    }
+    seed = seedHold;
+  }
 
   // ---------------- 自发光小批（暖窗/玫瑰窗/残烛/未燃火把/烛龛暖晕/裂缝余烬） ----------------
   const emisMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, fog: false }));
