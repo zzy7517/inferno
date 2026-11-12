@@ -31,7 +31,7 @@ export class Player {
   readonly root = new THREE.Group();
   mixer!: THREE.AnimationMixer;
   actions: Record<string, THREE.AnimationAction> = {};
-  meta: ClipMeta = { startup: 0.2, active: 0.1, recovery: 0.6, cancelFrom: 0.55, total: 0.9, iframes: [0.04, 0.3], window: [0.08, 0.2], healAt: 0.55 };
+  meta: ClipMeta = { startup: 0.2, active: 0.1, recovery: 0.6, cancelFrom: 0.55, total: 0.9, iframes: [0.04, 0.3], window: [0.04, 0.32], healAt: 0.55 };
 
   state: PState = "idle";
   t = 0;
@@ -228,6 +228,11 @@ export class Player {
     const feelKey = feelOverride ?? move?.feel ?? "bLight";
     if (this.state === "dead" || this.isIframed) return;
     const point = this.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
+    // 弹反窗内挨上可弹反的一击：这一下改判弹反，不掉血、不进受击
+    if (move?.parryable && this.inParryWindow()) {
+      this.host.onParrySuccess(point);
+      return;
+    }
     if (this.state === "block" && !move?.grab) {
       const drain = dmg * P.blockDrainMul;
       if (this.stamina >= drain) {
@@ -503,8 +508,7 @@ export class Player {
         break;
       }
       case "parry": {
-        const [a, b] = this.meta.window;
-        if (this.t >= a && this.t <= b && this.host.bossParryableActive()) {
+        if (this.inParryWindow() && this.host.bossParryableActive()) {
           const boss = this.host.bossPos().clone().setY(1.8);
           // 实际弹反判定在 game 侧调 boss.tryParried()
           this.host.onParrySuccess(boss);
@@ -534,6 +538,12 @@ export class Player {
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
     this.mixer.update(dt);
+  }
+
+  /** 弹反有效帧。帧数据在 character_frames.json 的 parry.window。 */
+  inParryWindow(): boolean {
+    const [a, b] = this.meta.window;
+    return this.state === "parry" && this.t >= a && this.t <= b;
   }
 
   private hitApplied = false;
