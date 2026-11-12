@@ -1,0 +1,21 @@
+web/src/audio.ts
+  s_eb3e785bcb9cea::t_d3a9f2900177b3 100-101
+web/src/game.ts
+  s_eb3e785bcb9cea::t_27d438fc4f4c19 111-112,785-786,794,798-802
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f087f898fee8f7d6fba67168911526ffbc8bd890",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
