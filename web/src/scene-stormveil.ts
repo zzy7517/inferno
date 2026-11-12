@@ -26,8 +26,8 @@
  *   柔光贴图运行时 Canvas 生成；构建确定性随机（每次进场景布局一致）。
  */
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { COLORS } from "./config";
+import { createSceneGeom } from "./scene-geom";
 import type { SceneAnchors, SceneZone } from "./scene-highwall";
 
 export interface SceneResult {
@@ -85,72 +85,8 @@ const rnd = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const rr = (a: number, b: number): number => a + rnd() * (b - a);
 const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length) % arr.length];
 
-interface GOpt { rx?: number; ry?: number; rz?: number; jitter?: number; open?: boolean; t0?: number; tl?: number }
-
-/** 统一上色：非索引化 + 每面（每 3 顶点）同色微扰，merge 后仍是低开销的顶点色几何 */
-function paint(geo: THREE.BufferGeometry, color: number, jitter = 0): THREE.BufferGeometry {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const c = new THREE.Color(color);
-  const n = g.attributes.position.count;
-  const arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i += 3) {
-    const f = jitter ? 1 + (rnd() - 0.5) * jitter : 1;
-    for (let k = 0; k < 3 && i + k < n; k++) {
-      const j = (i + k) * 3;
-      arr[j] = c.r * f; arr[j + 1] = c.g * f; arr[j + 2] = c.b * f;
-    }
-  }
-  g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-  return g;
-}
-
-function boxG(w: number, h: number, d: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(w, h, d);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-function cylG(rt: number, rb: number, h: number, seg: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(rt, rb, h, seg, 1, opt.open ?? false, opt.t0 ?? 0, opt.tl ?? Math.PI * 2);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-function coneG(r: number, h: number, seg: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.ConeGeometry(r, h, seg);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-function dodG(r: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.DodecahedronGeometry(r, 0);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0.2);
-}
-
-/** 合批建 Mesh：merge 后释放源几何；静态物关闭 matrixAutoUpdate */
-function batch(geoms: THREE.BufferGeometry[], mat: THREE.Material, shadows: "both" | "cast" | "receive" | "none" = "both"): THREE.Mesh {
-  const merged = mergeGeometries(geoms, false)!;
-  const m = new THREE.Mesh(merged, mat);
-  m.castShadow = shadows === "both" || shadows === "cast";
-  m.receiveShadow = shadows === "both" || shadows === "receive";
-  m.updateMatrix();
-  m.matrixAutoUpdate = false;
-  for (const g of geoms) g.dispose();
-  return m;
-}
+/** 与另外两个场景同一份实现；jitter 仍消耗本文件的 rnd。 */
+const { paint, boxG, cylG, coneG, dodG, batch } = createSceneGeom(rnd);
 
 /** 运行时 Canvas 径向柔光贴图（云/雾片/光晕共用，非外部资源） */
 function softDiscTexture(): THREE.Texture {
