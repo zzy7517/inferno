@@ -266,10 +266,11 @@ export function buildSoulSign(scene: THREE.Scene, pos: THREE.Vector3): SoulSign 
   const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.05), swordMat);
   hilt.position.y = 0.72; hilt.rotation.z = 0.18;
   g.add(hilt);
-  // 幽绿光柱（多层同心）
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.26, 1.7, 12, 1, true), glowMat);
-  glow.position.y = 0.85;
+  // 幽绿光柱：加高加亮，雾不吃掉亮度，隔一段距离找得到死亡点。仍是魂绿。
+  const pillarH = 4.8;
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x6fdc8c, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.42, pillarH, 12, 1, true), glowMat);
+  glow.position.y = pillarH / 2;
   g.add(glow);
   const light = new THREE.PointLight(0x6fdc8c, 2.4, 4.5, 2);
   light.position.y = 0.85;
@@ -279,7 +280,7 @@ export function buildSoulSign(scene: THREE.Scene, pos: THREE.Vector3): SoulSign 
     group: g,
     update: (t: number): void => {
       light.intensity = 2.4 + Math.sin(t * 5.2) * 0.8;
-      glowMat.opacity = 0.14 + Math.sin(t * 5.2) * 0.05;
+      glowMat.opacity = 0.32 + Math.sin(t * 5.2) * 0.08;
     },
     dispose: (): void => {
       scene.remove(g);
