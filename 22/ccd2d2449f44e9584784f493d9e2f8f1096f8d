@@ -1,0 +1,38 @@
+web/src/game.ts
+  s_eb3e785bcb9cea::t_95168183c600ab 61,63
+web/e2e/t4-highwall.spec.ts
+  s_eb3e785bcb9cea::t_162a3b071b7dcd 173
+  s_eb3e785bcb9cea::t_9c3da44f3b5598 219-222
+web/scripts/highwall-art-probe.mjs
+  s_eb3e785bcb9cea::t_4e1ec57f7a8055 85
+  s_ae715748fecf72::t_c4412e9efdd261 89-91
+web/src/enemies-config.ts
+  s_eb3e785bcb9cea::t_bcbbef98f2fdca 128-130
+web/scripts/eight-boss-probe.mjs
+  s_eb3e785bcb9cea::t_56c3be681a358b 79
+  s_eb3e785bcb9cea::t_4092b018b8fc35 133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "22ccd2d2449f44e9584784f493d9e2f8f1096f8d",
+  "prompts": {},
+  "sessions": {
+    "s_ae715748fecf72": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8de0a075-a9c5-4ec7-8dc2-bbb46c1b4c9b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
