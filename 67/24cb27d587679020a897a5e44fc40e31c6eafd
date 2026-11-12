@@ -1,0 +1,19 @@
+web/src/boss-margit.ts
+  s_eb3e785bcb9cea::t_c177a5de5278be 292,294-295,297-312,355,363-366,369-383,386,388-389,391-396,414-434,437-450,452-459
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "6724cb27d587679020a897a5e44fc40e31c6eafd",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
