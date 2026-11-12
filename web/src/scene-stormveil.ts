@@ -395,6 +395,83 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     }
   };
 
+  /** 门洞铁栅 + 石楣。栅与楣的内缘都在可走圆 walk 上。side>0 为东（+X）。不消耗 rnd。 */
+  const ringGates = (
+    arr: THREE.BufferGeometry[],
+    cx: number,
+    walk: number,
+    doors: readonly { side: 1 | -1; half: number; base?: number }[],
+    h: number,
+  ): void => {
+    for (const d of doors) {
+      const p = Math.asin(Math.min(0.999, d.half / walk));
+      const axis = d.side > 0 ? Math.PI / 2 : -Math.PI / 2;
+      const t0 = axis - p, t1 = axis + p;
+      const base = d.base ?? 0;
+      const jambHalf = 0.24 / walk;
+      for (const s of [-1, 1] as const) {
+        const th = axis + s * (p + jambHalf + 0.004);
+        const rad = walk + 0.29;
+        arr.push(boxG(0.48, h, 0.58, cx + Math.sin(th) * rad, h / 2, Math.cos(th) * rad, PAL.stoneMid, { ry: th }));
+      }
+      const n = Math.max(3, Math.round((t1 - t0) * walk / 0.72));
+      const barR = walk + 0.06;
+      const barH = h - 0.22 - base;
+      for (let i = 0; i < n; i++) {
+        const th = t0 + (t1 - t0) * ((i + 0.5) / n);
+        arr.push(boxG(0.1, barH, 0.12, cx + Math.sin(th) * barR, base + barH / 2, Math.cos(th) * barR, PAL.metal, { ry: th }));
+      }
+      for (const y of [1.15, 2.35]) {
+        if (y <= base + 0.2) continue;
+        for (let i = 0; i < n; i++) {
+          const th = t0 + (t1 - t0) * ((i + 0.5) / n);
+          const len = ((t1 - t0) / n) * barR + 0.1;
+          arr.push(boxG(len, 0.07, 0.08, cx + Math.sin(th) * barR, y, Math.cos(th) * barR, PAL.metal, { ry: th }));
+        }
+      }
+      const lintelTh = 0.5, lintelR = walk + lintelTh / 2;
+      const ln = Math.max(3, Math.round((t1 - t0) * walk / 1.05));
+      for (let i = 0; i < ln; i++) {
+        const th = t0 + (t1 - t0) * ((i + 0.5) / ln);
+        const len = ((t1 - t0) / ln) * lintelR + 0.08;
+        arr.push(boxG(len, 0.36, lintelTh, cx + Math.sin(th) * lintelR, h - 0.04, Math.cos(th) * lintelR, PAL.stoneMid, { ry: th }));
+      }
+    }
+  };
+
+  /** 方厅内沿可走圆补的石墙。内壁半径 = walk，厚 0.58 朝外；门洞另走 ringGates。不消耗 rnd。 */
+  const sealRing = (
+    arr: THREE.BufferGeometry[],
+    cx: number,
+    walk: number,
+    doors: readonly { side: 1 | -1; half: number; base?: number }[],
+    wallColor: number,
+    h: number,
+  ): void => {
+    let pE = 0, pW = 0;
+    for (const d of doors) {
+      const p = Math.asin(Math.min(0.999, d.half / walk));
+      if (d.side > 0) pE = p;
+      else pW = p;
+    }
+    const arc = (t0: number, tl: number): void => {
+      if (tl <= 1e-4) return;
+      const n = Math.max(6, Math.round((tl / (Math.PI * 2)) * 72));
+      const thk = 0.58, rMid = walk + thk / 2;
+      const capTh = thk + 0.12, capR = walk + 0.02 + capTh / 2;
+      for (let i = 0; i < n; i++) {
+        const th = t0 + tl * ((i + 0.5) / n);
+        const dTh = tl / n;
+        arr.push(boxG(2 * rMid * Math.sin(dTh / 2) + 0.05, h, thk, cx + Math.sin(th) * rMid, h / 2, Math.cos(th) * rMid, wallColor, { ry: th }));
+        arr.push(boxG(2 * capR * Math.sin(dTh / 2) + 0.04, 0.24, capTh, cx + Math.sin(th) * capR, h + 0.04, Math.cos(th) * capR, PAL.wallHi, { ry: th }));
+      }
+    };
+    // CylinderGeometry 的 θ：0=+Z，π/2=+X。北弧、南弧，西/东门洞留空。
+    arc(-Math.PI / 2 + pW, Math.PI - pW - pE);
+    arc(Math.PI / 2 + pE, Math.PI - pW - pE);
+    ringGates(arr, cx, walk, doors, h);
+  };
+
   // ================================================= E1 城垣外梯：四折之字坡
   {
     // —— 坡道基底 + 逐道铺石（四条坡道 x 带，之字折返） ——
@@ -538,13 +615,17 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
   // ================================================= E3 玛尔基特房（可走直径 46，r=24，西鼻不动）
   {
     const AC = M_C, AR = M_R;
-    // 环墙半径跟着 r：旧 12.2/12.4/12.55/13.0/13.7 = r+0.2/+0.4/+0.55/+1/+1.7
-    const rIn = AR + 0.2, rOut = AR + 0.6, rWalk = AR + 0.4, rMer = AR + 0.55, rButt = AR + 1, rPil = AR + 1.7;
-    // 门口张角按旧嘴宽（米）反算，走廊/雾门宽度不随半径放大
-    const mouthW = Math.sin(0.46) * (M_OLD_R + 0.4), mouthE = Math.sin(0.42) * (M_OLD_R + 0.4);
-    const openW = Math.asin(mouthW / rWalk), openE = Math.asin(mouthE / rWalk);
+    // 内壁贴可走圆 walk=r−0.9。旧环在 r+0.2…r+0.6，人停在圆上、眼前是空地。
+    const walk = AR - 0.9;
+    const rIn = walk, rOut = walk;
+    const rWalk = walk + 0.525; // 步道厚 1.05，内缘贴内壁
+    const rMer = walk + 0.72, rButt = walk + 0.57, rPil = AR + 1.7;
+    // 西缘落在断翼露台（half 4.5，不是雾门收口 2.2），东缘接残柱厅（half 4）。
+    const halfW = 4.5, halfE = 4;
+    const openW = Math.asin(halfW / walk), openE = Math.asin(halfE / walk);
     sE3.push(cylG(rIn, rOut, 3.7, 44, AC, 1.85, 0, PAL.stoneDark, { open: true, t0: -Math.PI / 2 + openW, tl: Math.PI - openW - openE, jitter: 0.09 }));
     sE3.push(cylG(rIn, rOut, 3.7, 44, AC, 1.85, 0, PAL.stoneDark, { open: true, t0: Math.PI / 2 + openE, tl: Math.PI - openW - openE, jitter: 0.09 }));
+    ringGates(sE3, AC, walk, [{ side: -1, half: halfW }, { side: 1, half: halfE }], 3.7);
     // 墙顶步道环 + 雉堞 + 扶壁
     for (let i = 0; i < 34; i++) {
       const th = -Math.PI / 2 + openW + 0.1 + (Math.PI * 2 - openW - openE - 0.2) * (i / 33);
@@ -565,10 +646,10 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
       if (h > 5) sE3.push(boxG(0.8, 0.2, 0.8, px, h + 0.1, pz, PAL.stoneMid));
       else rubble(sE3, px, pz, 0.6, 4);
     }
-    // 东拱门：新环墙开口→平移后的教堂西门（走幅仍 z±4）
-    const openX = AC + Math.cos(openE) * rWalk;
-    wallSeg(sE3, openX, mouthE, G_XW + 0.1, 4.5, 4.4, 0, PAL.stoneMid);
-    wallSeg(sE3, openX, -mouthE, G_XW + 0.1, -4.5, 4.4, 0, PAL.stoneMid);
+    // 东拱门：可走圆开口（z±4）收到教堂西门（z±4.5）
+    const openX = AC + Math.cos(openE) * walk;
+    wallSeg(sE3, openX, halfE, G_XW + 0.1, 4.5, 4.4, 0, PAL.stoneMid);
+    wallSeg(sE3, openX, -halfE, G_XW + 0.1, -4.5, 4.4, 0, PAL.stoneMid);
     for (const s of [-1, 1]) {
       sE4.push(boxG(1.1, 5.6, 1.2, G_XW, 2.8, s * 4.6, PAL.stoneMid, { jitter: 0.1 }));
       sE4.push(boxG(0.85, 0.5, 1.05, G_XW, 5.85, s * 4.6, PAL.stone));
@@ -580,7 +661,7 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     sE4.push(boxG(0.35, 0.35, 9.2, x4(14.6), 2.9, 0, PAL.stoneMid));
     // 场心地面：铺满新圆 + 环纹按可走半径同比放大
     const kM = (M_R - 0.9) / (M_OLD_R - 0.9);
-    fE3.push(paint(new THREE.CircleGeometry(AR - 0.1, 52).rotateX(-Math.PI / 2).translate(AC, 0.012, 0), PAL.stoneMid, 0.06));
+    fE3.push(paint(new THREE.CircleGeometry(walk, 52).rotateX(-Math.PI / 2).translate(AC, 0.012, 0), PAL.stoneMid, 0.06));
     {
       const ringTones = [PAL.pathA, PAL.stoneDeep, PAL.pathA, PAL.stoneDeep];
       const rings: [number, number][] = [[2.4, 2.8], [4.9, 5.3], [7.4, 7.8], [9.9, 10.3]];
@@ -591,8 +672,8 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     // 西门口地面收口留在雾门前；东阈石跟到新东可走边
     fE3.push(boxG(1.3, 0.1, 10.6, -5.6, 0.03, 0, PAL.pathB, { jitter: 0.08 }));
     fE3.push(boxG(1.8, 0.1, 9.0, M_EAST + 0.4, 0.006, 0, PAL.pathB, { jitter: 0.08 }));
-    // 悬崖岩体（竞技场凌空）：内径跟环墙，外径保持旧的 +4.5 裙边
-    massGeoms.push(cylG(rWalk, AR + 4.5, 15, 26, AC, -7.7, 0, PAL.cliff, { jitter: 0.12 }));
+    // 悬崖岩体（竞技场凌空）：顶缘收到可走圆，外径保持旧的 +4.5 裙边
+    massGeoms.push(cylG(walk, AR + 4.5, 15, 26, AC, -7.7, 0, PAL.cliff, { jitter: 0.12 }));
     // 环外零星瓦砾（旧偏移按半径比留在环外）
     rubble(sE3, AC - 9.5 * kM, 9.6 * kM, 0.6, 6);
     rubble(sE3, AC + 10.2 * kM, -8.8 * kM, 0.6, 6);
@@ -1043,6 +1124,8 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
     }
     // 巨厅底盘岩体
     massGeoms.push(boxG(naveLen + 4, 15, G_WALL_Z * 2 + 4, naveCx, -7.7, 0, PAL.cliff, { jitter: 0.12 }));
+    // 方厅外壳在可走圆外，对角停步处没有石头。内壁贴 r−0.9；西接残柱厅 z±4，东接谒见长廊 z±2.6。
+    sealRing(sE5, G_C, G_R - 0.9, [{ side: -1, half: 4 }, { side: 1, half: 2.6, base: 0.9 }], PAL.wall, 3.6);
   }
 
   // ================================================= F1 谒见长廊（整段东移，z±2.6 不变）
@@ -1211,6 +1294,8 @@ export function buildStormveil(scene: THREE.Scene): SceneResult {
       for (const s of [-1, 1]) sE5.push(boxG(0.26, 0.26, 5.0, bx, 12.35, s * tz(10.2), PAL.wood, { rx: s * 0.34, jitter: 0.08 }));
     }
     massGeoms.push(boxG(31.0 * kT, 15, 34.4 * kT, tx(66.6), -7.7, 0, PAL.cliff, { jitter: 0.12 }));
+    // 王座厅同样是方厅。内壁贴 r−0.9；只西面接谒见长廊（z±2.6），东侧王座壁没有门。
+    sealRing(sE5, T_C, T_R - 0.9, [{ side: -1, half: 2.6 }], PAL.wall, 3.6);
   }
 
   // ---------------- 北渊：深渊 + 雾海中的下层城区（窗火点云） ----------------
