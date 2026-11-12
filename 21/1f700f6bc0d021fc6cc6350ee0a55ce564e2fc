@@ -1,0 +1,22 @@
+web/src/boss-watchers.ts
+  s_eb3e785bcb9cea::t_10c90a0a36acb1 224-226
+  s_eb3e785bcb9cea::t_9e18a397392311 263-273
+  s_eb3e785bcb9cea::t_1a528610ff03ee 120-121
+  s_eb3e785bcb9cea::t_04b51965579c9c 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "211f700f6bc0d021fc6cc6350ee0a55ce564e2fc",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
