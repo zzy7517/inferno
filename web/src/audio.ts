@@ -57,19 +57,31 @@ class AudioSys {
     } catch (err) { console.error(err); }
   }
 
+  // 命中变调约 ±8%（combat-feel）。xorshift 自有状态，不调用 Math.random，噪声采样序列不变。
+  private hitPitchState = 0x9e3779b9;
+  private hitPitch(): number {
+    let x = this.hitPitchState | 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.hitPitchState = x;
+    return 1 + (((x >>> 0) / 0x100000000) * 2 - 1) * 0.08;
+  }
+
   // ---- 战斗 ----
   whoosh(pitch = 1): void { this.noise(0.16 * pitch, 900 * pitch, 0.16, "bandpass", 0, 2.5); }
   swingHeavy(): void { this.noise(0.28, 500, 0.28, "bandpass", 0, 2); this.tone(180, 90, 0.22, "sine", 0.12); }
-  hitLight(): void { this.tone(170, 85, 0.09, "sine", 0.4); this.noise(0.08, 1100, 0.25); }
-  hitHeavy(): void { this.tone(120, 55, 0.16, "sine", 0.55); this.noise(0.13, 500, 0.35); this.tone(260, 140, 0.05, "square", 0.1); }
-  hitStone(): void { this.tone(95, 45, 0.14, "sine", 0.5); this.noise(0.1, 380, 0.4); }
-  blockHit(): void { this.tone(320, 180, 0.1, "square", 0.2); this.noise(0.09, 1600, 0.2, "highpass"); }
+  hitLight(): void { const p = this.hitPitch(); this.tone(170 * p, 85 * p, 0.09, "sine", 0.4); this.noise(0.08, 1100 * p, 0.25); }
+  hitHeavy(): void { const p = this.hitPitch(); this.tone(120 * p, 55 * p, 0.16, "sine", 0.55); this.noise(0.13, 500 * p, 0.35); this.tone(260 * p, 140 * p, 0.05, "square", 0.1); }
+  hitStone(): void { const p = this.hitPitch(); this.tone(95 * p, 45 * p, 0.14, "sine", 0.5); this.noise(0.1, 380 * p, 0.4); }
+  blockHit(): void { const p = this.hitPitch(); this.tone(320 * p, 180 * p, 0.1, "square", 0.2); this.noise(0.09, 1600 * p, 0.2, "highpass"); }
   parry(): void {
-    this.tone(1500, 900, 0.28, "triangle", 0.4);
-    this.tone(2300, 1500, 0.18, "sine", 0.25);
-    this.noise(0.06, 3000, 0.15, "highpass");
+    const p = this.hitPitch();
+    this.tone(1500 * p, 900 * p, 0.28, "triangle", 0.4);
+    this.tone(2300 * p, 1500 * p, 0.18, "sine", 0.25);
+    this.noise(0.06, 3000 * p, 0.15, "highpass");
   }
-  riposte(): void { this.hitHeavy(); this.tone(700, 200, 0.3, "sawtooth", 0.2, 0.05); }
+  riposte(): void { this.hitHeavy(); const p = this.hitPitch(); this.tone(700 * p, 200 * p, 0.3, "sawtooth", 0.2, 0.05); }
   hurt(): void { this.tone(280, 130, 0.18, "sawtooth", 0.3); }
   guardBreak(): void { this.tone(400, 100, 0.4, "square", 0.3); this.noise(0.3, 700, 0.3); }
 
