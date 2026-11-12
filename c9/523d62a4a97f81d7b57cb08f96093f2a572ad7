@@ -1,0 +1,19 @@
+web/src/player.ts
+  s_479f9e5cfa58fd::t_19a0589162a5f3 363-369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c9523d62a4a97f81d7b57cb08f96093f2a572ad7",
+  "prompts": {},
+  "sessions": {
+    "s_479f9e5cfa58fd": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2a89003e-93d1-40a8-9b5b-f30d6ccbde9b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
