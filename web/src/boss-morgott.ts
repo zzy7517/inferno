@@ -11,7 +11,7 @@
  *   「王者之证」大范围黄金冲击波（1.6s 大前摇·高伤害·全额跑出 7m 才躲得开的读招大题）
  * - 二阶段血焰附魔强化普攻：一阶段招式 前摇 ×0.9 / 伤害 ×1.15 / 匕首扇面扩为五连
  * - 招式间安全踱步 + 突然变奏（wiki：节奏多变读招考试——匕首后概率接跃扑 / 三连后概率接下砸）
- * - 性能纪律：纯几何 + 顶点色合并网格（本体 16 mesh ≤20 dc），无 PointLight（全 emissive 呼吸）
+ * - 性能纪律：纯几何 + 顶点色合并网格（本体 18 mesh ≤20 dc），无 PointLight（全 emissive 呼吸）
  * 配色纪律：全局冷灰咒体 + 预言金光 0xd8b36a 家族 + 血焰暗红 0x9b3b32（=COLORS.hp 同族），无高饱和色。
  */
 import * as THREE from "three";
@@ -255,8 +255,9 @@ export class Morgott extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：挺拔恶兆王（肩宽 ~1.0 / 高 ~3.0，褪色王披 + 王冠残环 + 双角 + 金瞳）
-  // 性能纪律：纯几何 + 顶点色 → mergeGeometries 合并为 16 个 mesh（≤20 dc）；无 PointLight，全 emissive 呼吸 ----------------
+  // ---------------- 外观：肩宽腰收的恶兆王（站立脚到颅顶 3.2 / 斗篷尖 3.6，头在肩下；褪色者按 1.8）
+  // 现网格先量过再放大：脚底 0.195、颅顶 2.778，脚到头 2.583。武器和分节尾只乘这个倍率。
+  // 性能纪律：纯几何 + 顶点色合并（本体 ≤20 dc）；无 PointLight，全 emissive 呼吸 ----------------
   protected override buildBody(): void {
     // 共享顶点色材质（一处实例，多 mesh 复用）
     const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, flatShading: true });
@@ -266,34 +267,88 @@ export class Morgott extends BossBase {
     this.gswordMat = new THREE.MeshStandardMaterial({ color: 0xd6bd82, emissive: GOLD, emissiveIntensity: 0, roughness: 0.3, metalness: 0.55, flatShading: true, transparent: true, opacity: 0.9 });
     this.bladeMat = new THREE.MeshStandardMaterial({ color: BLOOD, emissive: BLOOD, emissiveIntensity: 0, roughness: 0.45, metalness: 0.5, flatShading: true });
 
-    // 顶点色盒子工厂：旋转 → 平移 → 灌色（merge 前统一带 color 属性）
+    // 站立脚到颅顶 2.583 → 3.2。王杖 / 金锤 / 大剑 / 咒剑 / 分节尾只乘这一下，形状不动。
+    const k = 3.2 / 2.583;
     const c = new THREE.Color();
+    const paint = (g: THREE.BufferGeometry, color: number): THREE.BufferGeometry => {
+      c.setHex(color);
+      const n = g.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      return g;
+    };
     const box = (w: number, h: number, d: number, color: number, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0): THREE.BufferGeometry => {
       const g = new THREE.BoxGeometry(w, h, d);
       if (rx || ry || rz) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)));
       g.translate(x, y, z);
-      c.setHex(color);
-      const n = g.attributes.position.count;
-      const col = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-      return g;
+      return paint(g, color);
     };
     const cyl = (rt: number, rb: number, h: number, color: number, x = 0, y = 0, z = 0): THREE.BufferGeometry => {
       const g = new THREE.CylinderGeometry(rt, rb, h, 6);
       g.translate(x, y, z);
-      c.setHex(color);
-      const n = g.attributes.position.count;
-      const col = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-      return g;
+      return paint(g, color);
+    };
+    // 武器工厂：尺寸和位置一起乘 k，旋转不动。两端相对原点的远近不变，命中标记还钉在原处。
+    const boxW = (w: number, h: number, d: number, color: number, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0): THREE.BufferGeometry =>
+      box(w * k, h * k, d * k, color, x * k, y * k, z * k, rx, ry, rz);
+    const cylW = (rt: number, rb: number, h: number, color: number, x = 0, y = 0, z = 0): THREE.BufferGeometry =>
+      cyl(rt * k, rb * k, h * k, color, x * k, y * k, z * k);
+    // 身子：圆柱上粗下细，球拉成肩、颅、足。默认沿 +Y，上端是 rt。
+    const tube = (rt: number, rb: number, h: number, color: number, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, seg = 8): THREE.BufferGeometry => {
+      const g = new THREE.CylinderGeometry(Math.max(0.004, rt), Math.max(0.004, rb), h, seg);
+      if (rx || ry || rz) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)));
+      g.translate(x, y, z);
+      return paint(g, color);
+    };
+    const egg = (r: number, sx: number, sy: number, sz: number, color: number, x: number, y: number, z: number): THREE.BufferGeometry => {
+      const g = new THREE.SphereGeometry(r, 8, 6);
+      g.scale(sx, sy, sz);
+      g.translate(x, y, z);
+      return paint(g, color);
     };
     const merge = (geos: THREE.BufferGeometry[], parent: THREE.Object3D, mat: THREE.Material = bodyMat): THREE.Mesh => {
+      for (const g of geos) {
+        g.deleteAttribute("uv");
+        if (!g.getAttribute("normal")) g.computeVertexNormals();
+      }
       const m = new THREE.Mesh(mergeGeometries(geos)!, mat);
       m.castShadow = true;
       parent.add(m);
       return m;
+    };
+    // 斗篷一张布：中缝拱到肩上，两侧搭在肩头，下摆垂到小腿。正反两层，衬里深一号。
+    const cape = (color: number, zBias: number, outward: boolean): THREE.BufferGeometry => {
+      const cols = 10;
+      const rows = 10;
+      const pos: number[] = [];
+      const idx: number[] = [];
+      const W = cols + 1;
+      for (let r = 0; r <= rows; r++) {
+        const v = r / rows;
+        for (let col = 0; col <= cols; col++) {
+          const a = col / cols * 2 - 1;
+          const arch = Math.pow(1 - a * a, 1.2);
+          const halfW = 0.74 - 0.16 * v;
+          const collar = 1.888 * arch + 1.62 * (1 - arch);
+          const hem = -1.46 - (col % 2 === 0 ? 0.14 : 0.02);
+          const y = collar + (hem - collar) * Math.pow(v, 0.9);
+          const z = -0.20 - v * 0.38 - Math.abs(a) * 0.08 * v + zBias;
+          pos.push(a * halfW, y, z);
+        }
+      }
+      for (let r = 0; r < rows; r++) {
+        for (let col = 0; col < cols; col++) {
+          const i = r * W + col;
+          if (outward) idx.push(i, i + W, i + 1, i + 1, i + W, i + W + 1);
+          else idx.push(i, i + 1, i + W, i + 1, i + W + 1, i + W);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      return paint(g, color);
     };
     // 两端钉在已有网格的长轴上，不改尺寸。近原点的一端记为护手。
     const pinBlade = (parent: THREE.Object3D, hilt: THREE.Object3D, tip: THREE.Object3D): void => {
@@ -317,183 +372,216 @@ export class Morgott extends BossBase {
       parent.add(hilt, tip);
     };
 
-    // 枯瘦双腿（袍下若隐若现）——髋枢轴 + 膝枢轴（crouch 弯折 / legL 抬左腿）——腿根 y 1.58（挺拔高大）
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.17], [this.legL, this.shinL, -0.17]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.58, 0);
-      merge([box(0.17, 0.7, 0.2, SKIN_DARK, 0, -0.35, 0)], leg);                 // 大腿
-      shin.position.set(0, -0.7, 0);
-      merge([box(0.13, 0.64, 0.15, SKIN_DARK, 0, -0.32, 0.01), box(0.16, 0.09, 0.32, SKIN_DARK, 0, -0.64, 0.08)], shin);
+    // 枯瘦双腿：大腿、小腿都上粗下细，足是压扁的卵。髋/膝枢轴仍给 crouch、抬左腿用。脚底贴地。
+    const HIP_Y = 1.555;
+    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.15], [this.legL, this.shinL, -0.15]] as [THREE.Group, THREE.Group, number][]) {
+      leg.position.set(sx, HIP_Y, 0.02);
+      leg.name = "leg";
+      merge([tube(0.12, 0.078, 0.78, SKIN_DARK, 0, -0.39, 0)], leg);
+      shin.position.set(0, -0.78, 0);
+      shin.name = "shin";
+      const foot = new THREE.SphereGeometry(0.075, 7, 5);
+      foot.scale(0.72, 0.46, 1.45);
+      foot.translate(0, -0.74, 0.07);
+      merge([
+        tube(0.072, 0.042, 0.68, SKIN_DARK, 0, -0.34, 0.01),
+        paint(foot, SKIN_DARK),
+      ], shin);
       leg.add(shin);
       this.body.add(leg);
     }
-    // 骨盆 + 绳腰带 + 破布长袍下摆（阶梯四层 + 摆缘破布条六片）——整层合并为 1 mesh
+    // 窄腰 + 绳带 + 下摆向外敞。一条裙，不再叠四层方盒子。
     merge([
-      box(0.44, 0.28, 0.32, SKIN_DARK, 0, 1.6, 0),
-      box(0.5, 0.09, 0.38, ROBE_DARK, 0, 1.5, 0),
-      box(0.08, 0.18, 0.06, ROBE_DARK, 0.17, 1.44, 0.21),
-      box(0.56, 0.34, 0.42, ROBE, 0, 1.34, 0),
-      box(0.66, 0.34, 0.5, ROBE, 0, 1.04, 0),
-      box(0.78, 0.34, 0.58, ROBE_DARK, 0, 0.74, 0),
-      box(0.9, 0.3, 0.66, ROBE_DARK, 0, 0.48, 0.02),
+      tube(0.20, 0.18, 0.24, SKIN_DARK, 0, 1.52, 0.02),
+      tube(0.24, 0.22, 0.07, ROBE_DARK, 0, 1.38, 0.03),
+      egg(0.045, 1, 1, 1, ROBE_DARK, 0.16, 1.32, 0.16),
+      tube(0.22, 0.46, 1.12, ROBE, 0, 0.86, 0.02, 0, 0, 0, 10),
+      tube(0.20, 0.40, 1.00, ROBE_DARK, 0, 0.82, -0.02, 0, 0, 0, 10),
     ], this.body);
     const rags: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.4;
-      rags.push(box(0.1, 0.34 + (i % 3) * 0.08, 0.03, ROBE_DARK, Math.sin(a) * 0.46, 0.34, Math.cos(a) * 0.46, 0, a, 0));
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.35;
+      const h = 0.26 + (i % 3) * 0.05;
+      rags.push(tube(0.038, 0.010, h, ROBE_DARK, Math.sin(a) * 0.42, 0.34 - h * 0.15, Math.cos(a) * 0.40, 0.18, a, 0, 5));
     }
     merge(rags, this.body);
-    // 尾：节间收细，末端换成竖刃。根面 z=0、刃尖 z=-1.16，节心压在 y=-0.082，标记仍钉在根和刃尖。
-    this.tailG.position.set(0, 1.5, -0.2);
+    // 分节尾原样留下，只随身高放大。根面仍在 z=0，刃尖仍在末端，标记钉回这两端。
+    this.tailG.position.set(0, 1.46, -0.22);
     const tailY = -0.082;
     merge([
-      box(0.15, 0.13, 0.18, SKIN_DARK, 0, tailY, -0.09),                       // 节
-      box(0.055, 0.05, 0.055, ROBE_DARK, 0, tailY, -0.195),                     // 节间收细
-      box(0.125, 0.11, 0.16, SKIN, 0, tailY, -0.295),
-      box(0.048, 0.044, 0.05, ROBE_DARK, 0, tailY, -0.395),
-      box(0.11, 0.095, 0.15, SKIN_DARK, 0, tailY, -0.49),
-      box(0.042, 0.038, 0.048, ROBE_DARK, 0, tailY, -0.585),
-      box(0.095, 0.082, 0.14, SKIN, 0, tailY, -0.675),
-      box(0.036, 0.032, 0.05, ROBE_DARK, 0, tailY, -0.765),
-      box(0.028, 0.10, 0.08, STEEL, 0, tailY, -0.81),                           // 刃根
-      box(0.028, 0.26, 0.18, STEEL, 0, tailY, -0.93),                           // 扁刃
-      box(0.014, 0.14, 0.10, STEEL, 0, tailY, -1.05),
-      box(0.012, 0.05, 0.08, STEEL, 0, tailY, -1.12),                           // 刃尖，端面 z=-1.16
+      boxW(0.15, 0.13, 0.18, SKIN_DARK, 0, tailY, -0.09),
+      boxW(0.055, 0.05, 0.055, ROBE_DARK, 0, tailY, -0.195),
+      boxW(0.125, 0.11, 0.16, SKIN, 0, tailY, -0.295),
+      boxW(0.048, 0.044, 0.05, ROBE_DARK, 0, tailY, -0.395),
+      boxW(0.11, 0.095, 0.15, SKIN_DARK, 0, tailY, -0.49),
+      boxW(0.042, 0.038, 0.048, ROBE_DARK, 0, tailY, -0.585),
+      boxW(0.095, 0.082, 0.14, SKIN, 0, tailY, -0.675),
+      boxW(0.036, 0.032, 0.05, ROBE_DARK, 0, tailY, -0.765),
+      boxW(0.028, 0.10, 0.08, STEEL, 0, tailY, -0.81),
+      boxW(0.028, 0.26, 0.18, STEEL, 0, tailY, -0.93),
+      boxW(0.014, 0.14, 0.10, STEEL, 0, tailY, -1.05),
+      boxW(0.012, 0.05, 0.08, STEEL, 0, tailY, -1.12),
     ], this.tailG);
     pinBlade(this.tailG, this.tailHilt, this.tailTip);
     this.body.add(this.tailG);
 
-    // 躯干（宽肩挺拔）——底座 y 1.72；褪色王披（披肩 + 背后长氅）
-    this.torso.position.y = 1.72;
-    merge([
-      box(0.4, 0.32, 0.28, SKIN_DARK, 0, 0.04, 0),                               // 腹
-      box(0.5, 0.42, 0.32, ROBE, 0, 0.4, 0),                                     // 胸（袍裹）
-      box(0.44, 0.26, 0.34, CLOAK, 0, 0.66, 0.01),                               // 上层（王披）
-      box(0.36, 0.4, 0.07, SKIN_DARK, 0, 0.42, -0.18),                           // 背脊隆起
-      box(0.62, 0.95, 0.05, CLOAK, 0, 0.02, -0.24),                              // 背后长氅
-      box(0.5, 0.6, 0.045, ROBE_DARK, 0, -0.38, -0.28),                          // 氅内衬
-      box(0.026, 0.4, 0.026, ROBE_DARK, 0.09, 0.3, 0.16),                        // 胸前垂绳 + 骨符
-      box(0.026, 0.4, 0.026, ROBE_DARK, -0.09, 0.3, 0.16),
-      box(0.07, 0.1, 0.04, SKIN_DARK, 0, 0.12, 0.18),
-    ], this.torso);
-    const mantle: THREE.BufferGeometry[] = [];                                    // 王披披肩（双层）
+    // 躯干底座在腰上。腰收到最细，胸向上打开，肩球高过颅顶。斗篷另挂一层，尖在肩后。
+    this.torso.position.y = 1.70;
+    const shoulders: THREE.BufferGeometry[] = [
+      tube(0.20, 0.17, 0.22, ROBE_DARK, 0, 0.06, 0.02),                         // 腰，全身最细
+      tube(0.30, 0.20, 0.36, ROBE, 0, 0.32, 0.04),                               // 腹
+      tube(0.40, 0.28, 0.42, ROBE, 0, 0.68, 0.02),                               // 胸，比腰宽，仍窄于肩
+      tube(0.34, 0.40, 0.20, CLOAK, 0, 0.96, 0.00),
+      egg(0.22, 1.15, 0.85, 0.72, SKIN_DARK, 0, 0.48, -0.20),                    // 背脊
+      tube(0.014, 0.014, 0.42, ROBE_DARK, 0.08, 0.42, 0.22),
+      tube(0.014, 0.014, 0.42, ROBE_DARK, -0.08, 0.42, 0.22),
+      egg(0.045, 0.8, 1.1, 0.55, SKIN_DARK, 0, 0.22, 0.26),
+      tube(0.09, 0.11, 0.32, SKIN_DARK, 0, 1.18, 0.24, 0.58),                    // 短颈，把头从肩窝里送出来
+    ];
     for (const s of [-1, 1]) {
-      mantle.push(box(0.32, 0.16, 0.38, CLOAK, s * 0.38, 0.7, 0, 0, 0, -s * 0.3));
-      mantle.push(box(0.2, 0.11, 0.28, ROBE_DARK, s * 0.46, 0.56, 0.02, 0, 0, -s * 0.5));
+      const cap = new THREE.SphereGeometry(0.32, 8, 6);
+      cap.scale(1.05, 1.18, 0.88);
+      cap.translate(s * 0.50, 1.34, -0.04);
+      shoulders.push(paint(cap, CLOAK));
+      shoulders.push(tube(0.10, 0.20, 0.28, CLOAK, s * 0.62, 1.58, -0.06, 0, 0, -s * 0.42));
     }
-    merge(mantle, this.torso);
+    const torsoMesh = merge(shoulders, this.torso);
+    torsoMesh.name = "torso";
+    const cloakMesh = merge([cape(CLOAK, -0.02, false), cape(ROBE_DARK, 0.015, true)], this.torso);
+    cloakMesh.name = "cloak";
 
-    // 头：恶兆颅（瘦长）+ 后掠双角 + 金瞳；王冠残环 + 额前预言印记（crownMat 金辉呼吸）
-    this.head.position.set(0, 0.88, 0.03);
-    merge([
-      box(0.24, 0.32, 0.28, SKIN, 0, 0, 0),                                      // 颅
-      box(0.19, 0.13, 0.22, SKIN_DARK, 0, -0.19, 0.02),                          // 颌
-      box(0.21, 0.1, 0.06, SKIN_DARK, 0, 0.07, 0.13),                            // 眉骨
-      box(0.06, 0.34, 0.06, SKIN_DARK, 0.13, 0.26, -0.06, -0.55, 0, -0.55),      // 后掠双角（两节）
-      box(0.06, 0.34, 0.06, SKIN_DARK, -0.13, 0.26, -0.06, -0.55, 0, 0.55),
-      box(0.045, 0.3, 0.045, SKIN_DARK, 0.23, 0.48, -0.16, -1.0, 0, -0.75),
-      box(0.045, 0.3, 0.045, SKIN_DARK, -0.23, 0.48, -0.16, -1.0, 0, 0.75),
-    ], this.head);
-    merge([                                                                      // 双眼（金瞳，emissive 呼吸）
-      box(0.055, 0.04, 0.02, 0xffffff, 0.06, 0.06, 0.155),
-      box(0.055, 0.04, 0.02, 0xffffff, -0.06, 0.06, 0.155),
-    ], this.head, this.eyeMat);
-    const crown: THREE.BufferGeometry[] = [box(0.06, 0.09, 0.02, GOLD_DEEP, 0, 0.2, 0.145)];  // 额前预言印记（斜置菱形→竖片）
-    for (let i = 0; i < 7; i++) {                                                // 王冠残环：7 节金环 + 一段缺口（残）
-      const a = 0.42 + (i / 6) * (Math.PI * 1.72);                               // 覆盖 ~310°，余下缺口
-      const tall = i % 3 === 1;
-      crown.push(box(0.05, tall ? 0.16 : 0.09, 0.05, GOLD_DEEP,
-        Math.sin(a) * 0.165, 0.3 + (tall ? 0.03 : 0), Math.cos(a) * 0.165, 0, a, 0));
+    // 头沉在两肩之间，颅顶低于肩线。角向后掠，不冒过头顶。残冠绕额，不往上长。
+    this.head.position.set(0, 1.336, 0.42);
+    this.head.name = "head";
+    const horns: THREE.BufferGeometry[] = [
+      egg(0.155, 0.92, 1.18, 1.02, SKIN, 0, 0.02, 0),
+      egg(0.105, 0.90, 0.62, 0.95, SKIN_DARK, 0, -0.12, 0.04),
+      egg(0.07, 1.35, 0.42, 0.65, SKIN_DARK, 0, 0.05, 0.12),
+    ];
+    const horn = (side: number, len: number, r0: number, r1: number, x: number, y: number, z: number, rx: number, rz: number): THREE.BufferGeometry => {
+      const g = new THREE.CylinderGeometry(r1, r0, len, 6);
+      g.translate(0, len * 0.5, 0);
+      g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, 0, side * rz)));
+      g.translate(side * x, y, z);
+      return paint(g, SKIN_DARK);
+    };
+    for (const s of [-1, 1]) {
+      horns.push(horn(s, 0.30, 0.045, 0.028, 0.10, 0.02, -0.02, -1.05, 0.55));
+      horns.push(horn(s, 0.26, 0.026, 0.012, 0.20, 0.06, -0.16, -1.25, 0.85));
+    }
+    const headMesh = merge(horns, this.head);
+    headMesh.name = "skull";
+    const eyeGeo = (x: number): THREE.BufferGeometry => {
+      const g = new THREE.SphereGeometry(0.028, 6, 5);
+      g.scale(1.15, 0.72, 0.55);
+      g.translate(x, 0.045, 0.145);
+      return g;
+    };
+    merge([eyeGeo(0.055), eyeGeo(-0.055)], this.head, this.eyeMat);
+    const crown: THREE.BufferGeometry[] = [];
+    const mark = new THREE.SphereGeometry(0.04, 6, 5);
+    mark.scale(0.65, 1.2, 0.38);
+    mark.translate(0, 0.10, 0.155);
+    crown.push(mark);
+    for (let i = 0; i < 7; i++) {
+      const a = 0.55 + (i / 6) * (Math.PI * 1.55);
+      const h = i % 3 === 1 ? 0.09 : 0.055;
+      const g = new THREE.CylinderGeometry(0.012, 0.026, h, 5);
+      g.translate(Math.sin(a) * 0.145, 0.12 + h * 0.35, Math.cos(a) * 0.12);
+      crown.push(g);
     }
     merge(crown, this.head, this.crownMat);
-    this.mouth.position.set(0, -0.14, 0.16);                                 // 颌前，喷吐从这里出来
+    this.mouth.position.set(0, -0.10, 0.16);
     this.head.add(this.mouth);
     this.torso.add(this.head);
 
-    // 右臂 + 王杖（一阶段）：木杆和金杖头分开，杖头是冠球加十字，不再是玛尔基特的木叉。
-    // 外包盒锁在 y=-1.5 / y=1.247，和原来一样长；杖头比杆宽，但仍短于全长，标记留在杖头尖和杆尾。
-    this.armR.position.set(0.38, 0.62, 0);
+    // 右臂从上臂收到腕。王杖、咒剑、金锤的网格只乘 k，握点仍在掌心，标记跟着两端走。
+    this.armR.position.set(0.58, 0.96, 0.05);
     merge([
-      box(0.12, 0.52, 0.14, SKIN_DARK, 0, -0.23, 0),
-      box(0.1, 0.48, 0.12, SKIN, 0, -0.62, 0.02),
-      box(0.11, 0.13, 0.13, SKIN_DARK, 0, -0.93, 0.04),                          // 枯爪握持
+      tube(0.135, 0.086, 0.52, SKIN_DARK, 0, -0.28, 0),
+      tube(0.078, 0.046, 0.48, SKIN, 0, -0.74, 0.02),
+      egg(0.058, 1.05, 0.72, 1.15, SKIN_DARK, 0, -1.04, 0.05),
+      tube(0.014, 0.006, 0.11, SKIN_DARK, -0.03, -1.12, 0.09, 0.7, 0, 0.25, 5),
+      tube(0.014, 0.006, 0.12, SKIN_DARK, 0, -1.14, 0.10, 0.85, 0, 0, 5),
+      tube(0.014, 0.006, 0.11, SKIN_DARK, 0.03, -1.12, 0.09, 0.7, 0, -0.25, 5),
     ], this.armR);
-    this.staffG.position.set(0, -1.0, 0.06);
+    this.staffG.position.set(0, -1.10, 0.08);
     this.staffG.rotation.x = 0.16;                                               // 杖尾后曳
     merge([
-      cyl(0.024, 0.038, 2.08, WOOD, 0, -0.460, 0),                               // 木杆，底 -1.500，顶伸进金座
-      box(0.056, 0.044, 0.056, GOLD_DEEP, 0, -1.478, 0),                         // 杆尾金箍，底面仍在 -1.500
-      box(0.050, 0.18, 0.050, ROBE_DARK, 0, 0.02, 0),                            // 握柄缠布
-      box(0.062, 0.026, 0.062, GOLD_DEEP, 0, -0.86, 0),                          // 杆身金环（还在木杆上）
-      box(0.058, 0.024, 0.058, GOLD_DEEP, 0, -0.22, 0),
-      box(0.13, 0.07, 0.13, GOLD_DEEP, 0, 0.600, 0),                             // 金座，杖头从这里才开始
-      cyl(0.030, 0.040, 0.06, GOLD_DEEP, 0, 0.665, 0),                           // 颈，把球和杆断开
-      cyl(0.062, 0.034, 0.08, GOLD, 0, 0.735, 0),                                // 冠球
-      cyl(0.100, 0.062, 0.10, GOLD, 0, 0.825, 0),
-      cyl(0.048, 0.100, 0.07, GOLD, 0, 0.910, 0),
-      cyl(0, 0.022, 0.36, GOLD, 0, 1.067, 0),                                    // 十字立锋，尖在 1.247
-      box(0.26, 0.034, 0.034, GOLD, 0, 1.020, 0),                                // 十字横臂
-      box(0.034, 0.034, 0.16, GOLD_DEEP, 0, 1.020, 0),
+      cylW(0.024, 0.038, 2.08, WOOD, 0, -0.460, 0),                              // 木杆，底仍是杆尾，顶伸进金座
+      boxW(0.056, 0.044, 0.056, GOLD_DEEP, 0, -1.478, 0),                        // 杆尾金箍
+      boxW(0.050, 0.18, 0.050, ROBE_DARK, 0, 0.02, 0),                           // 握柄缠布
+      boxW(0.062, 0.026, 0.062, GOLD_DEEP, 0, -0.86, 0),                         // 杆身金环
+      boxW(0.058, 0.024, 0.058, GOLD_DEEP, 0, -0.22, 0),
+      boxW(0.13, 0.07, 0.13, GOLD_DEEP, 0, 0.600, 0),                            // 金座
+      cylW(0.030, 0.040, 0.06, GOLD_DEEP, 0, 0.665, 0),
+      cylW(0.062, 0.034, 0.08, GOLD, 0, 0.735, 0),                               // 冠球
+      cylW(0.100, 0.062, 0.10, GOLD, 0, 0.825, 0),
+      cylW(0.048, 0.100, 0.07, GOLD, 0, 0.910, 0),
+      cylW(0, 0.022, 0.36, GOLD, 0, 1.067, 0),                                   // 十字立锋
+      boxW(0.26, 0.034, 0.034, GOLD, 0, 1.020, 0),                               // 十字横臂
+      boxW(0.034, 0.034, 0.16, GOLD_DEEP, 0, 1.020, 0),
     ], this.staffG);
     pinBlade(this.staffG, this.staffHilt, this.staffTip);
     this.armR.add(this.staffG);
-    // 蒙格特咒剑（二阶段右手常驻）：窄血刃，短剑格，尖收到 y=-1.423。比左手黄金大剑窄一截，整把走 BLOOD。
-    this.bladeG.position.set(0, -1.02, 0.1);
+    // 蒙格特咒剑：窄血刃原样放大。尖和柄头仍是长轴两端。
+    this.bladeG.position.set(0, -1.12, 0.12);
     this.bladeG.rotation.x = 0.22;
     merge([
-      box(0.034, 0.050, 0.034, BLOOD, 0, 0.075, 0),                              // 柄头，顶 0.100
-      box(0.024, 0.18, 0.024, BLOOD, 0, -0.030, 0),                              // 细柄
-      box(0.26, 0.032, 0.038, BLOOD, 0, -0.125, 0),                              // 剑格，明显宽于窄刃
-      box(0.018, 0.08, 0.018, BLOOD, 0.12, -0.165, 0, 0, 0, -0.65),              // 格端下垂
-      box(0.018, 0.08, 0.018, BLOOD, -0.12, -0.165, 0, 0, 0, 0.65),
-      box(0.036, 0.08, 0.016, BLOOD, 0, -0.180, 0),                              // 剑颈
-      box(0.064, 0.74, 0.014, BLOOD, 0, -0.580, 0),                              // 窄刃
-      box(0.020, 0.74, 0.020, BLOOD, 0, -0.580, 0),                              // 细脊
-      box(0.034, 0.22, 0.012, BLOOD, 0, -1.050, 0),                              // 收锋
-      cyl(0.014, 0, 0.32, BLOOD, 0, -1.263, 0),                                  // 尖，底 -1.423
+      boxW(0.034, 0.050, 0.034, BLOOD, 0, 0.075, 0),
+      boxW(0.024, 0.18, 0.024, BLOOD, 0, -0.030, 0),
+      boxW(0.26, 0.032, 0.038, BLOOD, 0, -0.125, 0),
+      boxW(0.018, 0.08, 0.018, BLOOD, 0.12, -0.165, 0, 0, 0, -0.65),
+      boxW(0.018, 0.08, 0.018, BLOOD, -0.12, -0.165, 0, 0, 0, 0.65),
+      boxW(0.036, 0.08, 0.016, BLOOD, 0, -0.180, 0),
+      boxW(0.064, 0.74, 0.014, BLOOD, 0, -0.580, 0),
+      boxW(0.020, 0.74, 0.020, BLOOD, 0, -0.580, 0),
+      boxW(0.034, 0.22, 0.012, BLOOD, 0, -1.050, 0),
+      cylW(0.014, 0, 0.32, BLOOD, 0, -1.263, 0),
     ], this.bladeG, this.bladeMat);
     pinBlade(this.bladeG, this.bladeHilt, this.bladeTip);
     this.bladeG.visible = false;
     this.armR.add(this.bladeG);
-    // 魅影金锤：细柄 + 厚锤头。柄尾 y=-0.44、锤面 y=0.56。锤头的宽、厚都短于这根全长，标记才还在柄尾和锤面。
-    this.hammerG.position.set(0, -1.06, 0.18);
+    // 魅影金锤：细柄 + 厚锤头，只放大。锤头仍短于全长，标记留在柄尾和锤面。
+    this.hammerG.position.set(0, -1.14, 0.20);
     merge([
-      box(0.04, 0.50, 0.04, 0xcbb277, 0, -0.190, 0),                             // 细柄，底 -0.440
-      box(0.14, 0.09, 0.14, 0xcbb277, 0, 0.090, 0),                              // 颈
-      box(0.76, 0.42, 0.60, 0xcbb277, 0, 0.310, 0),                              // 厚锤头
-      box(0.90, 0.10, 0.74, 0xcbb277, 0, 0.300, 0),                              // 锤腰箍，把头从杆上切开
-      box(0.60, 0.08, 0.48, 0xcbb277, 0, 0.520, 0),                              // 打击面，顶 0.560
+      boxW(0.04, 0.50, 0.04, 0xcbb277, 0, -0.190, 0),
+      boxW(0.14, 0.09, 0.14, 0xcbb277, 0, 0.090, 0),
+      boxW(0.76, 0.42, 0.60, 0xcbb277, 0, 0.310, 0),
+      boxW(0.90, 0.10, 0.74, 0xcbb277, 0, 0.300, 0),
+      boxW(0.60, 0.08, 0.48, 0xcbb277, 0, 0.520, 0),
     ], this.hammerG, this.hammerMat);
     pinBlade(this.hammerG, this.hammerHilt, this.hammerTip);
     this.hammerG.visible = false;
     this.armR.add(this.hammerG);
     this.torso.add(this.armR);
 
-    // 左臂 + 枯爪 + 袖中咒刃（投掷位）+ 王之剑（宽刃黄金大剑，剑格和尖都比右手咒剑大一圈）
-    this.armL.position.set(-0.38, 0.62, 0);
+    // 左臂同样上粗下细。袖中咒刃收到一根细锥。王之剑只放大，宽剑格和尖还在原两端。
+    this.armL.position.set(-0.58, 0.96, 0.05);
     const clawGeos: THREE.BufferGeometry[] = [
-      box(0.12, 0.5, 0.14, SKIN_DARK, 0, -0.22, 0),
-      box(0.1, 0.46, 0.12, SKIN, 0, -0.6, 0.02),
-      box(0.1, 0.11, 0.11, SKIN_DARK, 0, -0.87, 0.04),
+      tube(0.13, 0.082, 0.50, SKIN_DARK, 0, -0.27, 0),
+      tube(0.075, 0.044, 0.46, SKIN, 0, -0.72, 0.02),
+      egg(0.055, 1.0, 0.7, 1.1, SKIN_DARK, 0, -1.00, 0.05),
+      tube(0.012, 0.022, 0.40, STEEL, 0.01, -0.82, 0.10, 0.4, 0, 0, 5),
     ];
-    for (let i = 0; i < 3; i++) clawGeos.push(box(0.02, 0.15, 0.03, SKIN_DARK, -0.03 + i * 0.03, -0.97, 0.06, 0.5 + i * 0.12, 0, 0));
-    clawGeos.push(box(0.035, 0.42, 0.015, STEEL, 0.01, -0.78, 0.1, 0.35, 0, 0));  // 袖中咒刃（钝钢）
+    for (let i = 0; i < 3; i++) clawGeos.push(tube(0.008, 0.016, 0.14, SKIN_DARK, -0.03 + i * 0.03, -1.10, 0.08, 0.55 + i * 0.12, 0, 0, 5));
     merge(clawGeos, this.armL);
-    this.gswordG.position.set(0, -0.98, 0.1);
+    this.gswordG.position.set(0, -1.10, 0.12);
     this.gswordG.rotation.x = 0.2;
     merge([
-      box(0.078, 0.064, 0.078, 0xd6bd82, 0, 0.068, 0),                           // 柄头，顶 0.100
-      box(0.048, 0.24, 0.048, 0xd6bd82, 0, -0.060, 0),                           // 握柄
-      box(0.76, 0.06, 0.09, 0xd6bd82, 0, -0.200, 0),                             // 宽剑格
-      box(0.14, 0.10, 0.11, 0xd6bd82, 0, -0.200, 0),                             // 格心
-      box(0.046, 0.20, 0.046, 0xd6bd82, 0.36, -0.240, 0, 0, 0, -0.55),           // 格端下垂，搭在剑格上
-      box(0.046, 0.20, 0.046, 0xd6bd82, -0.36, -0.240, 0, 0, 0, 0.55),
-      box(0.12, 0.14, 0.045, 0xd6bd82, 0, -0.300, 0),                            // 剑颈，窄于刃
-      box(0.34, 0.52, 0.038, 0xd6bd82, 0, -0.620, 0),                            // 宽刃
-      box(0.09, 0.52, 0.056, 0xd6bd82, 0, -0.620, 0),                            // 脊
-      box(0.22, 0.42, 0.032, 0xd6bd82, 0, -1.060, 0),
-      box(0.06, 0.42, 0.046, 0xd6bd82, 0, -1.060, 0),
-      box(0.11, 0.28, 0.024, 0xd6bd82, 0, -1.400, 0),                            // 收锋
-      cyl(0.048, 0, 0.42, 0xd6bd82, 0, -1.680, 0),                               // 尖，底 -1.890
+      boxW(0.078, 0.064, 0.078, 0xd6bd82, 0, 0.068, 0),
+      boxW(0.048, 0.24, 0.048, 0xd6bd82, 0, -0.060, 0),
+      boxW(0.76, 0.06, 0.09, 0xd6bd82, 0, -0.200, 0),
+      boxW(0.14, 0.10, 0.11, 0xd6bd82, 0, -0.200, 0),
+      boxW(0.046, 0.20, 0.046, 0xd6bd82, 0.36, -0.240, 0, 0, 0, -0.55),
+      boxW(0.046, 0.20, 0.046, 0xd6bd82, -0.36, -0.240, 0, 0, 0, 0.55),
+      boxW(0.12, 0.14, 0.045, 0xd6bd82, 0, -0.300, 0),
+      boxW(0.34, 0.52, 0.038, 0xd6bd82, 0, -0.620, 0),
+      boxW(0.09, 0.52, 0.056, 0xd6bd82, 0, -0.620, 0),
+      boxW(0.22, 0.42, 0.032, 0xd6bd82, 0, -1.060, 0),
+      boxW(0.06, 0.42, 0.046, 0xd6bd82, 0, -1.060, 0),
+      boxW(0.11, 0.28, 0.024, 0xd6bd82, 0, -1.400, 0),
+      cylW(0.048, 0, 0.42, 0xd6bd82, 0, -1.680, 0),
     ], this.gswordG, this.gswordMat);
     pinBlade(this.gswordG, this.gswordHilt, this.gswordTip);
     this.gswordG.visible = false;
