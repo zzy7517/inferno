@@ -21,7 +21,7 @@
  *   直跑 spawn→雾门 130.5m ≈ 21s @6.2m/s（教学区 20-30s 预算内）
  * 预算：静态几何按顶点色 mergeGeometries 合批（6 空间分块），场景本体 ~16 draw call；
  *   火光 PointLight ×3（雾门火盆 ×2 + A1 烛龛），C 区灯笼/烛台/门 B 幽光全 emissive 呼吸
- * 跟随：天穹/冷月/流云随玩家 x 平移（无限远背景，far=120 内恒可见）；
+ * 跟随：天穹/冷月/流云随玩家 x/z 平移（半径 220，站在拉塔恩战场边缘时 180m 对岸仍在穹内；相机 far=480）；
  *   阴影定向灯 38×28m 窗口按 2m 网格吸附跟随（2048² 拉全图会痘影，见 m4 §4.2）
  */
 import * as THREE from "three";
@@ -227,18 +227,21 @@ export function buildCemetery(scene: THREE.Scene): {
   root.add(moonLight);
   root.add(new THREE.HemisphereLight(0x2c3548, 0x141210, 0.68));
 
-  // ---------------- 天穹随行组：大球内壁渐变 + 朦胧冷月 + 流云（无限远背景，跟玩家 x） ----------------
+  // ---------------- 天穹随行组：大球内壁渐变 + 朦胧冷月 + 流云（跟玩家 x/z） ----------------
+  // 拉塔恩可走直径 180.2。天球若只罩 105，人站在西缘朝东看，对岸落在穹外。
+  // 220 罩住整段对岸，且小于相机 far 480，穹面不会被远平面裁掉。
+  const SKY_R = 220;
   const skyGroup = new THREE.Group();
   skyGroup.position.set(-140.5, 0, 0);
   root.add(skyGroup);
   {
-    const geo = new THREE.SphereGeometry(105, 32, 20);
+    const geo = new THREE.SphereGeometry(SKY_R, 32, 20);
     const pos = geo.attributes.position;
     const colArr = new Float32Array(pos.count * 3);
     const top = new THREE.Color(PAL.skyTop), hor = new THREE.Color(PAL.skyHorizon), un = new THREE.Color(PAL.skyUnder);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const ny = pos.getY(i) / 105;
+      const ny = pos.getY(i) / SKY_R;
       if (ny >= 0) c.copy(hor).lerp(top, Math.pow(Math.min(1, ny / 0.85), 0.65));
       else c.copy(hor).lerp(un, Math.min(1, -ny * 3.2));
       colArr[i * 3] = c.r; colArr[i * 3 + 1] = c.g; colArr[i * 3 + 2] = c.b;
@@ -1001,11 +1004,12 @@ export function buildCemetery(scene: THREE.Scene): {
       cloud.mesh.position.x = x;
       cloud.mat.opacity = cloud.o * k * k;
     }
-    // 天穹/冷月随玩家 x（无限远背景恒在 far=120 内）；阴影窗 2m 网格吸附（防像素质心抖动）
+    // 天穹/冷月随玩家 x/z（半径 220 罩住 180m 对岸；相机 far=480）；阴影窗 2m 网格吸附（防像素质心抖动）
     if (!playerRef || playerRef.parent === null) playerRef = scene.getObjectByName("Undead") ?? null;
     if (playerRef) {
       playerRef.getWorldPosition(scratch);
       skyGroup.position.x = scratch.x;
+      skyGroup.position.z = scratch.z;
       const sx = Math.round(scratch.x / 2) * 2;
       moonLight.position.set(sx + 19, 6, -7);
       moonTarget.position.set(sx - 2, 0, 0);
