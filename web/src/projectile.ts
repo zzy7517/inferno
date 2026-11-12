@@ -1,8 +1,8 @@
 /** 投射物池（M3：沙力万暗月矢/纵横月焰）—— BossBase 子类经 host 发射，game 每帧驱动命中
- *  约定：飞行物为发光小球，水平直线（可选微下坠），命中玩家走 onHit 总线同一套手感档案。
- *  身后 3 颗同色余烬沿速度拉成短拖尾，箭和月焰在入身前就能看出飞来的方向。
+ *  约定：弹体沿速度拉长（头在前、尾收进拖尾，横截面仍细），水平直线（可选微下坠），命中走 onHit 总线。
+ *  身后 3 颗同色余烬沿速度拉成短拖尾，箭和刀在入身前就能看出飞来的方向。
  *  余烬只在池槽位第一次分配时创建，命中 / 到期 / 落地 / 飞出出生点距离都随 kill 摘掉。
- *  速度、伤害、命中半径、寿命、泄漏距离（出生点 90m）不变。
+ *  速度、伤害、命中半径、寿命、泄漏距离（出生点 90m）、颜色、拖尾颗数不变。拉长不参与命中。
  */
 import * as THREE from "three";
 
@@ -21,6 +21,10 @@ const TRAIL_AT = [0.7, 1.45, 2.25];
 const TRAIL_GIRTH = [0.85, 0.58, 0.34]; // × 弹体视觉半径，向后收细
 const TRAIL_OP = [0.72, 0.4, 0.18];
 const TRAIL_HALF = 0.55;
+/** 沿速度的半长（米）。单位球半径 1，scale.y 就是半长。
+ *  第一颗余烬盖住弹心后方 0.15–1.25m；半长 1m 时尾尖埋进那颗余烬，头在弹心前 1m。
+ *  横截面是 scale.x / scale.z（仍为 def.radius * 0.6）。命中用弹心，不看这根长度。 */
+const BODY_HALF = 1;
 const trailGeo = new THREE.SphereGeometry(1, 8, 6);
 const _fwd = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
@@ -70,7 +74,7 @@ export class Projectiles {
     p.def = def;
     p.from.copy(pos);
     const s = def.radius * 0.6;
-    p.mesh.scale.setScalar(s);
+    p.mesh.scale.set(s, BODY_HALF, s);
     p.mesh.position.copy(pos);
     p.mesh.visible = true;
     const color = def.color ?? 0xb8c4e8;
@@ -106,7 +110,7 @@ export class Projectiles {
     }
   }
 
-  /** 沿当前速度把余烬摆到弹后。几何和材质是槽位上的，这里只改变换。 */
+  /** 沿当前速度把头转向前方，余烬摆到弹后。几何和材质是槽位上的，这里只改变换。 */
   private placeTrail(p: Proj): void {
     const sp = Math.hypot(p.vx, p.vy, p.vz);
     if (sp < 1e-4) {
@@ -114,6 +118,7 @@ export class Projectiles {
       return;
     }
     _fwd.set(p.vx / sp, p.vy / sp, p.vz / sp);
+    p.mesh.quaternion.setFromUnitVectors(_up, _fwd);
     const head = p.mesh.position;
     const body = p.mesh.scale.x;
     for (let i = 0; i < p.trail.length; i++) {
