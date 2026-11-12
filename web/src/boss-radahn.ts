@@ -168,6 +168,24 @@ function boxG(w: number, h: number, d: number, x: number, y: number, z: number, 
   return paint(g, color, opt.jitter ?? 0);
 }
 
+/** 弓臂/弓梢/弦的一段：盒高转到两点连线，端头略搭上，弯折处不裂开。 */
+function spanG(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, thick: number, color: number): THREE.BufferGeometry {
+  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+  const len = Math.hypot(dx, dy, dz);
+  const rx = Math.atan2(Math.hypot(dx, dz), dy);
+  const ry = Math.atan2(dx, dz);
+  return boxG(thick, len + Math.min(0.06, thick * 0.85), thick, (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5, color, { rx, ry });
+}
+
+/** 反曲中线。t=0 握把上端，t=1 弓梢。X 外鼓后收回（正面的弧），Y 弓腹在前、梢回到弦侧，Z 朝上。 */
+function bowLimbPoint(t: number, sign: 1 | -1): [number, number, number] {
+  const z = sign * (0.24 + t * 1.46);
+  const bulge = Math.sin(Math.PI * t) * (1 - t * 0.12) ** 1.1;
+  const x = -1.08 * bulge + 0.18 * t * t;
+  const y = -0.30 * bulge + 0.26 * t * t;
+  return [x, y, z];
+}
+
 /** 合批建部件 Mesh：merge 后释放源几何（一件关节 = 1 draw call） */
 function part(geoms: THREE.BufferGeometry[], mat: THREE.Material, shadow = true): THREE.Mesh {
   const merged = mergeGeometries(geoms, false)!;
@@ -283,7 +301,7 @@ export class Radahn extends BossBase {
       emissive: GRAVITY, emissiveIntensity: 0.25,
     });
     this.eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.bowMat = new THREE.MeshBasicMaterial({ color: GRAVITY_GLOW, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.bowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
 
     // 巨躯双腿（髋枢轴 y 1.95，无膝枢轴——整腿随 crouch 前倾；一件腿 = 1 mesh）
     for (const [leg, sx] of [[this.legR, 0.55], [this.legL, -0.55]] as [THREE.Group, number][]) {
@@ -399,14 +417,37 @@ export class Radahn extends BossBase {
     this.armL.add(buildSword(-1));
     this.torso.add(this.armL);
 
-    // 召唤碎星大弓（snipe 显形；加色弓体 + 弦，一件 = 1 mesh，无阴影）
-    this.bow.position.set(0, -1.3, 0.42);
-    this.bow.add(part([
-      boxG(0.07, 0.8, 0.07, 0, 0.75, 0.1, GRAVITY_GLOW, { rz: 0.35 }),                  // 上弓臂
-      boxG(0.07, 0.8, 0.07, 0, -0.75, 0.1, GRAVITY_GLOW, { rz: -0.35 }),                // 下弓臂
-      boxG(0.09, 0.16, 0.09, 0, 0, 0.16, GRAVITY_GLOW),                                 // 握把
-      boxG(0.02, 1.72, 0.02, 0, 0, -0.12, GRAVITY),                                     // 弦
-    ], this.bowMat, false));
+    // 召唤碎星大弓（仍只在射箭时显形；反曲弓臂 + 弓梢 + 满弦，一件顶点色合批，无阴影）
+    // 左臂本地：拉弓时 +Z 朝上、+X 朝身侧、+Y 朝射手。弓臂向 -X 鼓出，弦拉向身侧。
+    this.bow.position.set(-0.18, -1.4, 0.05);
+    const bowN = 10;
+    const bowGeoms: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < bowN - 1; i++) {
+      const t0 = i / (bowN - 1);
+      const t1 = (i + 1) / (bowN - 1);
+      const thick = 0.16 - ((t0 + t1) * 0.5) * 0.08;
+      for (const sign of [1, -1] as const) {
+        const a = bowLimbPoint(t0, sign);
+        const b = bowLimbPoint(t1, sign);
+        bowGeoms.push(spanG(a[0], a[1], a[2], b[0], b[1], b[2], thick, GRAVITY_GLOW));
+      }
+    }
+    const upTip = bowLimbPoint(1, 1);
+    const loTip = bowLimbPoint(1, -1);
+    const upHorn: [number, number, number] = [upTip[0] + 0.12, upTip[1] + 0.22, upTip[2] + 0.16];
+    const loHorn: [number, number, number] = [upHorn[0], upHorn[1], -upHorn[2]];
+    const nock: [number, number, number] = [1.0, 0.55, 0];
+    bowGeoms.push(
+      spanG(upTip[0], upTip[1], upTip[2], upHorn[0], upHorn[1], upHorn[2], 0.05, GRAVITY_GLOW), // 上弓梢，探过弦槽
+      spanG(loTip[0], loTip[1], loTip[2], loHorn[0], loHorn[1], loHorn[2], 0.05, GRAVITY_GLOW),
+      spanG(upTip[0], upTip[1], upTip[2], nock[0], nock[1], nock[2], 0.05, GRAVITY),             // 满弦：两梢拉到身侧一点
+      spanG(nock[0], nock[1], nock[2], loTip[0], loTip[1], loTip[2], 0.05, GRAVITY),
+      boxG(0.08, 0.08, 0.08, nock[0], nock[1], nock[2], GRAVITY),                                 // 拉弦点
+      boxG(0.24, 0.68, 0.18, 0, -0.04, 0, GRAVITY_GLOW, { rx: Math.PI / 2 }),                    // 握把（长轴沿 Z）
+      boxG(0.28, 0.16, 0.2, 0, -0.04, 0, GRAVITY, { rx: Math.PI / 2 }),                          // 缠把
+      boxG(0.26, 0.045, 0.07, 0.2, 0.02, 0.03, GRAVITY_GLOW),                                    // 箭台，朝弦
+    );
+    this.bow.add(part(bowGeoms, this.bowMat, false));
     this.bow.visible = false;
     this.armL.add(this.bow);
 
