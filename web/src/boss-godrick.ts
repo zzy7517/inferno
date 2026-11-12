@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg, angleWithin } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg } from "./boss-base";
 import type { BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -38,18 +38,18 @@ export const MOVES_GODRICK: Record<string, MoveDef> = {
   // 斧两连+臂抓三段（Axe Swing + Arm Swing）：第 k 段在 min(active*0.4+k*0.40, active)；
   // active 1.4 ⇒ 0.56/0.96/1.36（末段余量 0.04，三段全触发）
   godrickAxeCombo: {
-    name: "godrickAxeCombo", label: "斧臂三连", startup: 0.42, active: 1.4, recovery: 0.90,
+    name: "godrickAxeCombo", label: "斧臂三连", startup: 0.42, active: 1.4, recovery: 1.10,
     dmg: 11, range: 3.6, arc: 1.8, hits: 3, hitInterval: 0.40,
     parryable: false, cd: 4.5, feel: "gCombo",
   },
-  // 接肢臂抓取（P1 Grab）：近身不可格挡；主体单段（0.24s 命中，knockUp 5 抛起——多段会重复 knockUp 二次上抛），
-  // 追加摔伤 0.46s 由 movePose act 段补发 host.onBossHit（下方 godrickGrabSlam 承载，走同一手感总线）
+  // 接肢臂抓取（P1 Grab）：近身不可格挡。前摇先把爪扬起，命中落在爪伸直的那一帧（active*0.4，knockUp 5）。
+  // 按地只做收招表演，不再补第二段伤害——抓中之后是后摇惩罚窗，而不是抓+摔无缝真连。
   godrickGrab: {
-    name: "godrickGrab", label: "接肢臂抓取", startup: 0.60, active: 0.55, recovery: 1.20,
+    name: "godrickGrab", label: "接肢臂抓取", startup: 0.85, active: 0.55, recovery: 1.40,
     dmg: 16, range: 2.6, arc: 0.9, knockUp: 5, grab: true,
     parryable: false, cd: 8.5, feel: "gGrab",
   },
-  // 抓取的追加摔伤（不进 pickMove 池）：movePose 手动发射，仅 dmg/feel/arc 参与结算
+  // 旧「接肢摔」帧数据留在表里（调校台可见），结算已并回抓取本体，避免二次上抛/真连
   godrickGrabSlam: {
     name: "godrickGrabSlam", label: "接肢摔", startup: 0.05, active: 0.10, recovery: 0.20,
     dmg: 14, range: 2.6, arc: 1.2, grab: true, parryable: false, cd: 1.0, feel: "gGrab",
@@ -80,24 +80,24 @@ export const MOVES_GODRICK: Record<string, MoveDef> = {
   },
   // ---- P2 龙系（phase2Only，不吃 P2 buff） ----
   // 横扫龙焰（Sweeping Flame）：P2 开场固定技（硬性规则——进 P2 第一招必是它）；
-  // 龙首喷长条火焰横扫正面，只有背身和侧翼安全（判定锥 ±0.7rad 之外无伤）。4 段 × 0.30s，
-  // active 1.6 ⇒ 0.64/0.94/1.24/1.54（余量 0.06）；横扫视觉（龙臂自右向左摆 + 火面渐进）在 movePose/updateVisuals
+  // 前摇先扬龙首，吐息才覆盖正面判定锥（±arc/2）。4 段 × 0.30s，
+  // active 1.6 ⇒ 0.64/0.94/1.24/1.54（余量 0.06）；火面铺满整条锥，和命中同一区域
   godrickFlame: {
-    name: "godrickFlame", label: "横扫龙焰", startup: 0.75, active: 1.60, recovery: 1.20,
+    name: "godrickFlame", label: "横扫龙焰", startup: 0.90, active: 1.60, recovery: 1.25,
     dmg: 8, range: 6.5, arc: 1.4, hits: 4, hitInterval: 0.30,
     parryable: false, cd: 6.5, phase2Only: true, feel: "gFlame",
   },
-  // 龙首擒抱（P2 Grab）：龙张嘴+吼声长延迟（前摇 1.0 的 Telegraph）→ 前扑咬（lunge 2.0）
-  // → 命中提起摔地+火息（knockUp 5.5 + 0.48s 摔伤补发，附火焰表现）；向前/侧滚可躲（前摇够长）
+  // 龙首擒抱（P2 Grab）：前摇张嘴扬首，扑击留在前摇后段 → 嘴伸直的那一帧才咬（active*0.4）
+  // 按地是收招，不再补摔伤。knockUp 5.5 落地后仍留得住 ≥0.7s 惩罚窗
   godrickDragonGrab: {
-    name: "godrickDragonGrab", label: "龙首擒抱", startup: 1.00, active: 0.60, recovery: 1.30,
+    name: "godrickDragonGrab", label: "龙首擒抱", startup: 1.05, active: 0.60, recovery: 1.45,
     dmg: 20, range: 3.0, arc: 1.0, knockUp: 5.5, grab: true, lunge: 2.0,
     parryable: false, cd: 10.0, phase2Only: true, feel: "gGrab",
   },
-  // 我命尔跪！（I Command Thee Kneel!）：两连快砸小冲击波（引擎段 0.92/1.27）→ 停顿 ~0.8s
-  // → 第三砸超大冲击波（2.05s 手动补发 + 5.2m 巨环）。周身判定（arc 6.28）
+  // 我命尔跪！（I Command Thee Kneel!）：前摇先把斧扬过顶，再两连快砸（引擎段 0.92/1.27）→ 停顿
+  // → 第三砸（2.05s，环与伤害同为 5.2m）。前两砸的环对齐基类 range+0.45，避免环外吃伤
   godrickKneel: {
-    name: "godrickKneel", label: "我命尔跪！", startup: 0.70, active: 2.30, recovery: 1.10,
+    name: "godrickKneel", label: "我命尔跪！", startup: 0.80, active: 2.30, recovery: 1.20,
     dmg: 16, range: 3.0, arc: 6.28, hits: 2, hitInterval: 0.35,
     parryable: false, cd: 9.0, phase2Only: true, feel: "gHeavy",
   },
@@ -128,7 +128,14 @@ export const GODRICK_STATS: BossStats & { name: string; radius: number } = {
   walkSpeed: 2.4, turnRate: 2.2,      // 臃肿巨躯：缓行、转向钝
 };
 
-/** 二阶段 buff（原有招式 dmg×1.2、前摇×0.92）的一阶段基线——模块级快照，多实例/reset 往返安全（仿 sulyvahn/watchers） */
+/** 二阶段：前摇 ×0.92（削 8%，不得再叠到 ≥10%）、伤害 ×1.2。一律相对这份基线写，禁止从当前值连乘。 */
+const P2_STARTUP_SCALE = 0.92;
+const P2_DMG_SCALE = 1.2;
+/** 斧突刺冲完后斧刃够得到的中心距。更远时基类 range+0.45 会在斧尖之前判中。 */
+const LUNGE_REACH = 3.3;
+/** 龙口扑击后咬得到的中心距（短于 range 3 + 基类 0.45）。 */
+const DRAGON_BITE_REACH = 2.2;
+/** 一阶段基线。buff 写在共享表上，旗标在实例上——实例丢了表还在，所以还原看表本身而不只看旗标。 */
 const P1_BASE: Record<string, { startup: number; dmg: number }> = {};
 for (const m of Object.values(MOVES_GODRICK)) if (!m.phase2Only) P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg };
 
@@ -167,7 +174,7 @@ const F5K: GPose = { ...STANCE, rLift: 0.9, rSwing: 0.25, lean: 0.55, crouch: 0.
 // 斧突刺：斧收身后长蓄（延迟欺诈）→ 前刺扎地；tel 末段 hop（双脚离地）在 movePose 附加
 const LUW: GPose = { ...STANCE, twist: 0.55, rLift: 0.5, rSwing: -0.6, crouch: 0.2, lean: 0.1, nod: 0.18 };
 const LUK: GPose = { ...STANCE, twist: -0.1, rLift: 1.4, rSwing: 0.05, lean: 0.45, reach: 0.5, crouch: 0.22 };
-// 接肢臂抓取（P1）：探身探爪 → 高举过顶（knockUp 时刻）→ 按地重摔（摔伤补发同帧）
+// 接肢臂抓取（P1）：前摇扬爪 → 伸直（命中与 knockUp 同帧）→ 高举 → 按地（纯演出，不再补伤）
 const GRW: GPose = { ...STANCE, crouch: 0.28, twist: 0.4, lLift: -1.3, lSwing: -0.4, lean: 0.1 };
 const GR1: GPose = { ...STANCE, lLift: 1.2, lSwing: 0.1, lean: 0.4, reach: 0.6, crouch: 0.18, twist: 0.15 };
 const GR2: GPose = { ...STANCE, lLift: -2.3, lSwing: -0.1, lean: -0.18, y: 0.1, nod: -0.15 };
@@ -185,6 +192,7 @@ const GUW: GPose = { ...STANCE, crouch: 0.25, lean: -0.15, nod: 0.2, rLift: -0.9
 const GUK: GPose = { ...STANCE, rLift: 1.3, lLift: 1.3, rSwing: 0.1, lSwing: -0.1, lean: 0.3, reach: 0.5 };
 // 横扫龙焰：龙臂抡到身右蓄焰张嘴 → 自右向左横扫吐息（lSwing 0.9 → -0.9 在 movePose 线性驱动）
 const FLW: GPose = { ...STANCE, lLift: -1.5, lSwing: 0.9, lean: -0.2, nod: -0.12, jaw: 0.7, rLift: 0.5 };
+const FLK: GPose = { ...FLW, lSwing: -0.9, lLift: -1.4, jaw: 0.25, lean: 0.22, nod: 0.05 };
 // 我命尔跪！：斧头朝下高举（斧刃垂地）→ 两连快砸 → 缓缓再举（停顿的恐惧）→ 第三砸（最深一跪）
 const KNW: GPose = { ...STANCE, rLift: -2.3, rSwing: 0.05, lean: -0.18, nod: -0.2, y: 0.1, crouch: 0.1 };
 const KN1: GPose = { ...STANCE, rLift: 0.9, lean: 0.45, crouch: 0.3, nod: 0.3 };
@@ -211,6 +219,7 @@ export class Godrick extends BossBase {
   private jawLower = new THREE.Group();        // 龙下颚（jaw 开合）
   private stump!: THREE.Mesh;                  // 断臂残端（斩臂后显示、接龙后隐藏）
   private graftArms: THREE.Group[] = [];       // 躯干伸出的三条嫁接手臂（updateVisuals 蠕动）
+  private graftBase: { x: number; z: number }[] = [];
   private eyeMat!: THREE.MeshStandardMaterial;
   private flameMat!: THREE.MeshStandardMaterial;   // P2 龙口内焰
   private flameLight!: THREE.PointLight;
@@ -222,11 +231,12 @@ export class Godrick extends BossBase {
   private moveLen = 0;
   private slashFired = 0;                           // 已补画刀光的判定段数（与 hitFired 对齐）
   private flameFired = 0;                           // 已补画火痕的龙焰段数
-  private slamFired = 0;                            // 抓取摔伤是否已补发
+  private slamFired = 0;                            // 按地演出是否已播（不再补伤害）
   private kneelFired = 0;                           // 三连砸的落点表现步进（1/2/3 砸）
   private tfxStep = 0;                              // 斩臂接龙演出步进（1 断臂、2 接龙、3 嘶吼）
   private p2Applied = false;                        // 二阶段数值 buff 是否已写入共享表
   private p2OpenerPending = false;                  // P2 开场固定技：横扫龙焰（wiki 硬性规则）
+  private lastMove = "";                            // 上一招名：同招再选时降权
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost, facing = -Math.PI / 2) {
     super(scene, vfx, pos, host, GODRICK_STATS, facing);
@@ -380,6 +390,7 @@ export class Godrick extends BossBase {
       const g = new THREE.Group();
       g.position.set(gx, gy, gz);
       g.rotation.set(rx, 0, rz);
+      this.graftBase.push({ x: rx, z: rz });
       g.add(box(0.14, 0.34, 0.15, flesh, 0, 0.14, 0));                // 上臂
       g.add(box(0.11, 0.3, 0.12, fleshDark, 0, 0.42, 0.02));          // 前臂
       g.add(box(0.1, 0.1, 0.13, flesh, 0, 0.6, 0.04));                // 小手
@@ -438,34 +449,47 @@ export class Godrick extends BossBase {
         Object.assign(wind, GUW); Object.assign(strike, GUK);
         break;
       case "godrickFlame":
-        Object.assign(wind, FLW);
+        Object.assign(wind, FLW); Object.assign(strike, FLK);
         break;
       case "godrickGrab":
-        Object.assign(wind, GRW);
+        Object.assign(wind, GRW); Object.assign(strike, GR3);
         break;
       case "godrickDragonGrab":
-        Object.assign(wind, DGW);
+        Object.assign(wind, DGW); Object.assign(strike, DG3);
         break;
       case "godrickKneel":
-        Object.assign(wind, KNW);
+        Object.assign(wind, KNW); Object.assign(strike, KN3);
+        break;
+      case "godrickAxeCombo":
+        Object.assign(strike, A3K);
+        break;
+      case "godrickFury":
+        Object.assign(strike, F5K);
         break;
     }
     if (sub === "tel") {
-      this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
+      // 龙焰 / 下砸 / 抓取：整段前摇先扬到顶点并停住，命中留在 act
+      if (m.name === "godrickFlame" || m.name === "godrickKneel" || m.name === "godrickGrab" || m.name === "godrickDragonGrab") {
+        const k = clamp01(t / (m.startup * 0.75));
+        this.lerpPose(STANCE, wind, 1 - (1 - k) * (1 - k));
+      } else {
+        this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
+      }
       // 斧突刺的延迟欺诈：前 85% 死寂蓄势，末 15% 双脚离地小跳（唯一预兆）
       if (m.name === "godrickLunge" && t > m.startup * 0.85) {
         this.pose.y += Math.sin((t - m.startup * 0.85) / (m.startup * 0.15) * Math.PI) * 0.14;
       }
-      // 位移段：旋斧/突刺/龙扑（基准在 onMoveStart 记录，act 起点已在玩家身前，不越过）
+      // 位移段：旋斧/突刺在前摇后 70% 走完；龙扑等龙首扬起之后再扑，避免人还没看见嘴就贴脸
       if (this.moveLen !== 0) {
-        const k = smooth(clamp01((t - m.startup * 0.3) / (m.startup * 0.7)));
+        const start = m.name === "godrickDragonGrab" ? 0.72 : 0.30;
+        const k = smooth(clamp01((t - m.startup * start) / (m.startup * (1 - start))));
         this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
       }
     } else if (sub === "act") {
       if (m.name === "godrickAxeCombo") this.comboPose(t, m);
       else if (m.name === "godrickFury") this.furyPose(t, m);
-      else if (m.name === "godrickGrab") this.grabPose(t, 0.25, 0.46, false);
-      else if (m.name === "godrickDragonGrab") this.grabPose(t, 0.30, 0.48, true);
+      else if (m.name === "godrickGrab") this.grabPose(t, false);
+      else if (m.name === "godrickDragonGrab") this.grabPose(t, true);
       else if (m.name === "godrickKneel") this.kneelPose(t, m);
       else if (m.name === "godrickSpin") {
         const k = smooth(clamp01(t / m.active));
@@ -476,13 +500,15 @@ export class Godrick extends BossBase {
         const w = Math.sin(performance.now() * 0.03) * 0.05;   // 持续风压的震颤
         this.pose.rLift += w; this.pose.lLift += w;
       } else if (m.name === "godrickFlame") {
-        // 横扫龙焰：龙臂自右向左横扫吐息（lSwing 0.9 → -0.9 线性，与火面/余烬的扫掠同源）
+        // 龙臂仍自右向左摆；火从首段判定前才铺满整条锥（和基类的固定弧一致，不把火只画在一侧）
         const k = seg(t, 0, m.active);
         this.lerpPose(wind, { ...FLW, lSwing: 0.9 - 1.8 * k, lLift: -1.6, jaw: 1.0 }, k);
-        if (Math.random() < 0.85) this.flameSpray(1.5 + Math.random() * 4.6, 0.9 - 1.8 * k);
+        if (t >= m.active * 0.35 && Math.random() < 0.85) this.flameSpray(1.5 + Math.random() * 4.6, (Math.random() - 0.5) * m.arc);
       } else this.lerpPose(wind, strike, seg(t, 0, m.active));
     } else {
-      this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+      // 重招先在命中姿态上停约 0.7s，这段才是看得见的惩罚窗
+      const hold = Math.min(0.7, Math.max(0, m.recovery - 0.22));
+      this.lerpPose(strike, STANCE, smooth(seg(t, hold, m.recovery)));
       if (m.name === "godrickSpin") this.pose.spin = 0;        // 2π≡0：收招直接归零，不倒转
     }
     void total;
@@ -510,34 +536,29 @@ export class Godrick extends BossBase {
     this.lerpPose(ws[idx], ks[idx], s);
   }
 
-  /** 抓取三拍（P1 接肢臂 / P2 龙首共用骨架）：探爪（命中 knockUp）→ 举过顶 → 按地重摔（摔伤补发同帧） */
-  private grabPose(t: number, tBite: number, tSlam: number, dragon: boolean): void {
+  /** 抓取三拍：伸直（与基类首段判定 active*0.4 同帧）→ 举过顶 → 按地。按地只剩重量，不再补伤害。 */
+  private grabPose(t: number, dragon: boolean): void {
+    const m = dragon ? MOVES_GODRICK.godrickDragonGrab : MOVES_GODRICK.godrickGrab;
+    const tBite = m.active * 0.4;
+    const tSlam = Math.min(m.active * 0.72, tBite + 0.2);
     const w = dragon ? DGW : GRW;
     const p1 = dragon ? DG1 : GR1;
     const p2 = dragon ? DG2 : GR2;
     const p3 = dragon ? DG3 : GR3;
-    if (t < tBite) this.lerpPose(w, p1, smooth(clamp01(t / tBite)));
+    if (t <= tBite) this.lerpPose(w, p1, smooth(clamp01(t / Math.max(0.05, tBite))));
     else if (t < tSlam) this.lerpPose(p1, p2, smooth((t - tBite) / (tSlam - tBite)));
     else this.lerpPose(p2, p3, smooth(clamp01((t - tSlam) / 0.12)));
     if (t >= tSlam) this.grabSlam(dragon);
   }
 
-  /** 追加摔伤：举起的玩家被按地重摔（走 host.onBossHit 完整手感总线；与命中解耦的落点表现照画；P2 附火息） */
+  /** 按地落点：尘、环、龙息。伤害已在伸直那一帧结算，这里不再打第二下。 */
   private grabSlam(dragon: boolean): void {
     if (this.slamFired !== 0) return;
     this.slamFired = 1;
-    const sm = MOVES_GODRICK.godrickGrabSlam;
-    const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
-    const d = toP.length();
-    const dirYaw = Math.atan2(toP.x, toP.z);
-    if (d <= sm.range + 0.45 && angleWithin(this.yaw, dirYaw, sm.arc / 2)) {
-      const dir = d > 0.001 ? toP.normalize() : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      this.host.onBossHit(sm.dmg, dir, this.chestWorld(), sm);
-    }
     const at = this.root.position.clone().addScaledVector(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), 1.5).setY(0.15);
     this.vfx.dust.burst(at, 8, 2.6, 0.6);
     this.vfx.ring(at, 1.6);
-    if (dragon) {   // 龙首擒抱的火息收尾
+    if (dragon) {
       this.vfx.scorch(at, 1.6, FLAME);
       this.vfx.embers.burst(at.clone().setY(0.5), 8, 2.8, 0.9);
     }
@@ -548,11 +569,11 @@ export class Godrick extends BossBase {
   /** 我命尔跪！：高举蓄势 → 砸1(0.92) → 快砸2(1.27) → 停顿缓举（恐惧窗口）→ 第三砸(2.05 手动判定+巨环)。
    *  落点表现按窗口首帧触发（kneelFx 步进闸），与引擎判定时刻 0.92/1.27 及手动第三砸 2.05 对齐 */
   private kneelPose(t: number, m: MoveDef): void {
+    const near = m.range + 0.45;   // 与基类前两段判定同一半径，环外不再吃伤
     if (t < 0.92) this.lerpPose(KNW, KN1, smooth(seg(t, 0.7, 0.92)));
-    else if (t < 1.27) { this.kneelFx(0, 2.6); this.lerpPose(KN1, KN2, smooth(seg(t, 0.92, 1.02))); }
-    else if (t < 2.05) { this.kneelFx(1, 2.6); this.lerpPose(KN2, KNW, smooth(seg(t, 1.45, 2.05))); }
+    else if (t < 1.27) { this.kneelFx(0, near); this.lerpPose(KN1, KN2, smooth(seg(t, 0.92, 1.02))); }
+    else if (t < 2.05) { this.kneelFx(1, near); this.lerpPose(KN2, KNW, smooth(seg(t, 1.45, 2.05))); }
     else { this.kneelFx(2, 5.2); this.lerpPose(KNW, KN3, smooth(seg(t, 2.05, 2.25))); }
-    void m;
   }
 
   /** 三连砸的落点表现 + 第三砸手动判定（引擎只发前两段 dmg；第三段走 host 总线，同 feel） */
@@ -568,7 +589,7 @@ export class Godrick extends BossBase {
       const m = MOVES_GODRICK.godrickKneel;
       const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
       const d = toP.length();
-      if (d <= m.range + 0.45) {   // arc 6.28 周身判定，无需夹角
+      if (d <= radius) {   // 与这一砸的环同一半径（第三砸 5.2；前两砸不走这里）
         const dir = d > 0.001 ? toP.normalize() : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
         this.host.onBossHit(m.dmg, dir, this.chestWorld(), m);
       }
@@ -590,6 +611,24 @@ export class Godrick extends BossBase {
   override update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
     this.playerPos.copy(playerPos);
     super.update(dt, playerPos, playerIframed);
+    // 破绽/抓取收招之后若没人把姿态拉回站立，会一直保持垮跪或转体
+    if (this.state === "combat" && this.sub === "idle") {
+      this.settleIdlePose(1 - Math.exp(-12 * dt));
+      this.applyPose();
+    }
+  }
+
+  /** 站立：各通道回到 STANCE。走近时再叠沉重步态；二阶段嘴保持微张呼吸。 */
+  private settleIdlePose(k: number): void {
+    this.lerpPose(this.pose, STANCE, k);
+    this.pose.spin = 0;
+    const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
+    if (toP.length() > 3) {
+      const w = performance.now() * 0.007;
+      this.pose.y = Math.abs(Math.sin(w)) * 0.06 - 0.02;
+      this.pose.lean = 0.14 + Math.sin(w * 2) * 0.02;
+    }
+    if (this.phase === 2) this.pose.jaw = 0.12 + Math.sin(performance.now() * 0.005) * 0.06;
   }
 
   /** 断臂演出期间减伤（wiki：severing 期间获得减伤加成）——削韧照常（换阶段不清空 Stance 积累） */
@@ -624,8 +663,10 @@ export class Godrick extends BossBase {
     // 嫁接手臂蠕动：各臂异相位小幅抽搐（接肢的"活物感"）
     for (let i = 0; i < this.graftArms.length; i++) {
       const g = this.graftArms[i];
-      g.rotation.x += Math.sin(now * 0.003 + i * 2.1) * 0.0006;
-      g.rotation.z += Math.cos(now * 0.0024 + i * 1.7) * 0.0005;
+      const base = this.graftBase[i];
+      if (!base) continue;
+      g.rotation.x = base.x + Math.sin(now * 0.003 + i * 2.1) * 0.08;
+      g.rotation.z = base.z + Math.cos(now * 0.0024 + i * 1.7) * 0.06;
     }
     // P2 龙焰：口内焰闪烁 + 点灯 + 待机微张嘴呼吸
     const flick = 1 + Math.sin(now * 0.02) * 0.15;
@@ -641,15 +682,17 @@ export class Godrick extends BossBase {
           this.move.arc > 2 || this.move.name === "godrickFury", p2 ? FLAME : AXE_SLASH);
       }
     }
-    // 龙焰火痕：每判定段一片扇形火面，自右向左随扫掠推进（与命中解耦）
+    // 龙焰火痕：每判定段铺满正面锥（命中也是这整条锥，不是摆臂的单侧）
     if (this.state === "combat" && this.sub === "act" && this.move?.name === "godrickFlame") {
       while (this.flameFired < this.hitFired) {
         this.flameFired++;
-        const k = (this.flameFired - 1) / 3;
-        const off = 0.7 - k * 1.4;    // +0.7 → -0.7（自右向左）
-        const fwd = new THREE.Vector3(Math.sin(this.yaw + off), 0, Math.cos(this.yaw + off));
-        this.vfx.scorch(this.root.position.clone().addScaledVector(fwd, 4.0).setY(0.05), 1.5 + k * 0.8, FLAME);
-        this.vfx.embers.burst(this.chestWorld().addScaledVector(fwd, 2.2), 6, 3, 0.9);
+        // 判定是固定正面锥，火痕铺满锥而不是只烧当前摆臂的那一侧
+        for (const off of [-0.45, 0, 0.45]) {
+          const fwd = new THREE.Vector3(Math.sin(this.yaw + off), 0, Math.cos(this.yaw + off));
+          this.vfx.scorch(this.root.position.clone().addScaledVector(fwd, 4.0).setY(0.05), 1.35, FLAME);
+        }
+        const mid = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+        this.vfx.embers.burst(this.chestWorld().addScaledVector(mid, 2.2), 6, 3, 0.9);
       }
     }
     // 风暴呼啸：持续风流尘（自中心向前吹）
@@ -657,34 +700,58 @@ export class Godrick extends BossBase {
       const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.vfx.dust.burst(this.root.position.clone().addScaledVector(fwd, 1.8 + Math.random() * 3.5).setY(0.3 + Math.random() * 0.9), 2, 1.6, 0.6);
     }
-    // 二阶段数值 buff：一次性改写共享帧数据表（reset 还原）
-    if (p2 && !this.p2Applied) this.applyPhase2Moves();
+    // 二阶段数值：phase===2 才写入；离开二阶段或共享表残留 buff 时还原到 P1_BASE
+    this.syncPhaseMoves();
   }
 
-  /** 二阶段：原有招式 dmg×1.2、前摇×0.92（P2 龙系三招为新招不吃 buff） */
+  /** 共享表是否整表处于二阶段公式（实例旗标丢了也能认出来） */
+  private phaseTableIsBuffed(): boolean {
+    let seen = 0;
+    let buffed = 0;
+    for (const m of Object.values(MOVES_GODRICK)) {
+      if (m.phase2Only) continue;
+      const b = P1_BASE[m.name];
+      if (!b) continue;
+      seen++;
+      const startupBuff = Math.abs(m.startup - b.startup * P2_STARTUP_SCALE) < 1e-4;
+      const dmgBuff = m.dmg === Math.round(b.dmg * P2_DMG_SCALE);
+      if (startupBuff && dmgBuff) buffed++;
+    }
+    return seen > 0 && buffed === seen;
+  }
+
+  private syncPhaseMoves(): void {
+    if (this.phase === 2) {
+      if (!this.p2Applied) this.applyPhase2Moves();
+      return;
+    }
+    if (this.p2Applied || this.phaseTableIsBuffed()) this.restorePhase1Moves();
+  }
+
+  /** 二阶段：原有招式 dmg×1.2、前摇×0.92（相对基线，不连乘；P2 龙系三招不吃 buff） */
   private applyPhase2Moves(): void {
     this.p2Applied = true;
     for (const m of Object.values(MOVES_GODRICK)) {
       if (m.phase2Only) continue;
-      m.startup = P1_BASE[m.name].startup * 0.92;
-      m.dmg = Math.round(P1_BASE[m.name].dmg * 1.2);
+      const b = P1_BASE[m.name];
+      if (!b) continue;
+      m.startup = b.startup * P2_STARTUP_SCALE;
+      m.dmg = Math.round(b.dmg * P2_DMG_SCALE);
     }
   }
   private restorePhase1Moves(): void {
     this.p2Applied = false;
     for (const m of Object.values(MOVES_GODRICK)) {
       if (m.phase2Only) continue;
-      m.startup = P1_BASE[m.name].startup;
-      m.dmg = P1_BASE[m.name].dmg;
+      const b = P1_BASE[m.name];
+      if (!b) continue;
+      m.startup = b.startup;
+      m.dmg = b.dmg;
     }
   }
 
-  /** 巨躯缓行步态（低频大幅——臃肿沉重感） */
-  protected override onIdleWalk(): void {
-    const w = performance.now() * 0.007;
-    this.pose.y = Math.abs(Math.sin(w)) * 0.06 - 0.02;
-    this.pose.lean = 0.14 + Math.sin(w * 2) * 0.02;
-  }
+  /** 步态由 update 末尾的 settleIdlePose 统一写，避免这里只改 y/lean 把垮跪姿态留住 */
+  protected override onIdleWalk(): void { }
 
   /** 位移基准与段计数复位：旋斧 2m / 斧突刺 3.5m / 龙扑 2m（均不越过玩家）；P2 开场固定技标记清算 */
   protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
@@ -694,11 +761,18 @@ export class Godrick extends BossBase {
     this.slamFired = 0;
     this.kneelFired = 0;
     this.moveLen = 0;
+    this.lastMove = m.name;
     if (m.name === "godrickFlame") this.p2OpenerPending = false;   // 开场固定技已出
     if (m.name === "godrickSpin" || m.name === "godrickLunge" || m.name === "godrickDragonGrab") {
       const keep = m.name === "godrickDragonGrab" ? 1.0 : 1.2;
-      this.moveDir.copy(toPlayer).setY(0).normalize();
-      this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - keep));
+      const reach = m.name === "godrickLunge" ? LUNGE_REACH : m.name === "godrickDragonGrab" ? DRAGON_BITE_REACH : m.range;
+      this.moveDir.copy(toPlayer).setY(0);
+      if (this.moveDir.lengthSq() > 1e-6) this.moveDir.normalize();
+      else this.moveDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      this.yaw = Math.atan2(this.moveDir.x, this.moveDir.z);   // 斧口/龙口与冲刺同一方向
+      const travel = Math.min(m.lunge ?? 0, Math.max(0, dist - keep));
+      // 冲完仍超出武器能碰到的距离就原地不出位移：否则 range+0.45 会在空挥上造成伤害
+      this.moveLen = dist - travel <= reach ? travel : 0;
     }
   }
 
@@ -799,7 +873,7 @@ export class Godrick extends BossBase {
   }
 
   protected override releaseSharedState(): void {
-    if (this.p2Applied) this.restorePhase1Moves();
+    this.restorePhase1Moves();
   }
 
   protected override resetVisuals(): void {
@@ -816,29 +890,50 @@ export class Godrick extends BossBase {
     this.flameFired = 0;
     this.slamFired = 0;
     this.kneelFired = 0;
+    this.lastMove = "";
+    this.pose.spin = 0;
     this.lerpPose(STANCE, STATUE, 1);
+  }
+
+  /** 冲刺结束后的间距。keep：停在身前，避免穿进玩家。 */
+  private gapAfterDash(dist: number, lunge: number, keep: number): number {
+    const travel = Math.min(lunge, Math.max(0, dist - keep));
+    return dist - travel;
+  }
+
+  /** 同招连续第二次权重降到 0.3；池里只剩它时仍会出。 */
+  private pickWeighted(pool: [MoveDef, number][], dist: number, useRange: boolean): MoveDef | null {
+    const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
+    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (!useRange || dist < m.range * 0.95));
+    if (!cands.length) return null;
+    const wgt = (m: MoveDef, w: number) => m.name === this.lastMove ? w * 0.3 : w;
+    const sum = cands.reduce((s, [m, w]) => s + wgt(m, w), 0);
+    let r = Math.random() * sum;
+    for (const [m, w] of cands) { r -= wgt(m, w); if (r <= 0) return m; }
+    return cands[cands.length - 1][0];
   }
 
   // ---------------- 选招（葛瑞克权重：距离分档——远/中/贴身三带 + P2 开场固定技） ----------------
   protected override pickMove(dist: number): MoveDef | null {
     const M = MOVES_GODRICK;
-    const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
     // P2 开场固定技：横扫龙焰（wiki 硬性规则——进 P2 第一招必是它，无视距离分档）
     if (this.p2OpenerPending) {
       this.cds[M.godrickFlame.name] = 0;
       return M.godrickFlame;
     }
-    // 远档（>5.5m）：风暴呼啸压制中远吊球位 / 斧突刺长途扑杀（自带 3.5m 冲程——act 从前冲后位置判定，
-    // 有效威胁 ≈ lunge+range，上限 8m 对标玻尔多冲刺的 9.8=7+余量）；都未好则缓步逼近（臃肿巨躯的压迫走）
+    // 远档（>5.5m）：风压或斧突刺。突刺只在冲完后斧刃够得到时出；否则走近，不空挥。
     if (dist > 5.5) {
-      if (ready(M.godrickWindGust) && dist < M.godrickWindGust.range * 0.95) return M.godrickWindGust;
-      if (ready(M.godrickLunge) && dist <= 8.0) return M.godrickLunge;
-      return null;
+      const lungeOk = this.gapAfterDash(dist, M.godrickLunge.lunge ?? 0, 1.2) <= LUNGE_REACH;
+      return this.pickWeighted([
+        [M.godrickWindGust, dist < M.godrickWindGust.range * 0.95 ? 3 : 0],
+        [M.godrickLunge, lungeOk ? 3 : 0],
+      ], dist, false);
     }
-    // 贴身（≤2.2m）：抓取解围权重最高（接肢贵族不容亵渎）/ 龙首擒抱（P2）/ 旋斧双保险
+    const dragonOk = this.phase === 2 && this.gapAfterDash(dist, M.godrickDragonGrab.lunge ?? 0, 1.0) <= DRAGON_BITE_REACH;
+    // 贴身（≤2.2m）：抓取解围权重最高 / 龙首擒抱（够得到才进池）/ 旋斧
     const pool: [MoveDef, number][] = dist <= 2.2 ? [
       [M.godrickGrab, 4],
-      [M.godrickDragonGrab, this.phase === 2 ? 3.5 : 0],
+      [M.godrickDragonGrab, dragonOk ? 3.5 : 0],
       [M.godrickSpin, 3],
       [M.godrickAxeCombo, 2],
       [M.godrickKneel, this.phase === 2 ? 1.5 : 0],
@@ -847,14 +942,9 @@ export class Godrick extends BossBase {
       [M.godrickAxeCombo, 2.5],
       [M.godrickFury, 2.5],
       [M.godrickSpin, dist >= 2.6 ? 1.5 : 0],
-      [M.godrickKneel, this.phase === 2 && dist >= 1.6 && dist <= 2.85 ? 2.5 : 0],   // P2 跪地三连砸
-      [M.godrickFlame, this.phase === 2 && dist >= 2.6 && dist <= 5.5 ? 2.5 : 0],    // P2 龙焰走廊
+      [M.godrickKneel, this.phase === 2 && dist >= 1.6 && dist <= 2.85 ? 2.5 : 0],
+      [M.godrickFlame, this.phase === 2 && dist >= 2.6 && dist <= 5.5 ? 2.5 : 0],
     ];
-    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && dist < m.range * 0.95);
-    if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    return this.pickWeighted(pool, dist, true);
   }
 }
