@@ -90,6 +90,7 @@ export class Game {
   private camPrevPos = new THREE.Vector3(-12.2, 0, 1.4);   // 上一帧玩家位置（判断是否移动，供跟背）
   private camDist = 5.6;
   private shakeAmp = 0;
+  private shakeT = 0;                     // 震屏相位（正弦叠加，避免逐帧随机噪声）
   private hitstop = 0;
   private slowT = 0; private slowScale = 1;
   private elapsed = 0;
@@ -755,8 +756,15 @@ export class Game {
       lookAt.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist,
     );
     if (this.shakeAmp > 0.001) {
-      this.camera.position.add(new THREE.Vector3((Math.random() - 0.5) * this.shakeAmp * 0.3, (Math.random() - 0.5) * this.shakeAmp * 0.22, (Math.random() - 0.5) * this.shakeAmp * 0.3));
-      this.shakeAmp *= Math.exp(-7 * rdt);
+      // 手感档案的振幅直接驱动互质正弦；顿帧期间仍走真实时间，衰减完回到原位
+      this.shakeT += rdt * 28;
+      const s = this.shakeAmp;
+      this.camera.position.x += Math.sin(this.shakeT * 1.7) * s * 0.18;
+      this.camera.position.y += Math.sin(this.shakeT * 2.3) * s * 0.12;
+      this.camera.position.z += Math.sin(this.shakeT * 1.1) * s * 0.18;
+      this.shakeAmp *= Math.exp(-8 * rdt);
+    } else {
+      this.shakeT = 0;
     }
     this.camera.lookAt(lookAt);
   }
