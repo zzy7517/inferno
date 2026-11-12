@@ -1,0 +1,19 @@
+web/src/projectile.ts
+  s_42a7d3a8e9226e::t_fb3ca40ae8e71a 2-5,19-27,30,54-65,76-78,81,103-104,109-129,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9ed7c67b4ca4cb0dbdb3653c768df0ef56d67054",
+  "prompts": {},
+  "sessions": {
+    "s_42a7d3a8e9226e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2bd5d7fa-2676-41fa-ba74-e70e2fb1c6eb",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
