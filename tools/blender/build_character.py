@@ -85,17 +85,25 @@ def clear_scene():
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
 
-def make_mat(name, color, rough=0.85, metal=0.0):
+def make_mat(name, color, rough=0.85, metal=0.0, emission=None, emission_strength=0.0):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    color_in = next(i for i in bsdf.inputs if i.name in ("Base Color", "Base Colour"))
-    color_in.default_value = (*color, 1.0)
-    rough_in = next(i for i in bsdf.inputs if "Roughness" in i.name)
-    rough_in.default_value = rough
-    metal_in = next((i for i in bsdf.inputs if i.name.startswith("Metallic")), None)
-    if metal_in is not None:
-        metal_in.default_value = metal
+
+    def put(pred, value):
+        sock = next((i for i in bsdf.inputs if pred(i)), None)
+        if sock is not None:
+            sock.default_value = value
+            return True
+        return False
+
+    put(lambda i: i.name in ("Base Color", "Base Colour"), (*color, 1.0))
+    put(lambda i: "Roughness" in i.name, rough)
+    put(lambda i: i.name.startswith("Metallic"), metal)
+    if emission is not None and emission_strength > 0:
+        # 自发光走 Principled 的 Emission，glTF 才会写成 emissive，雾夜里才读得到
+        put(lambda i: i.name in ("Emission Color", "Emission Colour", "Emission"), (*emission, 1.0))
+        put(lambda i: "Strength" in i.name and "Emission" in i.name, emission_strength)
     return mat
 
 def _shade(obj):
@@ -245,6 +253,11 @@ M_METAL = make_mat("metal", (0.34, 0.33, 0.30), 0.48, metal=0.62)
 M_STEEL = make_mat("steel", (0.70, 0.72, 0.74), 0.28, metal=0.85)
 M_RUST  = make_mat("rust",  (0.36, 0.16, 0.11), 0.62, metal=0.28)
 M_DARK  = make_mat("dark",  (0.05, 0.05, 0.055), 0.7)
+# 火是唯一强调色（ADR-0006）：刃口亮、眼缝只留一点余烬，盔甲本身仍是冷灰
+M_EMBER = make_mat("ember", (0.45, 0.12, 0.04), 0.4, metal=0.2,
+                   emission=(1.0, 0.38, 0.08), emission_strength=2.4)
+M_COAL  = make_mat("coal",  (0.06, 0.02, 0.015), 0.55,
+                   emission=(1.0, 0.28, 0.06), emission_strength=0.7)
 M_CLOTH.use_backface_culling = False
 
 RY90 = (0, math.radians(90), 0)
@@ -294,7 +307,7 @@ def build_parts(arm_obj):
     make_sphere("Head", (0, 0.02, 1.66), M_DARK, 0.09, seg=8, ring=6)
     make_sphere("Helm", (0, 0.02, 1.67), M_METAL, 0.125, seg=10, ring=8, scale=(1.04, 0.92, 1.02))
     make_box("Brow", (0.16, 0.03, 0.022), (0, 0.10, 1.72), M_METAL)
-    make_box("EyeSlit", (0.13, 0.02, 0.028), (0, 0.112, 1.685), M_DARK)
+    make_box("EyeSlit", (0.13, 0.02, 0.028), (0, 0.112, 1.685), M_COAL)
 
     # —— 肩甲扣在胸上，上沿抵住盔沿 ——
     make_sphere("PauldronL", (0.24, 0.015, 1.52), M_METAL, 0.11, seg=8, ring=6, scale=(1.15, 1.05, 0.58))
@@ -325,6 +338,8 @@ def build_parts(arm_obj):
     make_box("Guard", (0.22, 0.028, 0.038), (0.645, 0, 1.535), M_METAL)
     make_sphere("Pommel", (0.645, 0, 1.705), M_METAL, 0.028, seg=8, ring=6)
     make_cone("Blade", (0.645, 0, 1.10), M_STEEL, 0.003, 0.036, 0.88, seg=6, scale=(1.0, 0.20, 1.0))
+    # 刃口一条窄余烬，贴在钢刃朝前的一侧，远看能把剑从披风里认出来
+    make_cone("BladeEdge", (0.645, 0.02, 1.12), M_EMBER, 0.001, 0.012, 0.78, seg=4, scale=(1.0, 0.18, 1.0))
 
     # —— 圆盾在左手 ——
     shield_rot = (math.radians(72), 0, 0)
@@ -346,7 +361,7 @@ def build_parts(arm_obj):
         "KneeL": "LowerLeg.L", "KneeR": "LowerLeg.R",
         "FootL": "Foot.L", "FootR": "Foot.R",
         "Cape": "Chest",
-        "Grip": "Hand.L", "Guard": "Hand.L", "Pommel": "Hand.L", "Blade": "Hand.L",
+        "Grip": "Hand.L", "Guard": "Hand.L", "Pommel": "Hand.L", "Blade": "Hand.L", "BladeEdge": "Hand.L",
         "Shield": "LowerArm.R", "ShieldRim": "LowerArm.R", "ShieldBoss": "LowerArm.R",
     }
     for name, bone in BONE_OF.items():
