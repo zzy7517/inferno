@@ -1,0 +1,43 @@
+web/src/boss-vordt.ts
+  s_cfca6cc4e7f0e9::t_41aa6845d9dff3 560
+  s_cfca6cc4e7f0e9::t_88757832bcc7b0 11
+web/src/boss-base.ts
+  s_cfca6cc4e7f0e9::t_cca38a83360046 359-368
+web/src/boss-radahn.ts
+  s_cfca6cc4e7f0e9::t_99212aabed6d17 987
+  s_cfca6cc4e7f0e9::t_03827a5dce227e 17
+web/src/boss-morgott.ts
+  s_cfca6cc4e7f0e9::t_46732b9d2c5d9c 22
+  s_cfca6cc4e7f0e9::t_5bf130bdc4b757 1040-1041
+web/src/boss-godrick.ts
+  s_cfca6cc4e7f0e9::t_2cbbdcb53da8d7 14
+  s_cfca6cc4e7f0e9::t_011309db6b94e9 910-911
+web/src/boss-margit.ts
+  s_cfca6cc4e7f0e9::t_af2ad8c201df04 18
+  s_cfca6cc4e7f0e9::t_72be65b8cc918f 945
+web/src/boss-sulyvahn.ts
+  s_cfca6cc4e7f0e9::t_608e7986a4cff2 815
+  s_cfca6cc4e7f0e9::t_3af87be0e53f72 12
+web/src/boss.ts
+  s_cfca6cc4e7f0e9::t_0b838e61dacea3 10
+  s_cfca6cc4e7f0e9::t_c62e7e685422e7 420
+web/src/boss-watchers.ts
+  s_cfca6cc4e7f0e9::t_8abc6bab08ad8f 11
+  s_cfca6cc4e7f0e9::t_0cb1e0655dd1ce 568
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "a65a521da05b4caaf68947ada48f1cc595d29ea9",
+  "prompts": {},
+  "sessions": {
+    "s_cfca6cc4e7f0e9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a75cf56-11bf-40a4-bb96-fe6bd03bb6a8",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
