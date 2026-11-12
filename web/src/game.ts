@@ -110,8 +110,8 @@ export class Game {
   private deathDelay = 0;
   private victoryDelay = 0;
   private prevPx = -12.2;
-  /** 当前 Boss 脚下的 arena 圆（几何半径 r）。第一次判定后锁住，Boss 走位不换房。 */
-  private bossRoom: { x: number; z: number; r: number } | null = null;
+  /** 当前 Boss 脚下的 arena 圆（几何半径 r）及其区段。第一次判定后锁住，Boss 走位不换房。 */
+  private bossRoom: { x: number; z: number; r: number; minX: number; maxX: number } | null = null;
   /** 玩家走进可走圆后封门。击败、回篝火、换场景时清空。 */
   private bossSeal: { x: number; z: number; walk: number } | null = null;
   /** 本场还可以封。解开后关掉，避免人还站在圆里时下一帧又封上；换 Boss 再打开。 */
@@ -311,6 +311,7 @@ export class Game {
 
   /** 篝火旅行（M4 T9 演出：黑场渐隐 0.3s → 换场景 → 渐显 + 区域题字卡；restart 也走此路） */
   private travelTo(target: SceneId): void {
+    this.rememberBonfire(target);
     this.releaseBossSeal();
     this.closeMenu();
     $("fade").classList.add("on");
@@ -319,6 +320,16 @@ export class Game {
       $("fade").classList.remove("on");
       this.showZoneCard(SCENE_NAME[target]);
     }, 340);
+  }
+
+  /** 传到已点燃的篝火就把它记成重生点。城垣解锁后到达即燃。未点燃的（高墙，玻尔多前）不改重生点。 */
+  private rememberBonfire(target: SceneId): void {
+    if (target === "stormveil" && this.progress.unlockedScenes.includes("stormveil")
+      && !this.progress.litBonfires.includes("stormveil")) {
+      this.progress.litBonfires.push("stormveil");
+    }
+    if (this.progress.litBonfires.includes(target)) this.progress.lastBonfire = target;
+    this.saveState();
   }
 
   /** 区域题字卡（DS3 风格：大字距 + 缓入缓出） */
@@ -516,6 +527,7 @@ export class Game {
 
   private onBossDeath(): void {
     this.releaseBossSeal();
+    this.fog.open();                                             // 雾门让开，才能走回篝火
     this.flow = "victory";
     this.victoryDelay = 2.2;
     const award = this.bossEntry.souls;
@@ -585,8 +597,7 @@ export class Game {
     }
     // T6 捷径：近旁 E 搭乘（locked 也命中——提示与乘坐判定居 onShortcutRide）
     for (const sc of this.shortcuts) if (sc.interact(this.player.pos)) return;
-    if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) {
-      if (!this.progress.litBonfires.includes(this.sceneId)) { this.showMsg("篝火尚未点燃", 1.4); return; }
+    if ((this.flow === "intro" || this.flow === "victory") && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) {
       this.openBonfireMenu();
       return;
     }
@@ -612,7 +623,7 @@ export class Game {
   private onShortcutRide(def: ShortcutDef): void {
     const sc = this.shortcuts.find(s => s.def.id === def.id);
     if (!sc?.isOpen) { this.showMsg("捷径尚未开启", 1.4); return; }
-    if (this.flow !== "intro" && this.flow !== "statue") return;   // 战斗/结算中不乘梯（防 Boss 追出房区）
+    if (this.flow !== "intro" && this.flow !== "statue" && this.flow !== "victory") return;   // 战斗中不乘梯；Boss 倒下后可以坐回篝火
     if (this.bossSeal) return;                                     // 封门后捷径落点在圆外，骑乘会被钳回来
     AU.fogGate();
     $("fade").classList.add("on");
@@ -627,7 +638,11 @@ export class Game {
   // ---------------- 篝火菜单（M2：休息/传送/再战） ----------------
   private openBonfireMenu(): void {
     const items: { label: string; off?: boolean; act: () => void }[] = [];
-    items.push({ label: "休息", act: () => { this.closeMenu(); this.restAtBonfire(); } });
+    const hereLit = this.progress.litBonfires.includes(this.sceneId);
+    items.push({
+      label: "休息", off: !hereLit,
+      act: () => { if (!hereLit) return; this.closeMenu(); this.restAtBonfire(); },
+    });
     for (const sc of ["cemetery", "highwall", "stormveil"] as SceneId[]) {
       const unlocked = this.progress.unlockedScenes.includes(sc);
       items.push({
@@ -644,7 +659,7 @@ export class Game {
     }
     items.push({ label: "离开", act: () => this.closeMenu() });
     this.menuItems = items;
-    this.menuIdx = 0;
+    this.menuIdx = Math.max(0, items.findIndex(it => !it.off));
     this.menuOpen = true;
     this.renderMenu();
     $("bonfireMenu").classList.add("show");
@@ -688,9 +703,16 @@ export class Game {
     this.player.hp = P.hp;
     this.player.estus = P.estusMax;
     this.progress.lastBonfire = this.sceneId;           // 重生点设为此篝火
-    this.boss.reset();                                   // 敌人重置
+    this.boss.reset();                                   // 敌人重置（含刚倒下的 Boss）
+    this.bossSeal = null;
+    this.bossSealArmed = true;
     this.spawnEnemies();                                 // 小怪重刷（DS3 篝火规则）
     this.projectiles.clear();
+    this.flow = "intro";
+    this.victoryDelay = 999;
+    this.fog.close();
+    $("bossbar").classList.remove("on");
+    $("overlayWin").classList.remove("show");
     AU.bonfireRest();
     this.showMsg("在篝火旁稍作休息", 1.6);
     this.vfx.embers.burst(this.bonfire.pos.clone().setY(0.8), 24, 2, 1.6);
@@ -742,34 +764,49 @@ export class Game {
     this.prevPx = p.x;
   }
 
-  /** boss.root 落在哪个 arena 圆内（距 center < r），那就是 Boss 房。没有 zones 时用 legacy 圆。 */
+  /** boss.root 落在哪个 arena 圆内（距 center < r），那就是 Boss 房。没有 zones 时用 legacy 圆。
+   *  minX/maxX 是这间房的区段：加大后的圆会伸进前一条走廊，走廊上的人（和教堂电梯）不算进房。 */
   private syncBossRoom(): void {
     if (this.bossRoom || !this.boss?.root || !this.anchors) return;
     const pos = this.boss.root.position;
     const zones = this.anchors.zones;
     if (zones?.length) {
-      let best: { x: number; z: number; r: number; d2: number } | null = null;
+      let best: { x: number; z: number; r: number; minX: number; maxX: number; d2: number } | null = null;
       for (const z of zones) {
         if (z.kind !== "arena" || !z.center || z.r == null) continue;
         const dx = pos.x - z.center.x, dz = pos.z - z.center.z;
         const d2 = dx * dx + dz * dz;
-        if (d2 < z.r * z.r && (!best || d2 < best.d2)) best = { x: z.center.x, z: z.center.z, r: z.r, d2 };
+        if (d2 < z.r * z.r && (!best || d2 < best.d2)) {
+          best = { x: z.center.x, z: z.center.z, r: z.r, minX: z.minX, maxX: z.maxX, d2 };
+        }
       }
-      if (best) this.bossRoom = { x: best.x, z: best.z, r: best.r };
+      if (best) this.bossRoom = { x: best.x, z: best.z, r: best.r, minX: best.minX, maxX: best.maxX };
       return;
     }
     const dx = pos.x - this.anchors.bossArena.x, dz = pos.z - this.anchors.bossArena.z;
     const r = this.anchors.arenaRadius;
-    if (dx * dx + dz * dz < r * r) this.bossRoom = { x: this.anchors.bossArena.x, z: this.anchors.bossArena.z, r };
+    if (dx * dx + dz * dz < r * r) {
+      this.bossRoom = { x: this.anchors.bossArena.x, z: this.anchors.bossArena.z, r, minX: this.anchors.bossArena.x - r, maxX: this.anchors.bossArena.x + r };
+    }
   }
 
-  /** 身体进入可走圆（距圆心 ≤ r-0.9）才封。没进圆之前不封。 */
+  /** 人在这间房的区段里，并且身体进入可走圆。圆伸进走廊的那一截不算。 */
+  private inBossRoom(x: number, z: number): boolean {
+    const room = this.bossRoom;
+    if (!room) return false;
+    if (x < room.minX || x > room.maxX) return false;
+    const walk = room.r - 0.9;
+    if (walk <= 0) return false;
+    const dx = x - room.x, dz = z - room.z;
+    return dx * dx + dz * dz <= walk * walk;
+  }
+
+  /** 身体进入可走圆（距圆心 ≤ r-0.9，且落在这间房的 x 区段内）才封。没进圆之前不封。 */
   private trySealBossRoom(): void {
     if (!this.bossSealArmed || this.bossSeal || !this.bossRoom) return;
+    if (!this.inBossRoom(this.player.pos.x, this.player.pos.z)) return;
     const walk = this.bossRoom.r - 0.9;
-    if (walk <= 0) return;
-    const dx = this.player.pos.x - this.bossRoom.x, dz = this.player.pos.z - this.bossRoom.z;
-    if (dx * dx + dz * dz <= walk * walk) this.bossSeal = { x: this.bossRoom.x, z: this.bossRoom.z, walk };
+    this.bossSeal = { x: this.bossRoom.x, z: this.bossRoom.z, walk };
   }
 
   private releaseBossSeal(): void {
@@ -783,8 +820,7 @@ export class Game {
     if (!room) return null;
     const r = room.r - 0.9;
     if (r <= 0) return null;
-    const dx = this.player.pos.x - room.x, dz = this.player.pos.z - room.z;
-    const inside = dx * dx + dz * dz <= r * r;
+    const inside = this.inBossRoom(this.player.pos.x, this.player.pos.z);
     return { x: room.x, z: room.z, r, playerInside: this.bossSeal !== null || inside };
   }
 
@@ -815,11 +851,13 @@ export class Game {
     if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) return `E 拾回 ${this.progress.bloodstain.souls} 魂`;
     // T6 捷径提示：靠近显示搭乘/未开启（与篝火提示同式）
     const sc = this.shortcuts.find(s => this.player.pos.distanceTo(s.def.pos) < SHORTCUT_RADIUS);
-    if (sc && (this.flow === "intro" || this.flow === "statue")) {
+    if (sc && (this.flow === "intro" || this.flow === "statue" || this.flow === "victory")) {
       if (!sc.isOpen) return "捷径尚未开启";
       if (!this.bossSeal) return "E 搭乘捷径";
     }
-    if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return this.progress.litBonfires.includes(this.sceneId) ? "E 篝火（休息 · 传送）" : "篝火尚未点燃";
+    if ((this.flow === "intro" || this.flow === "victory") && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) {
+      return this.progress.litBonfires.includes(this.sceneId) ? "E 篝火（休息 · 传送）" : "E 篝火（传送）";
+    }
     if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) return "E 拔出螺旋剑";
     return null;

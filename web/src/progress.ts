@@ -93,10 +93,17 @@ function deriveZones(p: Progress): void {
   }
 }
 
-/** 旧档迁移：按 defeated 幂等补齐场景/区域解锁（v1.0 4 Boss 档 → 城垣待探索续玩） */
+/** 击败后点亮的场景篝火。高墙要玻尔多倒下才燃；城垣随这次解锁到达即燃。 */
+function lightBonfires(p: Progress, id: BossId): void {
+  const add = (scene: SceneId) => { if (!p.litBonfires.includes(scene)) p.litBonfires.push(scene); };
+  if (id === "vordt") { add("highwall"); add("stormveil"); }
+}
+
+/** 旧档迁移：按 defeated 幂等补齐场景/区域解锁与篝火（v1.0 4 Boss 档 → 城垣待探索续玩） */
 function migrate(p: Progress): void {
   for (const id of p.defeated) {
     if (id === "vordt" && !p.unlockedScenes.includes("stormveil")) p.unlockedScenes.push("stormveil");
+    lightBonfires(p, id);
   }
   deriveZones(p);
 }
@@ -123,10 +130,9 @@ export function clearProgress(): void {
   try { localStorage.removeItem(KEY); } catch { /* 同上 */ }
 }
 
-/** 击败结算：记 defeated、点亮高墙篝火（玻尔多）、解锁下一位所在场景与深层区域 */
+/** 击败结算：记 defeated、点亮本场篝火、重生点改到本场、解锁下一位所在场景与深层区域 */
 export function onDefeat(p: Progress, id: BossId, arenas: Record<string, SceneId>): void {
   if (!p.defeated.includes(id)) p.defeated.push(id);
-  if (id === "vordt" && !p.litBonfires.includes("highwall")) p.litBonfires.push("highwall");
   migrate(p);
   const idx = BOSS_ORDER.indexOf(id);
   const next = BOSS_ORDER[idx + 1];
@@ -134,6 +140,8 @@ export function onDefeat(p: Progress, id: BossId, arenas: Record<string, SceneId
     const arena = arenas[next];
     if (arena && !p.unlockedScenes.includes(arena)) p.unlockedScenes.push(arena);   // 守卫：注册表未接线的新 Boss 不污染场景表
   }
+  const here = arenas[id];
+  if (here && p.litBonfires.includes(here)) p.lastBonfire = here;   // R 回到刚刷新的这堆火，而不是上一个坐过的
 }
 
 /** 该场景雾门当前的 Boss：
