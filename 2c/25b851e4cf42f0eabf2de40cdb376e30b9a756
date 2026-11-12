@@ -1,0 +1,24 @@
+web/src/scene-stormveil.ts
+  s_0948ea5d29d248::t_5111c19a8f1bc5 1397-1401,1405-1406,1408,1411,1413
+  s_0948ea5d29d248::t_fe01ddf345b430 14-15
+  s_0948ea5d29d248::t_422b6a0dea8bdf 1351,1368,1371-1375
+  s_0948ea5d29d248::t_95db49073bcd81 1345-1350,1352-1367,1369-1370,1376-1396,1402-1404,1407,1409-1410,1412,1414-1431,1433-1441,1444-1473
+  s_0948ea5d29d248::t_3a443b241ca8c5 1432
+  s_0948ea5d29d248::t_e1548a821e8784 1442-1443
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "2c25b851e4cf42f0eabf2de40cdb376e30b9a756",
+  "prompts": {},
+  "sessions": {
+    "s_0948ea5d29d248": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "91caaf68-05f0-4a2d-b235-5b389ea95005",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
