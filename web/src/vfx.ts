@@ -103,7 +103,7 @@ export class Vfx {
     mesh.scale.setScalar(radius);
     mesh.userData.target = radius;
     this.scene.add(mesh);
-    this.arcs.push({ mesh, life: 0.14, tl: 0.14 });
+    this.arcs.push({ mesh, life: 0.25, tl: 0.25 });   // 约 0.25s：前段亮、尾段淡出
   }
 
   /** 冲击环：扩散圆环（下劈震波/变身爆发） */
