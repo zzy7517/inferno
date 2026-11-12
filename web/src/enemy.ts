@@ -29,6 +29,42 @@ export interface EnemyHost {
   shake: (amp: number) => void;
 }
 
+/** 当前 Boss 房的可走圆（r = zone.r - 0.9）。playerInside：玩家在这个圆里（封门本帧暂时跨出也算）。 */
+export interface BossRoomSeal {
+  x: number;
+  z: number;
+  r: number;
+  playerInside: boolean;
+}
+
+/** 推出圆外时沿半径多留的空隙，避免贴着边界一帧跨入、下一帧被弹出。 */
+const BOSS_ROOM_MARGIN = 0.35;
+
+function bossRoomDist(x: number, z: number, room: { x: number; z: number }): number {
+  return Math.hypot(x - room.x, z - room.z);
+}
+
+/** 点已在圆外则原样返回；否则沿半径放到 r 外再加一点余量。落在圆心时用 fallback 方向。 */
+function pushXZOut(x: number, z: number, room: BossRoomSeal, fallbackX = 1, fallbackZ = 0): { x: number; z: number } {
+  let dx = x - room.x;
+  let dz = z - room.z;
+  let dist = Math.hypot(dx, dz);
+  if (dist >= room.r) return { x, z };
+  if (dist < 1e-4) {
+    dx = fallbackX;
+    dz = fallbackZ;
+    dist = Math.hypot(dx, dz);
+    if (dist < 1e-4) { dx = 1; dz = 0; dist = 1; }
+  }
+  const k = (room.r + BOSS_ROOM_MARGIN) / dist;
+  return { x: room.x + dx * k, z: room.z + dz * k };
+}
+
+/** 玩家在封门圆内、这只小怪在圆外：不进仇恨，也不许追进去。 */
+function playerShutOut(room: BossRoomSeal | null, x: number, z: number): boolean {
+  return !!room?.playerInside && bossRoomDist(x, z, room) >= room.r;
+}
+
 // ---------------- 共享几何/材质（模块级缓存：全部敌人实例复用，dispose 只摘树不释放） ----------------
 const GEOS = new Map<string, THREE.BufferGeometry>();
 const MATS = new Map<string, THREE.MeshStandardMaterial>();
@@ -238,15 +274,24 @@ export abstract class EnemyBase {
   }
 
   // ---------------- 主更新 ----------------
-  update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
+  update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean, room: BossRoomSeal | null = null): void {
     for (const k in this.cds) this.cds[k] = Math.max(0, this.cds[k] - dt);
     if (this.hurtT > 0) this.hurtT -= dt;
     this.elapsed += dt;
     this.walking = false;
     this.updateVisuals(dt);
 
+    // 人在封门圆内：房外小怪退出 alert/combat，本帧不再朝玩家迈步进圆
+    if ((this.state === "alert" || this.state === "combat") && playerShutOut(room, this.root.position.x, this.root.position.z)) {
+      this.state = "idle";
+      this.sub = "idle";
+      this.move = null;
+      this.t = 0;
+      this.patrolT = 0;
+    }
+
     switch (this.state) {
-      case "idle": this.updateIdle(dt, playerPos); break;
+      case "idle": this.updateIdle(dt, playerPos, room); break;
       case "alert": {
         this.t += dt;
         const dirYaw = this.dirYawTo(playerPos);
@@ -257,7 +302,15 @@ export abstract class EnemyBase {
       case "combat": this.updateCombat(dt, playerPos, playerIframed); break;
       case "backstab":
         this.t += dt;
-        if (this.t >= 1.2) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
+        if (this.t >= 1.2) {
+          this.sub = "idle";
+          this.t = 0;
+          if (playerShutOut(room, this.root.position.x, this.root.position.z)) {
+            this.state = "idle";
+            this.move = null;
+            this.patrolT = 0;
+          } else this.state = "combat";
+        }
         break;
       case "dead": {
         this.t += dt;
@@ -280,25 +333,29 @@ export abstract class EnemyBase {
   }
 
   /** idle：察觉（视锥）+ 巡逻 */
-  protected updateIdle(dt: number, playerPos: THREE.Vector3): void {
+  protected updateIdle(dt: number, playerPos: THREE.Vector3, room: BossRoomSeal | null = null): void {
     const to = new THREE.Vector3().subVectors(playerPos, this.root.position);
     to.y = 0;
     const dist = to.length();
     const dirYaw = Math.atan2(to.x, to.z);
-    // 玩家入 aggroRange 且在视锥内（贴身 2.2m 全向察觉）→ alert
-    if (dist < this.stats.aggroRange && (angleWithin(this.yaw, dirYaw, this.stats.fov) || dist < 2.2)) {
+    // 玩家入 aggroRange 且在视锥内（贴身 2.2m 全向察觉）→ alert。封门圆内不拉房外仇恨。
+    if (!playerShutOut(room, this.root.position.x, this.root.position.z) && dist < this.stats.aggroRange && (angleWithin(this.yaw, dirYaw, this.stats.fov) || dist < 2.2)) {
       this.state = "alert"; this.t = 0;
       AU.telegraph();
       return;
     }
     if (this.stats.patrol <= 0) return;   // 站桩（守位侍从）
-    // 巡逻：绕出生点闲逛
+    // 巡逻：绕出生点闲逛。目标不许落在 Boss 房圆内。
     this.patrolT -= dt;
     if (this.patrolT <= 0) {
       const a = Math.random() * Math.PI * 2;
       const r = this.stats.patrol * (0.3 + Math.random() * 0.7);
       this.patrolTarget.set(this.spawnPos.x + Math.sin(a) * r, 0, this.spawnPos.z + Math.cos(a) * r);
       this.patrolT = 2.5 + Math.random() * 3;
+    }
+    if (room) {
+      const p = pushXZOut(this.patrolTarget.x, this.patrolTarget.z, room);
+      this.patrolTarget.set(p.x, 0, p.z);
     }
     const toT = new THREE.Vector3().subVectors(this.patrolTarget, this.root.position);
     toT.y = 0;
@@ -791,11 +848,14 @@ export class EnemyManager {
   }
 
   /** 主更新：状态机 + 与玩家推挤（敌人侧让位，minD 同 boss 模式；玩家侧由 game.clampWorld 对称处理）。
-   *  敌人间不做碰撞（省性能）。playerIframed=true 时敌人攻击不结算（翻滚无敌帧）。 */
-  update(dt: number, playerPos: THREE.Vector3, playerIframed = false): void {
+   *  敌人间不做碰撞（省性能）。playerIframed=true 时敌人攻击不结算（翻滚无敌帧）。
+   *  room 为当前 Boss 房可走圆：本帧从圆外走进去的，沿半径推回圆外。 */
+  update(dt: number, playerPos: THREE.Vector3, playerIframed = false, room: BossRoomSeal | null = null): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, playerPos, playerIframed);
+      const x0 = e.root.position.x, z0 = e.root.position.z;
+      const wasOut = !!room && bossRoomDist(x0, z0, room) >= room.r;
+      e.update(dt, playerPos, playerIframed, room);
       if (e.state !== "dead") {
         const dx = playerPos.x - e.root.position.x;
         const dz = playerPos.z - e.root.position.z;
@@ -805,6 +865,11 @@ export class EnemyManager {
           const k = (minD - len) / len;
           e.root.position.x -= dx * k;
           e.root.position.z -= dz * k;
+        }
+        if (wasOut && room && bossRoomDist(e.root.position.x, e.root.position.z, room) < room.r) {
+          const p = pushXZOut(e.root.position.x, e.root.position.z, room, x0 - room.x, z0 - room.z);
+          e.root.position.x = p.x;
+          e.root.position.z = p.z;
         }
       }
       if (e.gone) this.enemies.splice(i, 1);

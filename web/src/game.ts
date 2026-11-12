@@ -18,7 +18,7 @@ import { buildCemetery } from "./scene-cemetery";
 import { buildStormveil } from "./scene-stormveil";
 import { Margit, MARGIT_STATS } from "./boss-margit";
 import { Godrick, GODRICK_STATS } from "./boss-godrick";
-import { EnemyManager, EnemyBase } from "./enemy";
+import { EnemyManager, EnemyBase, type BossRoomSeal } from "./enemy";
 import { ENEMY_PRESETS } from "./enemies-config";
 import { BOSS_ORDER, SCENE_NAME, ZONE_OF, loadProgress, saveProgress, clearProgress, onDefeat, bossForScene, shortcutUnlockedOn } from "./progress";
 import type { SceneId, BossId, Progress } from "./progress";
@@ -102,6 +102,12 @@ export class Game {
   private deathDelay = 0;
   private victoryDelay = 0;
   private prevPx = -12.2;
+  /** 当前 Boss 脚下的 arena 圆（几何半径 r）。第一次判定后锁住，Boss 走位不换房。 */
+  private bossRoom: { x: number; z: number; r: number } | null = null;
+  /** 玩家走进可走圆后封门。击败、回篝火、换场景时清空。 */
+  private bossSeal: { x: number; z: number; walk: number } | null = null;
+  /** 本场还可以封。解开后关掉，避免人还站在圆里时下一帧又封上；换 Boss 再打开。 */
+  private bossSealArmed = true;
   private hintT = 14;
 
   private stats = { hitsTaken: 0, parries: 0, ripostes: 0, deaths: 0 };
@@ -276,6 +282,9 @@ export class Game {
       shake: a => this.shake(a),
       fireProjectile: (pos, yaw, def) => this.projectiles.spawn(pos, yaw, def),
     });
+    this.bossRoom = null;
+    this.bossSealArmed = true;
+    this.syncBossRoom();
   }
 
   /** 通用对象销毁：释放几何/材质并摘树（篝火/雾门等无自管 dispose 的对象） */
@@ -293,6 +302,7 @@ export class Game {
 
   /** 篝火旅行（M4 T9 演出：黑场渐隐 0.3s → 换场景 → 渐显 + 区域题字卡；restart 也走此路） */
   private travelTo(target: SceneId): void {
+    this.releaseBossSeal();
     this.closeMenu();
     $("fade").classList.add("on");
     setTimeout(() => {
@@ -311,6 +321,8 @@ export class Game {
   }
 
   private rebuildScene(target: SceneId): void {
+    this.releaseBossSeal();
+    this.bossRoom = null;
     this.boss.dispose();
     this.disposeObj(this.bonfire.group);
     this.disposeObj(this.fog.group);
@@ -495,6 +507,7 @@ export class Game {
   }
 
   private onBossDeath(): void {
+    this.releaseBossSeal();
     this.flow = "victory";
     this.victoryDelay = 2.2;
     const award = this.bossEntry.souls;
@@ -592,6 +605,7 @@ export class Game {
     const sc = this.shortcuts.find(s => s.def.id === def.id);
     if (!sc?.isOpen) { this.showMsg("捷径尚未开启", 1.4); return; }
     if (this.flow !== "intro" && this.flow !== "statue") return;   // 战斗/结算中不乘梯（防 Boss 追出房区）
+    if (this.bossSeal) return;                                     // 封门后捷径落点在圆外，骑乘会被钳回来
     AU.fogGate();
     $("fade").classList.add("on");
     setTimeout(() => {
@@ -710,11 +724,74 @@ export class Game {
       const r = Math.hypot(cx, cz);
       if (r > maxR) { const k = maxR / r; p.x = this.anchors.bossArena.x + cx * k; p.z = this.anchors.bossArena.z + cz * k; }
     }
+    // 分区钳制可能把人按回走廊；已经进过可走圆的，这里再封一次门
+    this.trySealBossRoom();
     // 玩家与 Boss 推挤
     const d = this.boss.root.position.clone().sub(p); d.y = 0;
     const minD = this.bossEntry.radius + P.playerRadius;
     if (this.boss.awake && d.length() < minD) p.sub(d.normalize().multiplyScalar(minD - d.length()));
+    this.clampInsideBossSeal();
     this.prevPx = p.x;
+  }
+
+  /** boss.root 落在哪个 arena 圆内（距 center < r），那就是 Boss 房。没有 zones 时用 legacy 圆。 */
+  private syncBossRoom(): void {
+    if (this.bossRoom || !this.boss?.root || !this.anchors) return;
+    const pos = this.boss.root.position;
+    const zones = this.anchors.zones;
+    if (zones?.length) {
+      let best: { x: number; z: number; r: number; d2: number } | null = null;
+      for (const z of zones) {
+        if (z.kind !== "arena" || !z.center || z.r == null) continue;
+        const dx = pos.x - z.center.x, dz = pos.z - z.center.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < z.r * z.r && (!best || d2 < best.d2)) best = { x: z.center.x, z: z.center.z, r: z.r, d2 };
+      }
+      if (best) this.bossRoom = { x: best.x, z: best.z, r: best.r };
+      return;
+    }
+    const dx = pos.x - this.anchors.bossArena.x, dz = pos.z - this.anchors.bossArena.z;
+    const r = this.anchors.arenaRadius;
+    if (dx * dx + dz * dz < r * r) this.bossRoom = { x: this.anchors.bossArena.x, z: this.anchors.bossArena.z, r };
+  }
+
+  /** 身体进入可走圆（距圆心 ≤ r-0.9）才封。没进圆之前不封。 */
+  private trySealBossRoom(): void {
+    if (!this.bossSealArmed || this.bossSeal || !this.bossRoom) return;
+    const walk = this.bossRoom.r - 0.9;
+    if (walk <= 0) return;
+    const dx = this.player.pos.x - this.bossRoom.x, dz = this.player.pos.z - this.bossRoom.z;
+    if (dx * dx + dz * dz <= walk * walk) this.bossSeal = { x: this.bossRoom.x, z: this.bossRoom.z, walk };
+  }
+
+  private releaseBossSeal(): void {
+    this.bossSeal = null;
+    this.bossSealArmed = false;
+  }
+
+  /** 小怪用的可走圆。人在圆内，或封门本帧还没把跨出去的身体钳回来，都算在房里。 */
+  private bossGate(): BossRoomSeal | null {
+    const room = this.bossRoom;
+    if (!room) return null;
+    const r = room.r - 0.9;
+    if (r <= 0) return null;
+    const dx = this.player.pos.x - room.x, dz = this.player.pos.z - room.z;
+    const inside = dx * dx + dz * dz <= r * r;
+    return { x: room.x, z: room.z, r, playerInside: this.bossSeal !== null || inside };
+  }
+
+  /** 封门后每帧钳在可走圆内，x 落进走廊区也不能退出去。 */
+  private clampInsideBossSeal(): void {
+    const s = this.bossSeal;
+    if (!s) return;
+    const p = this.player.pos;
+    const dx = p.x - s.x, dz = p.z - s.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > s.walk) {
+      const k = s.walk / dist;
+      p.x = s.x + dx * k;
+      p.z = s.z + dz * k;
+    }
   }
 
   private prompt(): string | null {
@@ -723,7 +800,10 @@ export class Game {
     if (this.bloodstain && this.progress.bloodstain && this.player.pos.distanceTo(this.bloodstain.group.position) < 1.5) return `E 拾回 ${this.progress.bloodstain.souls} 魂`;
     // T6 捷径提示：靠近显示搭乘/未开启（与篝火提示同式）
     const sc = this.shortcuts.find(s => this.player.pos.distanceTo(s.def.pos) < SHORTCUT_RADIUS);
-    if (sc && (this.flow === "intro" || this.flow === "statue")) return sc.isOpen ? "E 搭乘捷径" : "捷径尚未开启";
+    if (sc && (this.flow === "intro" || this.flow === "statue")) {
+      if (!sc.isOpen) return "捷径尚未开启";
+      if (!this.bossSeal) return "E 搭乘捷径";
+    }
     if (this.flow === "intro" && this.player.pos.distanceTo(this.bonfire.pos) < 1.6) return this.progress.litBonfires.includes(this.sceneId) ? "E 篝火（休息 · 传送）" : "篝火尚未点燃";
     if (this.flow === "intro" && Math.abs(this.player.pos.x - this.anchors.fogGate.x) < 1.4 && Math.abs(this.player.pos.z) < 1.8) return "E 跨入雾门";
     if (this.flow === "statue" && this.player.pos.distanceTo(this.boss.root.position) < 3.2) return "E 拔出螺旋剑";
@@ -962,7 +1042,9 @@ export class Game {
         if (this.flow === "fight") this.boss.update(dt, this.player.pos, this.player.isIframed);
         else if (this.boss.state === "rising" || this.boss.state === "dead" || this.boss.state === "transform") this.boss.update(dt, this.player.pos, this.player.isIframed);
         this.player.update(dt, this.camYaw);
-        this.enemies.update(dt, this.player.pos, this.player.isIframed);   // M3 小怪（推挤/尸清在 manager 内）
+        this.syncBossRoom();
+        this.trySealBossRoom();
+        this.enemies.update(dt, this.player.pos, this.player.isIframed, this.bossGate());
         this.clampWorld();
         this.vfx.update(dt);
         // 投射物（沙力万矢）：命中走 applyHit → onPlayerHurt 手感档案扇出，可格挡
