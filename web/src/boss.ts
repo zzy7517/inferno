@@ -8,7 +8,7 @@ import { BOSS, MOVES, MoveDef, COLORS } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -26,6 +26,8 @@ export class Boss extends BossBase {
   private body = new THREE.Group();
   private torso = new THREE.Group();
   private armR = new THREE.Group();
+  private halHilt = new THREE.Object3D();
+  private halTip = new THREE.Object3D();
   private armL = new THREE.Group();
   private head!: THREE.Mesh;
   private serpent: THREE.Mesh[] = [];
@@ -119,6 +121,9 @@ export class Boss extends BossBase {
     hal.add(box(0.14, 0.44, 0.14, steelMat, 0, spikeY + 0.16, 0));
     hal.add(box(0.08, 0.32, 0.08, steelMat, 0, spikeY + 0.48, 0));
     hal.add(box(0.045, 0.18, 0.045, edgeMat, 0, spikeY + 0.7, 0));
+    this.halHilt.position.set(0, -shaftLen * 0.5, 0);
+    this.halTip.position.set(0, spikeY + 0.79, 0);
+    hal.add(this.halHilt, this.halTip);
     this.armR.add(hal);
     this.torso.add(this.armR);
     // 左臂（爪）
@@ -141,6 +146,24 @@ export class Boss extends BossBase {
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
+
+  /** 戟招沿着杆到尖。蛇招沿着沉淀的身子。肩撞和抓从胸口往前，不用戟。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    if (m.name === "thrust" || m.name === "thrust2" || m.name === "sweep" || m.name === "slam" || m.name === "jump") {
+      return { kind: "blade", hilt: this.halHilt, tip: this.halTip, pad: 0.4 };
+    }
+    if (m.name === "serpSweep" || m.name === "serpThrust") {
+      const hilt = this.serpent[0];
+      const tip = this.serpent[this.serpent.length - 1];
+      if (!hilt || !tip) return null;
+      return { kind: "blade", hilt, tip, pad: 0.3 };
+    }
+    if (m.name === "shoulder" || m.name === "grab") {
+      const p = this.chestWorld();
+      return { kind: "cone", x: p.x, z: p.z, yaw: this.yaw, range: m.range, arc: m.arc };
+    }
+    return null;
+  }
   protected override headPart(): THREE.Object3D { return this.head; }
 
   // ---------------- 姿态应用 ----------------

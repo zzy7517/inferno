@@ -331,6 +331,7 @@ export abstract class BossBase {
 
     if (this.sub === "act") {
       this.movePose(m, "act", this.t, total);
+      this.applyPose();
       const vol = this.attackVolume(m);
       if (vol?.kind === "blade") this.resolveBlade(m, vol, playerPos, toPlayer, playerIframed);
       else this.resolveTicks(m, vol, dist, dirYaw, playerPos, toPlayer, playerIframed);
