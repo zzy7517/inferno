@@ -9,7 +9,7 @@ import { MOVES, FEEL, MoveDef, FeelDef, COLORS } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
-import type { BossHost, BossStats } from "./boss-base";
+import type { AttackVolume, BossHost, BossStats } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -94,6 +94,8 @@ export class Vordt extends BossBase {
   private armR = new THREE.Group();
   private armL = new THREE.Group();
   private hammerG = new THREE.Group();
+  private hamHilt = new THREE.Object3D();
+  private hamTip = new THREE.Object3D();
   private head!: THREE.Mesh;
   private eyeMat!: THREE.MeshStandardMaterial;
   private eyeLight!: THREE.PointLight;
@@ -223,6 +225,9 @@ export class Vordt extends BossBase {
       this.hammerIce.push(c);
       this.hammerG.add(c);
     }
+    this.hamHilt.position.set(0, 0.1, 0.15);
+    this.hamTip.position.set(hx, hy, hz);
+    this.hammerG.add(this.hamHilt, this.hamTip);
     this.armR.add(this.hammerG);
     this.torso.add(this.armR);
 
@@ -240,6 +245,26 @@ export class Vordt extends BossBase {
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
   protected override headPart(): THREE.Object3D { return this.head; }
+
+  /** 横扫和下砸贴着锤头。践踏是脚下的圆，冰息从嘴里往前，冲刺是胸口前方那一条。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    if (m.name === "vordtSweep" || m.name === "vordtSlam") {
+      return { kind: "blade", hilt: this.hamHilt, tip: this.hamTip, pad: 0.55 };
+    }
+    if (m.name === "vordtStomp") {
+      return { kind: "disk", x: this.root.position.x, z: this.root.position.z, r: m.range };
+    }
+    if (m.name === "vordtBreath") {
+      const mouth = new THREE.Vector3();
+      this.head.getWorldPosition(mouth);
+      return { kind: "cone", x: mouth.x, z: mouth.z, yaw: this.yaw, range: m.range, arc: m.arc };
+    }
+    if (m.name === "vordtCharge") {
+      const chest = this.chestWorld();
+      return { kind: "cone", x: chest.x, z: chest.z, yaw: this.yaw, range: m.range, arc: m.arc };
+    }
+    return null;
+  }
 
   // ---------------- 姿态应用 ----------------
   protected override applyPose(): void {
