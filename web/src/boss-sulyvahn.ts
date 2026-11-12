@@ -2,7 +2,8 @@
  * 通用机制（状态机/削韧破绽/弹反/多段判定/冷却/走近追踪/阶段转换）全在 BossBase（boss-base.ts），
  * 本文件只保留沙力万专属：MOVES_SULYVANN/FEEL_SULYVANN（模块加载即并入 config 总表——调校台/存档自动收录，不改现有文件）、
  * 双剑外观与 Pose 系统、选招权重、投射物发射（暗月矢/纵横月焰经 host.fireProjectile → game 侧 Projectiles 池）、
- * 二阶段双焰点燃 + 投影分身（本体骨架克隆换半透明材质，纯视觉不造成伤害）。
+ * 二阶段双焰点燃 + 投影分身（本体骨架克隆换半透明材质，纯视觉不造成伤害；
+ * 只在一次双剑四连期间现身，四连进入后摇即消散，12s 后才能再召）。
  * 暗紫（0x7a4d9e 系）是本 Boss 主题色例外（m3-bosses.md 破例条款，与玻尔多冰蓝同理）。
  */
 import * as THREE from "three";
@@ -26,14 +27,20 @@ const ARROW_PROJ: ProjDef = { speed: 10, radius: 0.4, dmg: 22, feelKey: "sMagic"
 const VOLLEY_PROJ: ProjDef = { speed: 10, radius: 0.4, dmg: 16, feelKey: "sMagic", life: 2.2, color: DARKMOON };
 
 // ---------------- 帧数据（m3-bosses.md 一阶段表 + 二阶段新招） ----------------
+/** 四连：第 2 刀相对第 1 刀多停 COMBO_BAIT 秒（骗取消）；其后两刀回到 COMBO_STEP 节拍。
+ *  引擎只有一个 hitInterval（firstAt + k*interval），非均匀间隔由 syncComboInterval 在每刀之前改写。
+ *  表内 hitInterval 取诱饵间隔本身，这样调校台看到的就是「第 2 刀那一档」。 */
+const COMBO_BAIT = 0.5;
+const COMBO_STEP = 0.38;
+
 export const MOVES_SULYVANN: Record<string, MoveDef> = {
-  // 双剑四连：多段时间轴——第 k 段在 min(active*0.4 + k*0.42, active) 触发。
-  // 取 active 2.2：首段 0.88，后续 0.88+k*0.42 ⇒ 0.88 / 1.30 / 1.72 / 2.14，末段距收尾还有 0.06s 余量（四段全触发，不受 active 钳制）。
-  // 设计表"第 2 刀故意延迟 0.5s 骗取消"用均匀 0.42 近似——引擎只有单一 hitInterval，拆非均匀节拍要改基类逐段表，收益不抵。
+  // active 2.2：首段 active*0.4=0.88，其后 0.88+0.50 / +0.38 / +0.38 ⇒ 0.88 / 1.38 / 1.76 / 2.14。
+  // 末段距收尾 0.06s，四段都落在 active 内，不会被 min(..., active) 并到同一帧。
+  // 弹反窗仍是「act 起至首段命中，或 t>active*0.7」（约 0.88s / 1.54s），不把可弹反招改成不可弹反。
   sulyvahnCombo4: {
     name: "sulyvahnCombo4", label: "双剑四连", startup: 0.30, active: 2.2, recovery: 0.85,
-    dmg: 11, range: 3.2, arc: 1.6, hits: 4, hitInterval: 0.42,
-    parryable: true, cd: 4.0, feel: "sLight",   // 仅首段可弹反由引擎保证（首段命中关窗 + t>active*0.7 关窗）
+    dmg: 11, range: 3.2, arc: 1.6, hits: 4, hitInterval: COMBO_BAIT,
+    parryable: true, cd: 4.0, feel: "sLight",
   },
   // 大回旋：全周身一击；双剑水平回旋视觉在 onMoveActive（宽弧 ×2 反向）
   sulyvahnSpin: {
@@ -48,14 +55,15 @@ export const MOVES_SULYVANN: Record<string, MoveDef> = {
     parryable: true, cd: 4.5, feel: "sHeavy",   // 仅突刺段可弹反（引擎：首段命中即关窗）
   },
   // 暗月矢：近战判定禁用——range 0.2（基类判定 dist≤range+0.45=0.65，而人/Boss 推挤最小间距 1.45，永不满足）；
-  // 伤害由 ARROW_PROJ 承载（速度 10 可翻滚穿），发射在 onMoveActive（挥剑甩矢姿态）。
+  // 伤害由 ARROW_PROJ 承载（速度 10 可翻滚穿）。出矢不在 onMoveActive：那一帧还停在举剑蓄力，剑尖朝后，
+  // 沿 yaw 飞出会和剑尖反向。等 act 后段剑尖转到正面再离手。
   sulyvahnArrow: {
     name: "sulyvahnArrow", label: "暗月矢", startup: 0.65, active: 0.2, recovery: 0.80,
     dmg: 22, range: 0.2, arc: 0.9, parryable: false, cd: 6.5, feel: "sMagic",
     proj: { speed: 10, radius: 0.4, life: 2.2 },
   },
-  // 纵横月焰（二阶段）：两波各 3 矢扇形（yaw±0.22/0）。波 2 在 act 起点 +0.35s 于 movePose 内补发
-  // （active 0.2 ⇒ 落在 rec 段 t≈0.15；不用 setTimeout——调校台暂停会脱钩）。
+  // 纵横月焰（二阶段）：两波各 3 矢扇形（yaw±0.22/0）。波 1 在挥剑到位后离手；波 2 在后摇里再举一次才发
+  // （不用 setTimeout——调校台暂停会脱钩）。
   sulyvahnVolley: {
     name: "sulyvahnVolley", label: "纵横月焰", startup: 0.70, active: 0.2, recovery: 1.0,
     dmg: 16, range: 0.2, arc: 0.9, parryable: false, cd: 8.0, phase2Only: true, feel: "sMagic",
@@ -81,9 +89,12 @@ export const SULYVANN_STATS: BossStats & { name: string; radius: number } = {
   walkSpeed: 3.6, turnRate: 4.2,   // 术士剑士：滑步快、转向灵
 };
 
-/** 二阶段 buff（连段伤害 ×1.2、全部前摇 ×0.9）的一阶段基线——模块级快照，多实例/reset 往返安全（仿 watchers） */
-const P1_BASE: Record<string, { startup: number; dmg: number }> = {};
-for (const m of Object.values(MOVES_SULYVANN)) P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg };
+/** 二阶段 buff（连段伤害 ×1.2、全部前摇 ×0.9）的一阶段基线——模块级快照，多实例/reset 往返安全（仿 watchers）。
+ *  hitInterval 一并快照：四连会在出手中改写间隔，死亡/重置必须还回，否则下一场第 2 刀不再是 0.5s。 */
+const P1_BASE: Record<string, { startup: number; dmg: number; hitInterval?: number }> = {};
+for (const m of Object.values(MOVES_SULYVANN)) {
+  P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg, hitInterval: m.hitInterval };
+}
 
 /** 投影分身材质：半透明暗紫加色（本体克隆件统一换此材质） */
 const GHOST_MAT = new THREE.MeshBasicMaterial({
@@ -115,12 +126,16 @@ const TW: Pose = { ...STANCE, crouch: 0.22, twist: 0.5, rLift: -0.55, rSwing: -0
 const T1K: Pose = { ...STANCE, twist: -0.15, rLift: 1.2, rSwing: 0.05, lean: 0.38, reach: 0.45, crouch: 0.15 };
 const T2W: Pose = { ...STANCE, twist: 0.1, rLift: 0.45, rSwing: 0.1, lean: 0.2, crouch: 0.2 };
 const T2K: Pose = { ...STANCE, rLift: -2.1, rSwing: 0.1, lean: -0.14, y: 0.12, nod: -0.1 };   // 上挑剑走立圆，人随势拔起
-// 暗月矢：左剑高举后甩发（单手甩剑）
+// 暗月矢：左剑高举后曳（剑尖朝后，这一拍不能出矢）→ 左剑刺到正面（剑尖 yaw=面向，矢沿同一方向离手）
 const AW: Pose = { ...STANCE, twist: -0.5, lLift: -1.85, lSwing: 0.65, lean: -0.1, nod: 0.12, rLift: 0.2, rSwing: 0.35 };
-const AK: Pose = { ...STANCE, twist: 0.22, lLift: 1.0, lSwing: -0.15, lean: 0.3, reach: 0.3, nod: 0.02 };
-// 纵横月焰：双剑高举交叉 → 两侧甩开（两波各甩一次）
+const AK: Pose = { ...STANCE, twist: -0.2, lLift: 1.5, lSwing: 0.4, lean: 0.18, reach: 0.25, nod: 0.02, rLift: 0.15, rSwing: 0.12 };
+// 纵横月焰：双剑高举交叉（剑尖在身后上方）→ 双剑前送，尖端落在 yaw±0.22，与扇形矢同一方向
 const VW: Pose = { ...STANCE, rLift: -1.7, rSwing: -0.55, lLift: -1.7, lSwing: 0.55, lean: -0.12, crouch: 0.12, nod: -0.08 };
-const VK: Pose = { ...STANCE, rLift: 0.35, rSwing: 1.15, lLift: 0.35, lSwing: -1.15, lean: 0.18 };
+const VK: Pose = { ...STANCE, rLift: 1.4, rSwing: 0.5, lLift: 1.4, lSwing: -0.5, twist: 0.5, lean: 0.16, nod: 0.04 };
+// 四连第 1 刀之后的假收势：剑放下、头低下，读成「连段结束」——停住再起第 2 刀
+const FEINT: Pose = { ...STANCE, lean: 0.06, twist: 0.04, crouch: 0.08, nod: 0.28, rLift: 0.18, rSwing: 0.12, lLift: 0.18, lSwing: -0.12, y: -0.02 };
+// 大回旋回旋过后的力竭：剑仍敞着、身子压低，后摇前 0.7s 停在这里
+const SPIN_SPENT: Pose = { ...STANCE, rSwing: -1.45, lSwing: 1.45, rLift: 0.15, lLift: 0.15, lean: 0.46, crouch: 0.26, twist: 0.42, nod: 0.32 };
 
 export class Sulyvahn extends BossBase {
   private body = new THREE.Group();
@@ -144,9 +159,11 @@ export class Sulyvahn extends BossBase {
   private moveDir = new THREE.Vector3(0, 0, 1);
   private moveLen = 0;
   private slashFired = 0;                           // 已补画刀光的判定段数（与 hitFired 对齐）
-  private volleyFired = 0;                          // 月焰已发波数（波 2 在 movePose 补发）
+  private volleyFired = 0;                          // 月焰已发波数（0 未发 / 1 波 1 已离手 / 2 两波都出）
+  private arrowLoosed = false;                      // 暗月矢是否已离手（举剑期间必须保持 false）
   private p2Applied = false;                        // 二阶段数值 buff 是否已写入共享表
   private lastDt = 0;                               // 投影分身缓动用（暂停时 0 → 跟随冻结）
+  private lastPick = "";                            // 上一招名：同招再选时降权，避免连刷
 
   // 投影分身（仅二阶段）：本体骨架整体克隆换半透明材质，不进 this.root——独立缓动站位
   private ghostRoot = new THREE.Group();
@@ -161,6 +178,9 @@ export class Sulyvahn extends BossBase {
   private gShinL!: THREE.Group;
   private ghostYaw = 0;
   private ghostOn = false;
+  private ghostDismiss = false;                     // 四连打完（或被打断）后正在消散
+  private ghostFade = 0;                            // 1=实体，0=已散
+  private ghostCd = 0;                              // 消散后 12s 内不再召（设计：投影 12s cd）
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost, facing = -Math.PI / 2) {
     super(scene, vfx, pos, host, SULYVANN_STATS, facing);
@@ -332,26 +352,16 @@ export class Sulyvahn extends BossBase {
   }
 
   protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
-    // 月焰波 2 补发：act 起点 +0.35s（active 0.2 ⇒ 落在 rec 段 t≈0.15；与战斗时间同源，暂停不脱钩）
-    if (m.name === "sulyvahnVolley" && this.volleyFired === 1) {
-      const ta = sub === "act" ? t : t + m.active;
-      if (ta >= 0.35) { this.volleyFired = 2; this.fireSpread(); }
-    }
+    if (m.name === "sulyvahnCombo4") { this.comboMovePose(m, sub, t); void total; return; }
+    if (m.name === "sulyvahnArrow") { this.arrowPose(m, sub, t); void total; return; }
+    if (m.name === "sulyvahnVolley") { this.volleyPose(m, sub, t); void total; return; }
+
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
-    switch (m.name) {
-      case "sulyvahnSpin":   // 双剑水平展开蓄势 → 转体横扫（spin 转整圈）
-        wind.rSwing = -1.35; wind.lSwing = 1.35; wind.rLift = 0.1; wind.lLift = 0.1; wind.lean = 0.14; wind.crouch = 0.1;
-        strike.rSwing = -1.5; strike.lSwing = 1.5; strike.rLift = 0.2; strike.lLift = 0.2; strike.lean = 0.3; strike.crouch = 0.16;
-        break;
-      case "sulyvahnArrow":  // 左剑高举后曳 → 单手甩剑发矢
-        Object.assign(wind, AW); Object.assign(strike, AK);
-        break;
-      case "sulyvahnVolley": // 双剑高举交叉 → 两侧甩开
-        Object.assign(wind, VW); Object.assign(strike, VK);
-        break;
-      case "sulyvahnThrustUp":  // 蓄势拧身（act 两拍在 thrustPose）
-        Object.assign(wind, TW);
-        break;
+    if (m.name === "sulyvahnSpin") {   // 双剑水平展开蓄势 → 转体横扫（spin 转整圈）
+      wind.rSwing = -1.35; wind.lSwing = 1.35; wind.rLift = 0.1; wind.lLift = 0.1; wind.lean = 0.14; wind.crouch = 0.1;
+      strike.rSwing = -1.5; strike.lSwing = 1.5; strike.rLift = 0.2; strike.lLift = 0.2; strike.lean = 0.3; strike.crouch = 0.16;
+    } else if (m.name === "sulyvahnThrustUp") {
+      Object.assign(wind, TW);
     }
     if (sub === "tel") {
       this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
@@ -361,30 +371,148 @@ export class Sulyvahn extends BossBase {
         this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
       }
     } else if (sub === "act") {
-      if (m.name === "sulyvahnCombo4") this.comboPose(t, m);
-      else if (m.name === "sulyvahnThrustUp") this.thrustPose(t, m);
+      if (m.name === "sulyvahnThrustUp") this.thrustPose(t, m);
       else if (m.name === "sulyvahnSpin") {
         const k = smooth(clamp01(t / m.active));
         this.lerpPose(wind, strike, k);
         this.pose.spin = Math.PI * 2 * k;        // 恰好整一圈
       }
-      else this.lerpPose(wind, strike, seg(t, 0, m.active));
+    } else if (m.name === "sulyvahnSpin") {
+      // 惩罚窗：力竭姿态停满约 0.7s，剩下的后摇才把剑收回。整段 recovery（1.0s）都不能再出手。
+      const hold = Math.min(0.70, Math.max(0.2, m.recovery - 0.25));
+      if (t < 0.16) this.lerpPose(strike, SPIN_SPENT, smooth(clamp01(t / 0.16)));
+      else if (t < hold) this.lerpPose(SPIN_SPENT, SPIN_SPENT, 1);
+      else this.lerpPose(SPIN_SPENT, STANCE, smooth(seg(t, hold, m.recovery)));
+      this.pose.spin = 0;                         // 2π≡0：收招直接归零，不倒转
     } else {
       this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
-      if (m.name === "sulyvahnSpin") this.pose.spin = 0;   // 2π≡0：收招直接归零，不倒转
     }
     void total;
   }
 
-  /** 双剑四连判定段姿态：四拍与引擎判定时刻对齐（首段 active*0.4=0.88，其后每 0.42s），左右剑交替、末拍双剑交剪 */
+  /** 四连命中时刻（act 内秒）。与 syncComboInterval 同一条轴，姿态停顿才和伤害落在同一帧。 */
+  private comboHitTimes(active: number): [number, number, number, number] {
+    const t0 = active * 0.4;
+    const t1 = t0 + COMBO_BAIT;
+    const t2 = t1 + COMBO_STEP;
+    const t3 = t2 + COMBO_STEP;
+    return [t0, t1, t2, t3];
+  }
+
+  /** 让「下一刀」的 firstAt + k*hitInterval 等于 comboHitTimes()[k]。k<=1 时间隔就是 0.5s 诱饵。 */
+  private comboIntervalFor(nextIndex: number): number {
+    if (nextIndex <= 1) return COMBO_BAIT;
+    return (COMBO_BAIT + COMBO_STEP * (nextIndex - 1)) / nextIndex;
+  }
+
+  /** 在基类判定循环之前改写间隔；离开判定段立刻还回快照，避免共享表停在 0.42。 */
+  private syncComboInterval(): void {
+    const m = MOVES_SULYVANN.sulyvahnCombo4;
+    const base = P1_BASE[m.name].hitInterval ?? COMBO_BAIT;
+    if (this.state === "combat" && this.sub === "act" && this.move?.name === "sulyvahnCombo4") {
+      m.hitInterval = this.comboIntervalFor(this.hitFired);
+    } else if (m.hitInterval !== base) {
+      m.hitInterval = base;
+    }
+  }
+
+  private comboMovePose(m: MoveDef, sub: string, t: number): void {
+    if (sub === "tel") {
+      // 前摇就把右剑收到蓄力位，act 第 0 帧从同一姿势接上，不会弹回站姿
+      this.lerpPose(STANCE, B1W, smooth(clamp01(t / Math.max(0.01, m.startup))));
+      return;
+    }
+    if (sub === "act") { this.comboPose(t, m); return; }
+    // 交剪定住再回架；整段后摇都还在硬直里
+    this.lerpPose(B4K, STANCE, smooth(seg(t, Math.min(0.40, m.recovery * 0.45), m.recovery)));
+  }
+
+  /** 双剑四连：第 1 刀蓄力可弹反；命中后沉剑停住约 0.5s 的大半（假收招），再突然起第 2 刀。其后 0.38s 一拍。 */
   private comboPose(t: number, m: MoveDef): void {
-    const firstAt = m.active * 0.4;
-    const ph = clamp01((t - firstAt) / (m.active - firstAt)) * 4;
-    const idx = Math.min(3, Math.floor(ph));
-    const s = smooth(clamp01(ph - idx));
-    const w = idx === 0 ? B1W : idx === 1 ? B2W : idx === 2 ? B3W : B4W;
-    const k = idx === 0 ? B1K : idx === 1 ? B2K : idx === 2 ? B3K : B4K;
-    this.lerpPose(w, k, s);
+    const [t0, t1, t2, t3] = this.comboHitTimes(m.active);
+    const winds = [B1W, B2W, B3W, B4W];
+    const hits = [B1K, B2K, B3K, B4K];
+    if (t <= t0) {
+      const u = clamp01(t / Math.max(0.01, t0));
+      const deeper: Pose = { ...B1W, twist: B1W.twist + 0.14, rLift: B1W.rLift - 0.18 };
+      if (u < 0.72) this.lerpPose(B1W, deeper, smooth(u / 0.72));   // 从 tel 的 B1W 续上，缓缓压满
+      else this.lerpPose(deeper, hits[0], smooth((u - 0.72) / 0.28));
+      return;
+    }
+    const gaps: [number, number, Pose, Pose][] = [
+      [t0, t1, hits[0], hits[1]],
+      [t1, t2, hits[1], hits[2]],
+      [t2, t3, hits[2], hits[3]],
+    ];
+    for (let i = 0; i < gaps.length; i++) {
+      const [a, b, from, to] = gaps[i];
+      if (t > b && i < gaps.length - 1) continue;
+      const u = clamp01((t - a) / Math.max(0.01, b - a));
+      if (i === 0) {
+        // 0.5s 诱饵：冲击定格 → Ease-out 沉到假收势 → 停住 → 短促起手再斩在命中帧
+        if (u < 0.08) this.lerpPose(from, from, 1);
+        else if (u < 0.22) this.lerpPose(from, FEINT, smooth((u - 0.08) / 0.14));
+        else if (u < 0.70) this.lerpPose(FEINT, FEINT, 1);
+        else if (u < 0.86) this.lerpPose(FEINT, winds[1], this.easeIn((u - 0.70) / 0.16));
+        else this.lerpPose(winds[1], to, smooth((u - 0.86) / 0.14));
+      } else if (u < 0.48) {
+        this.lerpPose(from, winds[i + 1], smooth(u / 0.48));
+      } else {
+        this.lerpPose(winds[i + 1], to, smooth((u - 0.48) / 0.52));
+      }
+      return;
+    }
+    this.lerpPose(hits[3], hits[3], 1);
+  }
+
+  /** 暗月矢：前摇前段举剑并停住；剑尖转到正面之后矢才离手进入飞行。 */
+  private arrowPose(m: MoveDef, sub: string, t: number): void {
+    if (sub === "tel") {
+      const raised = m.startup * 0.58;
+      this.lerpPose(STANCE, AW, smooth(clamp01(t / Math.max(0.01, raised))));
+      return;
+    }
+    if (sub === "act") {
+      this.lerpPose(AW, AK, smooth(clamp01(t / Math.max(0.01, m.active))));
+      // smooth(0.82)≈0.95，剑已基本刺到正面，再发射
+      if (!this.arrowLoosed && t >= m.active * 0.82) {
+        this.arrowLoosed = true;
+        this.fireArrow();
+      }
+      return;
+    }
+    this.lerpPose(AK, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+  }
+
+  /** 纵横月焰：举剑停住 → 前送离手（波 1）→ 后摇再举一次 → 第二波离手，然后才是收招。 */
+  private volleyPose(m: MoveDef, sub: string, t: number): void {
+    if (sub === "tel") {
+      const raised = m.startup * 0.58;
+      this.lerpPose(STANCE, VW, smooth(clamp01(t / Math.max(0.01, raised))));
+      return;
+    }
+    if (sub === "act") {
+      this.lerpPose(VW, VK, smooth(clamp01(t / Math.max(0.01, m.active))));
+      if (this.volleyFired === 0 && t >= m.active * 0.82) {
+        this.volleyFired = 1;
+        this.fireSpread();
+      }
+      return;
+    }
+    const cast = 0.22;
+    const loose = 0.40;
+    if (t < cast) this.lerpPose(VK, VW, smooth(t / cast));
+    else if (t < loose) this.lerpPose(VW, VK, smooth((t - cast) / (loose - cast)));
+    else this.lerpPose(VK, STANCE, smooth(seg(t, loose + 0.08, m.recovery)));
+    if (this.volleyFired === 1 && t >= loose) {
+      this.volleyFired = 2;
+      this.fireSpread();
+    }
+  }
+
+  private easeIn(v: number): number {
+    const x = clamp01(v);
+    return x * x;
   }
 
   /** 突刺→上挑两拍：与判定时刻 active*0.4 / +hitInterval 对齐（0.30 / 0.65） */
@@ -400,6 +528,8 @@ export class Sulyvahn extends BossBase {
   /** 缓存真实 dt 并在帧末驱动投影分身（super.update 末尾 applyPose 已写入骨架——分身硬抄需在同帧姿态之后） */
   override update(dt: number, playerPos: THREE.Vector3, playerIframed: boolean): void {
     this.lastDt = dt;
+    if (this.ghostCd > 0) this.ghostCd = Math.max(0, this.ghostCd - dt);
+    this.syncComboInterval();   // 必须在基类判定循环之前：本帧用的就是这一刀的间隔
     super.update(dt, playerPos, playerIframed);
     this.updateGhost();
   }
@@ -438,8 +568,10 @@ export class Sulyvahn extends BossBase {
         this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.8, false, col);
       }
     }
-    // 二阶段数值 buff：一次性改写共享帧数据表（reset 还原）
+    // 二阶段数值：进入写一次，离开（重置把 phase 拨回 1）立刻还回。死在二阶段时 phase 仍为 2，
+    // 共享表保持加压直到 dispose/reset 把 phase 拨回——releaseSharedState / resetVisuals 负责归还。
     if (p2 && !this.p2Applied) this.applyPhase2Moves();
+    else if (!p2 && this.p2Applied) this.restorePhase1Moves();
   }
 
   /** 二阶段：连段伤害 ×1.2（仅四连）、全部前摇 ×0.9（压力陡增，m3-bosses.md） */
@@ -453,8 +585,10 @@ export class Sulyvahn extends BossBase {
   private restorePhase1Moves(): void {
     this.p2Applied = false;
     for (const m of Object.values(MOVES_SULYVANN)) {
-      m.startup = P1_BASE[m.name].startup;
-      m.dmg = P1_BASE[m.name].dmg;
+      const b = P1_BASE[m.name];
+      m.startup = b.startup;
+      m.dmg = b.dmg;
+      if (b.hitInterval !== undefined) m.hitInterval = b.hitInterval;
     }
   }
 
@@ -468,23 +602,19 @@ export class Sulyvahn extends BossBase {
     this.moveFrom.copy(this.root.position);
     this.slashFired = 0;
     this.volleyFired = 0;
+    this.arrowLoosed = false;
     this.moveLen = 0;
+    // 投影只陪一次四连：冷却中或还没收掉的分身不再叠一个
+    if (m.name === "sulyvahnCombo4" && this.phase === 2 && this.ghostCd <= 0 && !this.ghostOn) this.beginGhost();
     if (m.name === "sulyvahnThrustUp") {
       this.moveDir.copy(toPlayer).setY(0).normalize();
       this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.2));
     }
   }
 
-  /** 判定段开始：投射物发射 / 回旋宽弧 */
+  /** 判定段开始：回旋宽弧。投射物不在这里发——这一帧姿态还是举剑蓄力，剑尖朝后。 */
   protected override onMoveActive(m: MoveDef): void {
-    if (m.name === "sulyvahnArrow") {
-      const origin = this.chestWorld().setY(1.6);
-      this.host.fireProjectile?.(origin, this.yaw, ARROW_PROJ);
-      this.vfx.slash(origin, this.yaw, 1.1, false, DARKMOON);   // 甩剑发矢轨迹
-    } else if (m.name === "sulyvahnVolley") {
-      this.volleyFired = 1;
-      this.fireSpread();
-    } else if (m.name === "sulyvahnSpin") {
+    if (m.name === "sulyvahnSpin") {
       // 双剑水平回旋：宽弧 ×2 反向（二阶段火/暗双色）
       const c = this.chestWorld();
       this.vfx.slash(c, this.yaw + 0.25, m.range * 0.9, true, this.phase === 2 ? FIRE : SLASH_COOL);
@@ -492,13 +622,30 @@ export class Sulyvahn extends BossBase {
     }
   }
 
-  /** 月焰扇形波：3 矢（yaw±0.22/0），自胸口高 1.6 发射 */
+  /** 沿面向发射。速度用 sin/cos(yaw)，与近战 dirYaw、剑尖在离手帧的水平朝向同一约定；出生点沿该方向推出，矢从剑前离开而不是从胸口倒飞。 */
+  private looseAt(yaw: number, def: ProjDef): THREE.Vector3 {
+    const origin = this.chestWorld();
+    origin.x += Math.sin(yaw) * 0.75;
+    origin.z += Math.cos(yaw) * 0.75;
+    origin.y = 1.45;
+    this.host.fireProjectile?.(origin, yaw, def);
+    return origin;
+  }
+
+  private fireArrow(): void {
+    const origin = this.looseAt(this.yaw, ARROW_PROJ);
+    this.vfx.slash(origin, this.yaw, 1.1, false, DARKMOON);
+  }
+
+  /** 月焰扇形波：3 矢（yaw±0.22/0），与 VK 双剑尖端同一夹角 */
   private fireSpread(): void {
-    const origin = this.chestWorld().setY(1.6);
+    const base = this.yaw;
+    let mid: THREE.Vector3 | null = null;
     for (const off of [-0.22, 0, 0.22]) {
-      this.host.fireProjectile?.(origin, this.yaw + off, VOLLEY_PROJ);
+      const pos = this.looseAt(base + off, VOLLEY_PROJ);
+      if (off === 0) mid = pos;
     }
-    this.vfx.slash(origin, this.yaw, 1.3, true, DARKMOON);
+    if (mid) this.vfx.slash(mid, base, 1.3, true, DARKMOON);
   }
 
   /** 重招风声更闷 */
@@ -520,7 +667,7 @@ export class Sulyvahn extends BossBase {
   protected override updateTransform(): void {
     if (this.t >= this.transformHitAt && this.phase === 1) {
       this.phase = 2;          // 眼/剑/灯燃焰与数值 buff 由 updateVisuals 跟随 phase 写入
-      this.spawnGhost();
+      // 投影不在变身时站出来——那会变成第二个会跟着做完全套动作的 Boss。等四连再召。
     }
     const crouch = { ...STANCE, crouch: 0.35, y: -0.3, lean: 0.32, nod: 0.38, rLift: -1.15, lLift: -1.15 };
     if (this.t < this.transformHitAt) {
@@ -543,9 +690,15 @@ export class Sulyvahn extends BossBase {
   protected override resetVisuals(): void {
     this.restorePhase1Moves();
     this.ghostOn = false;
+    this.ghostDismiss = false;
+    this.ghostFade = 0;
+    this.ghostCd = 0;
     this.ghostRoot.visible = false;
+    GHOST_MAT.opacity = 0.35;
     this.slashFired = 0;
     this.volleyFired = 0;
+    this.arrowLoosed = false;
+    this.lastPick = "";
     this.bladeFire.emissiveIntensity = 0;
     this.bladeDark.emissiveIntensity = 0;
     this.fireLight.intensity = 0;
@@ -560,7 +713,14 @@ export class Sulyvahn extends BossBase {
   }
 
   // ---------------- 投影分身（简化版：纯视觉威慑，不造成伤害） ----------------
-  /** 亮相：站位取本体面向的左后 ~2m，姿态先与本体对齐（后续 updateGhost 每帧驱动） */
+  /** 四连起手才召：站位取本体面向的侧后 ~2m，姿态先与本体对齐 */
+  private beginGhost(): void {
+    this.ghostDismiss = false;
+    this.ghostFade = 1;
+    GHOST_MAT.opacity = 0.35;
+    this.spawnGhost();
+  }
+
   private spawnGhost(): void {
     this.ghostOn = true;
     this.ghostYaw = this.yaw;
@@ -574,11 +734,25 @@ export class Sulyvahn extends BossBase {
     snap(this.gShinR, this.shinR); snap(this.gShinL, this.shinL);
   }
 
-  /** 每帧：站位/朝向缓动跟随本体；本体出双剑四连时各关节硬抄（同步共舞），其余缓动尾随（残像感） */
+  /** 只在四连的前摇/判定段硬抄骨架。进入后摇、被破绽/弹反打断或死亡则消散，不跟着把其余招式再演一遍。 */
   private updateGhost(): void {
-    const show = this.ghostOn && this.phase === 2 && this.state !== "dead";
+    const mirroring = this.ghostOn && !this.ghostDismiss
+      && this.phase === 2 && this.state === "combat"
+      && (this.sub === "tel" || this.sub === "act")
+      && this.move?.name === "sulyvahnCombo4";
+    if (this.ghostOn && !mirroring) this.ghostDismiss = true;
+    if (this.ghostDismiss) {
+      this.ghostFade = Math.max(0, this.ghostFade - Math.max(0, this.lastDt) / 0.4);
+      if (this.ghostFade <= 0) this.finishGhost();
+    }
+    const show = this.ghostOn && this.ghostFade > 0 && this.phase === 2 && this.state !== "dead";
     this.ghostRoot.visible = show;
-    if (!show) return;
+    if (!show) {
+      if (this.ghostOn) this.finishGhost();
+      return;
+    }
+    GHOST_MAT.opacity = 0.35 * this.ghostFade;
+    if (this.ghostDismiss) return;   // 停在四连最后一帧上淡出，不去追下一招
     const dt = Math.max(0, this.lastDt);
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     const tx = this.root.position.x - s * 1.45 + c * 1.35;
@@ -590,17 +764,24 @@ export class Sulyvahn extends BossBase {
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.ghostYaw += d * k;
     this.ghostRoot.rotation.y = this.ghostYaw;
-    const snap = this.state === "combat" && this.move?.name === "sulyvahnCombo4";
-    const kp = snap ? 1 : 1 - Math.exp(-dt * 2.6);
-    this.easeJoint(this.gBody, this.body, kp);
-    this.easeJoint(this.gTorso, this.torso, kp);
-    this.easeJoint(this.gHead, this.head, kp);
-    this.easeJoint(this.gArmR, this.armR, kp);
-    this.easeJoint(this.gArmL, this.armL, kp);
-    this.easeJoint(this.gLegR, this.legR, kp);
-    this.easeJoint(this.gLegL, this.legL, kp);
-    this.easeJoint(this.gShinR, this.shinR, kp);
-    this.easeJoint(this.gShinL, this.shinL, kp);
+    this.easeJoint(this.gBody, this.body, 1);
+    this.easeJoint(this.gTorso, this.torso, 1);
+    this.easeJoint(this.gHead, this.head, 1);
+    this.easeJoint(this.gArmR, this.armR, 1);
+    this.easeJoint(this.gArmL, this.armL, 1);
+    this.easeJoint(this.gLegR, this.legR, 1);
+    this.easeJoint(this.gLegL, this.legL, 1);
+    this.easeJoint(this.gShinR, this.shinR, 1);
+    this.easeJoint(this.gShinL, this.shinL, 1);
+  }
+
+  private finishGhost(): void {
+    this.ghostOn = false;
+    this.ghostDismiss = false;
+    this.ghostFade = 0;
+    this.ghostCd = 12;
+    this.ghostRoot.visible = false;
+    GHOST_MAT.opacity = 0.35;
   }
 
   private easeJoint(dst: THREE.Object3D, src: THREE.Object3D, k: number): void {
@@ -614,20 +795,26 @@ export class Sulyvahn extends BossBase {
   protected override pickMove(dist: number): MoveDef | null {
     const M = MOVES_SULYVANN;
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // >6m 且暗月矢 cd 好 → 必出（远程压制教学：惩罚站桩贪刀）；cd 未好则兽行逼近
-    if (dist > 6) return ready(M.sulyvahnArrow) ? M.sulyvahnArrow : null;
+    const take = (m: MoveDef | null): MoveDef | null => {
+      if (m) this.lastPick = m.name;
+      return m;
+    };
+    // >6m 且暗月矢 cd 好 → 必出（远程压制教学：惩罚站桩贪刀）；cd 未好则滑步逼近。这一下不降权。
+    if (dist > 6) return take(ready(M.sulyvahnArrow) ? M.sulyvahnArrow : null);
+    // 同招再选降到 0.35：还进池子（有时就是该再来一刀），但不会连刷同一招
+    const w = (m: MoveDef, base: number) => base * (m.name === this.lastPick ? 0.35 : 1);
     const pool: [MoveDef, number][] = [
-      [M.sulyvahnSpin, dist < 1.6 ? 5 : 2],                                                        // 贴身回旋优先
-      [M.sulyvahnCombo4, 3],
-      [M.sulyvahnThrustUp, 2.5],
-      [M.sulyvahnVolley, this.phase === 2 && dist >= 2.5 && dist <= 7 ? 2 : 0],                    // 二阶段月焰走廊
+      [M.sulyvahnSpin, w(M.sulyvahnSpin, dist < 1.6 ? 5 : 2)],                                      // 贴身回旋优先
+      [M.sulyvahnCombo4, w(M.sulyvahnCombo4, 3)],
+      [M.sulyvahnThrustUp, w(M.sulyvahnThrustUp, 2.5)],
+      [M.sulyvahnVolley, w(M.sulyvahnVolley, this.phase === 2 && dist >= 2.5 && dist <= 7 ? 2 : 0)], // 二阶段月焰走廊
     ];
-    // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里
-    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
+    // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里。够不到的近战不空挥，交给 idle 走近。
+    const cands = pool.filter(([m, weight]) => weight > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
     if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
+    const sum = cands.reduce((s, [, weight]) => s + weight, 0);
     let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    for (const [m, weight] of cands) { r -= weight; if (r <= 0) return take(m); }
+    return take(cands[0][0]);
   }
 }
