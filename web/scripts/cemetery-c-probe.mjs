@@ -99,7 +99,7 @@ async function main() {
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check("① legacy 锚点六字段不变",
     eq(anchors.spawn, [-140.5, 0, 1.4]) && eq(anchors.bonfire, [-140.5, 0, 0]) && eq(anchors.fogGate, [-10, 0, 0]) &&
-    eq(anchors.bossArena, [-1.5, 0, 0]) && anchors.arenaRadius === 12 && anchors.corridorMinX === -141.7,
+    eq(anchors.bossArena, [3.5, 0, 0]) && anchors.arenaRadius === 17 && anchors.corridorMinX === -141.7,
     `spawn=${anchors.spawn} fogGate=${anchors.fogGate} boss=${anchors.bossArena} r=${anchors.arenaRadius} minX=${anchors.corridorMinX}`);
   const zonesExp = [
     { id: "cemetery:A", kind: "corridor", minX: -142, maxX: -101, half: 2.75, cx: null, cz: null, r: null },
@@ -107,11 +107,11 @@ async function main() {
     { id: "cemetery:A", kind: "corridor", minX: -89, maxX: -51, half: 2.75, cx: null, cz: null, r: null },
     { id: "cemetery:A", kind: "arena", minX: -51, maxX: -39, half: null, cx: -45, cz: 0, r: 7.5 },
     { id: "cemetery:A", kind: "corridor", minX: -39, maxX: -10, half: 2.75, cx: null, cz: null, r: null },
-    { id: "cemetery:A", kind: "arena", minX: -10, maxX: 9.6, half: null, cx: -1.5, cz: 0, r: 12 },
-    { id: "cemetery:C", kind: "corridor", minX: 9.2, maxX: 45.9, half: 2.75, cx: null, cz: null, r: null },
-    { id: "cemetery:C", kind: "arena", minX: 45.9, maxX: 68.1, half: null, cx: 57, cz: 0, r: 12 },
-    { id: "cemetery:D", kind: "corridor", minX: 67.69999999999999, maxX: 80.9, half: 2.75, cx: null, cz: null, r: null },
-    { id: "cemetery:D", kind: "arena", minX: 80.9, maxX: 108, half: null, cx: 94, cz: 0, r: 14 },
+    { id: "cemetery:A", kind: "arena", minX: -10, maxX: 19.6, half: null, cx: 3.5, cz: 0, r: 17 },
+    { id: "cemetery:C", kind: "corridor", minX: 19.2, maxX: 55.9, half: 2.75, cx: null, cz: null, r: null },
+    { id: "cemetery:C", kind: "arena", minX: 55.9, maxX: 92.1, half: null, cx: 74, cz: 0, r: 19 },
+    { id: "cemetery:D", kind: "corridor", minX: 91.7, maxX: 104.9, half: 2.75, cx: null, cz: null, r: null },
+    { id: "cemetery:D", kind: "arena", minX: 104.9, maxX: 286, half: null, cx: 195, cz: 0, r: 91 },
   ];
   check("① zones 数组逐值不变（A 六分区 + C 哨路/监视者房 + D 碎星径/战场）", eq(anchors.zones, zonesExp), `${anchors.zones.length} zones（期望 ${zonesExp.length}）`);
 
@@ -120,9 +120,8 @@ async function main() {
     const g = window.__game;
     const out = {};
     g.prevPx = 26; g.player.pos.set(26, 0, 9); g.clampWorld(); out.corridorZ = g.player.pos.z;      // C1 z 钳制
-    g.prevPx = 57; g.player.pos.set(57, 0, 0.5); g.clampWorld(); out.arenaCenterX = g.player.pos.x; // C2 圆心站立
-    const bx = 57 + 12 - 0.2;                                                                        // C2 圆外推回 r-0.9
-    g.prevPx = 67.5; g.player.pos.set(67.5, 0, 5); g.clampWorld(); out.arenaEdgeR = Math.hypot(g.player.pos.x - 57, g.player.pos.z);  // 斜向取样：正东 68.8 已属 D1 带（D 锁定墙接管为正确行为）
+    g.prevPx = 74; g.player.pos.set(74, 0, 0.5); g.clampWorld(); out.arenaCenterX = g.player.pos.x; // C2 圆心站立
+    g.prevPx = 80; g.player.pos.set(80, 0, 20); g.clampWorld(); out.arenaEdgeR = Math.hypot(g.player.pos.x - 74, g.player.pos.z);
     const i = g.progress.zoneUnlocks.indexOf("cemetery:C");
     if (i >= 0) g.progress.zoneUnlocks.splice(i, 1);                                                  // 临时锁回 C：推回口径
     g.prevPx = 30; g.player.pos.set(30, 0, 0); g.clampWorld(); out.lockedX = g.player.pos.x;
@@ -131,9 +130,9 @@ async function main() {
   });
   console.log("clamp:", JSON.stringify(clampProbe));
   check("④ C1 走廊 z 钳制 ±2.75", Math.abs(clampProbe.corridorZ - 2.75) < 0.01, `z=${clampProbe.corridorZ}`);
-  check("④ C2 圆心可站立", Math.abs(clampProbe.arenaCenterX - 57) < 0.05, `x=${clampProbe.arenaCenterX}`);
-  check("④ C2 竞技场径向钳制 r-0.9", Math.abs(clampProbe.arenaEdgeR - (12 - 0.9)) < 0.05, `r=${clampProbe.arenaEdgeR.toFixed(3)} 期望=${(12 - 0.9).toFixed(3)}`);
-  check("④ C 未解锁推回 A 东界-0.4", Math.abs(clampProbe.lockedX - (9.6 - 0.4)) < 0.05, `lockedX=${clampProbe.lockedX.toFixed(3)} 期望=9.2`);
+  check("④ C2 圆心可站立", Math.abs(clampProbe.arenaCenterX - 74) < 0.05, `x=${clampProbe.arenaCenterX}`);
+  check("④ C2 竞技场径向钳制 r-0.9", Math.abs(clampProbe.arenaEdgeR - (19 - 0.9)) < 0.05, `r=${clampProbe.arenaEdgeR.toFixed(3)} 期望=${(19 - 0.9).toFixed(3)}`);
+  check("④ C 未解锁推回 A 东界-0.4", Math.abs(clampProbe.lockedX - (19.6 - 0.4)) < 0.05, `lockedX=${clampProbe.lockedX.toFixed(3)} 期望=19.2`);
 
   // ---------------- ② 预算：DC / 三角 / PointLight（C1 中段取景——C 区几何在场） ----------------
   await teleport(page, { x: 26, z: 0.4, yaw: Math.PI / 2 });

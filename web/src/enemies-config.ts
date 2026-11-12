@@ -106,11 +106,11 @@ export const ENEMY_PRESETS: Record<string, EnemySpawnSpec[]> = {
     { kind: "hollow", at: [-70, 1.0], facing: Math.PI / 2 },
     { kind: "hollow", at: [-45, 2.0], facing: Math.PI / 2 },    // 袋形墓苑 II
     { kind: "squire", at: [-22, -1.2], facing: Math.PI / 2 },   // 雾门前径侍从
-    { kind: "hollow", at: [20, 0.9], facing: -Math.PI / 2, zone: "cemetery:C" },
-    { kind: "hollow", at: [34, -1.1], facing: -Math.PI / 2, zone: "cemetery:C" },
-    // D 区碎星径（监视者胜后）：1 活尸 + 1 乌鸦——荒径上的残兵
-    { kind: "hollow", at: [73, 0.9], facing: -Math.PI / 2, zone: "cemetery:D" },
-    { kind: "crow", at: [78, -1.6], facing: Math.PI / 2, zone: "cemetery:D" },
+    { kind: "hollow", at: [30, 0.9], facing: -Math.PI / 2, zone: "cemetery:C" },
+    { kind: "hollow", at: [44, -1.1], facing: -Math.PI / 2, zone: "cemetery:C" },
+    // D 区碎星径（监视者胜后）：落在监视者东边和拉塔恩西边之间
+    { kind: "hollow", at: [97, 0.9], facing: -Math.PI / 2, zone: "cemetery:D" },
+    { kind: "crow", at: [102, -1.6], facing: Math.PI / 2, zone: "cemetery:D" },
   ],
   // 高墙 B 区 278m 长廊：三簇遭遇 + 雾门前三连（既有）；D 区月坛前导（监视者胜后）
   highwall: [

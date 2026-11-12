@@ -3,8 +3,9 @@
  * 美术方向（对标 DS3 灰烬墓地 → 法兰要塞深处）：
  *   冷灰蓝石色系为底、火光橙为唯一强调色（C 区加一支法兰冷蓝）；全 roughness≥0.8 哑光
  *   层次：灰霭天穹 + 朦胧冷月 → 雾上浮的墓园围墙/破塔/圣殿残迹/枯树剪影 →
- *         墓园径长廊（袋形墓苑 ×2）→ 古达雾门双火盆 → d24 残柱竞技场 →
- *         门 B 黑拱 → 法兰哨路（下沉暗廊·蓝灯笼）→ d24 监视者王座厅 + 缓落飘灰
+ *         墓园径长廊（袋形墓苑 ×2）→ 古达雾门双火盆 → 古达房可走 32.2m →
+ *         门 B 黑拱 → 法兰哨路（下沉暗廊·蓝灯笼）→ 监视者厅可走 36.2m + 缓落飘灰
+ *         → 碎星径 → 拉塔恩战场可走 180.2m
  * C 区美术深加工（对标 DS3 法兰要塞的病沼冷蓝意象；纯视觉表达，不改逻辑 y/zones）：
  *   下沉感——门 B 沉重黑拱 + 幽蓝门槛；C1 墙沿 x 渐高（总高 4.9→8.6m）、压顶横梁
  *   底高 3.95→3.60 越走越低（全程高于跟背相机不穿模）、地面色板渐暗、箭缝透光越走越弱；
@@ -14,8 +15,9 @@
  *   环缘残墙东北崩塌豁口望见天穹冷月、监视者雕像剪影（远景批，Boss 主题前呼）；
  *   骨堆叙事——乱骨加密 + 盔甲残骸（盾/矛/盔），路缘「深渊凝视者」跪尸剪影。
  * 分区（SceneAnchors v2，西→东；docs/design/m4-level-flow.md §3.1）：
- *   A1 出生台地(-142..-130) → A2 墓园径三段+袋形墓苑×2 → A3 古达房 d24(c=-1.5)
- *   → 门 B(9.6) → C1 法兰哨路 36m → C2 监视者房 d24(c=57)
+ *   A1 出生台地(-142..-130) → A2 墓园径三段+袋形墓苑×2 → A3 古达房 r17(c=3.5，可走 32.2)
+ *   → 门 B(19.6) → C1 法兰哨路 36m → C2 监视者房 r19(c=74，可走 36.2)
+ *   → D1 碎星径 → D2 拉塔恩战场 r91(c=195，可走 180.2)
  *   直跑 spawn→雾门 130.5m ≈ 21s @6.2m/s（教学区 20-30s 预算内）
  * 预算：静态几何按顶点色 mergeGeometries 合批（6 空间分块），场景本体 ~16 draw call；
  *   火光 PointLight ×3（雾门火盆 ×2 + A1 烛龛），C 区灯笼/烛台/门 B 幽光全 emissive 呼吸
@@ -142,27 +144,49 @@ export function buildCemetery(scene: THREE.Scene): {
   root.name = "cemetery";
   scene.add(root);
 
-  // ---------------- 分区布局（m4 §3.1；corridor 半宽 2.75=净宽 5.5m，Boss 房 d24） ----------------
+  // ---------------- 分区布局（走廊半宽 2.75=净宽 5.5m，不改） ----------------
+  // 可走直径 = 2*(r-0.9)。本房加大时西鼻 c-(r-0.9) 不动，圆心只向东移 Δr；
+  // 东侧多出来的长度 Δx=2*Δr 把更东的区块整段平移，走廊长度不变、接口不被吞掉。
+  // 古达 r17 可走 32.2（西鼻 -12.6）。监视者 r19 可走 36.2。拉塔恩 r91 可走 180.2
+  // （原作沙丘约 1km，这里只取这个网页关卡装得下的战场）。
+  const GATE_X = -10;
+  const A3C0 = -1.5, A3R0 = 12, C2C0 = 57, C2R0 = 12, D2C0 = 94, D2R0 = 14;
+  const A3R = 17;
+  const A3C = A3C0 + (A3R - A3R0);                              // 3.5；西可走边 -12.6
+  const DOOR_B = A3C + (A3R - 0.9);                             // 19.6 东可走边（A 区东界）
+  const A3_DX = (A3R - A3R0) * 2;                               // 10：C 及以东整段东移
+  const C2R = 19;
+  const C2_W = C2C0 - (C2R0 - 0.9) + A3_DX;                     // 55.9 西可走边
+  const C2C = C2_W + (C2R - 0.9);                               // 74
+  const C2_E = C2C + (C2R - 0.9);                               // 92.1 东可走边
+  const C2_DX = (C2R - C2R0) * 2;                               // 14：D 整段再东移
+  const D_DX = A3_DX + C2_DX;                                   // 24
+  const D2R = 91;
+  const D2_W = D2C0 - (D2R0 - 0.9) + D_DX;                      // 104.9 西可走边
+  const D2C = D2_W + (D2R - 0.9);                               // 195；东可走边 285.1
+  const A3k = A3R / A3R0, C2k = C2R / C2R0, D2k = D2R / D2R0;
   // 带↔盘衔接口径：切换线处「带口截面 ⊆ 盘可走半径(r-0.9)」，主路径零跳变；
-  // 袋形墓苑 r7.5 在 cx±6.0 切换（hypot(6,2.75)=6.6=r-0.9），竞技场东/西鼻 = c∓(r-0.9)。
+  // 袋形墓苑 r7.5 在 cx±6.0 切换（hypot(6,2.75)=6.6=r-0.9）。
   // C1.minX = 门B-0.4：未解锁推回值(上一区 maxX-0.4) 恰落在本带 minX 上，墙稳定在 A 东界-0.4。
-  const GATE_X = -10, A3C = -1.5, A3R = 12, DOOR_B = A3C + (A3R - 0.9);   // 门 B = 9.6（A 区东界）
-  const C2C = 57, C2R = 12, C2_W = C2C - (C2R - 0.9);                     // C2 西鼻 = 45.9
-  const D2C = 94, D2R = 14, D2_W = D2C - (D2R - 0.9);                     // D2 西鼻 = 80.9（碎星战场 d28）
-  // C2 东界统一用「可走鼻」c+r-0.9（与 A3 同约定）：衔接带 minX = 上区可走鼻-0.4，越带零跳变、锁定墙恰落本带 minX
-  const C2_E = C2C + (C2R - 0.9);                                         // C2 东鼻 = 68.1
   const HALF = 2.75, WALL_Z = 3.25;                                       // 钳制半宽 / 墙心 z
+  /** 远景剪影相对旧圆心的净空保持不变（新距离 = 旧距离 + Δr），加大后的圆不吞掉剪影 */
+  const expandXZ = (oldC: number, oldR: number, neuC: number, neuR: number, x: number, z: number): [number, number] => {
+    const dx = x - oldC;
+    const dist = Math.hypot(dx, z) || 1;
+    const s = (dist + (neuR - oldR)) / dist;
+    return [neuC + dx * s, z * s];
+  };
   const zones: SceneZone[] = [
     { id: "cemetery:A", kind: "corridor", minX: -142, maxX: -101, half: HALF },                                  // A1 台地 + A2 西径
     { id: "cemetery:A", kind: "arena", minX: -101, maxX: -89, center: new THREE.Vector3(-95, 0, 0), r: 7.5 },    // 袋形墓苑 I
     { id: "cemetery:A", kind: "corridor", minX: -89, maxX: -51, half: HALF },                                    // A2 中径
     { id: "cemetery:A", kind: "arena", minX: -51, maxX: -39, center: new THREE.Vector3(-45, 0, 0), r: 7.5 },     // 袋形墓苑 II
     { id: "cemetery:A", kind: "corridor", minX: -39, maxX: GATE_X, half: HALF },                                 // A2 东径 → 雾门
-    { id: "cemetery:A", kind: "arena", minX: GATE_X, maxX: DOOR_B, center: new THREE.Vector3(A3C, 0, 0), r: A3R },// A3 古达房 d24
-    { id: "cemetery:C", kind: "corridor", minX: DOOR_B - 0.4, maxX: C2_W, half: HALF },                          // C1 法兰哨路 36.3m
-    { id: "cemetery:C", kind: "arena", minX: C2_W, maxX: C2_E, center: new THREE.Vector3(C2C, 0, 0), r: C2R },   // C2 监视者房 d24
-    { id: "cemetery:D", kind: "corridor", minX: C2_E - 0.4, maxX: D2_W, half: HALF },                            // D1 碎星径 13.2m（监视者胜后）
-    { id: "cemetery:D", kind: "arena", minX: D2_W, maxX: D2C + D2R, center: new THREE.Vector3(D2C, 0, 0), r: D2R }, // D2 碎星战场 d28（拉塔恩）
+    { id: "cemetery:A", kind: "arena", minX: GATE_X, maxX: DOOR_B, center: new THREE.Vector3(A3C, 0, 0), r: A3R },// A3 古达 可走 32.2
+    { id: "cemetery:C", kind: "corridor", minX: DOOR_B - 0.4, maxX: C2_W, half: HALF },                          // C1 法兰哨路（长度不变）
+    { id: "cemetery:C", kind: "arena", minX: C2_W, maxX: C2_E, center: new THREE.Vector3(C2C, 0, 0), r: C2R },   // C2 监视者 可走 36.2
+    { id: "cemetery:D", kind: "corridor", minX: C2_E - 0.4, maxX: D2_W, half: HALF },                            // D1 碎星径（长度不变，监视者胜后）
+    { id: "cemetery:D", kind: "arena", minX: D2_W, maxX: D2C + D2R, center: new THREE.Vector3(D2C, 0, 0), r: D2R }, // D2 碎星战场 可走 180.2（拉塔恩）
   ];
   const anchors: SceneAnchors = {
     spawn: new THREE.Vector3(-140.5, 0, 1.4),            // A1 台地西端（来路悬崖封死）
@@ -178,7 +202,11 @@ export function buildCemetery(scene: THREE.Scene): {
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new THREE.Color(COLORS.bg);
-  scene.fog = new THREE.FogExp2(COLORS.fog, 0.042);
+  // 雾：古达/监视者对岸（≤36m）在 0.030 下仍约三成固有色；碎星战场 180m 对岸要更薄，
+  // 进 D1 后收到 0.0061，否则站在西鼻看不见东岸。出生地到古达仍是全雾。
+  const FOG_NEAR = 0.030, FOG_FIELD = 0.0061;
+  const cemFog = new THREE.FogExp2(COLORS.fog, FOG_NEAR);
+  scene.fog = cemFog;
 
   const mats: THREE.Material[] = [];
   const track = <T extends THREE.Material>(m: T): T => { mats.push(m); return m; };
@@ -255,8 +283,10 @@ export function buildCemetery(scene: THREE.Scene): {
   wallArc(-118, -16, rr(9, 13)); wallArc(-122, 15, rr(10, 14));
   wallArc(-76, -17, rr(11, 15)); wallArc(-70, 16, rr(9, 13));
   wallArc(-24, -16, rr(10, 14)); wallArc(-30, 15, rr(11, 15));
-  wallArc(-1.5, -19, rr(13, 17)); wallArc(4, 18, rr(12, 16));
-  wallArc(57, -18, rr(12, 16)); wallArc(62, 17, rr(13, 17));
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, -1.5, -19); wallArc(x, z, rr(13, 17)); }
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 4, 18); wallArc(x, z, rr(12, 16)); }
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 57, -18); wallArc(x, z, rr(12, 16)); }
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 62, 17); wallArc(x, z, rr(13, 17)); }
   const tower = (x: number, z: number, w: number, h: number): void => {
     farGeoms.push(boxG(w, h, w, x, h / 2 - 0.3, z, FAR.tower, { ry: rr(-0.1, 0.1), jitter: 0.07 }));
     for (let i = 0; i < 4; i++) if (rnd() < 0.7)         // 断口残垛
@@ -265,14 +295,17 @@ export function buildCemetery(scene: THREE.Scene): {
   tower(-134, 14, 3.4, 12);
   tower(-70, -15, 3.0, 9.5);
   tower(-24, 15, 2.6, 7);
-  tower(16, -15, 3.2, 11);                               // A3 背景破塔（门 B 拱外北侧）
-  tower(44, 16, 2.8, 8.5);
-  tower(78, -9, 3.4, 13);                                // C2 尽头王座塔影
-  for (const s of [-1, 1]) farGeoms.push(boxG(1.3, 7.5, 1.3, 18.5, 3.45, s * 5.2, FAR.chapel, { jitter: 0.06 }));  // 圣殿残柱（A3 东沿）
-  farGeoms.push(boxG(9.5, 1.1, 1.5, 18.9, 7.6, 0, FAR.chapel, { rz: 0.06, jitter: 0.06 }));                       // 断拱梁
-  farGeoms.push(boxG(1.0, 1.0, 1.2, 18.7, 8.6, -1.2, FAR.teeth));                                                  // 梁上残块
-  farGeoms.push(boxG(2.6, 6.5, 0.9, 74, 3.0, -5.4, FAR.crypt, { ry: 0.2 }));                                       // 监视者王座剪影 ×2
-  farGeoms.push(boxG(2.2, 5.2, 0.9, 74.6, 2.4, 5.0, FAR.crypt, { ry: -0.15 }));
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 16, -15); tower(x, z, 3.2, 11); }   // A3 背景破塔（门 B 拱外北侧）
+  tower(44 + A3_DX, 16, 2.8, 8.5);                       // C1 哨路远塔，随哨路东移
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 78, -9); tower(x, z, 3.4, 13); }  // C2 尽头王座塔影
+  for (const s of [-1, 1]) {                             // 圣殿残柱（A3 东沿，净空随新半径外推）
+    const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 18.5, s * 5.2);
+    farGeoms.push(boxG(1.3, 7.5, 1.3, x, 3.45, z, FAR.chapel, { jitter: 0.06 }));
+  }
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 18.9, 0); farGeoms.push(boxG(9.5, 1.1, 1.5, x, 7.6, z, FAR.chapel, { rz: 0.06, jitter: 0.06 })); } // 断拱梁
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 18.7, -1.2); farGeoms.push(boxG(1.0, 1.0, 1.2, x, 8.6, z, FAR.teeth)); } // 梁上残块
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 74, -5.4); farGeoms.push(boxG(2.6, 6.5, 0.9, x, 3.0, z, FAR.crypt, { ry: 0.2 })); } // 监视者王座剪影 ×2
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 74.6, 5.0); farGeoms.push(boxG(2.2, 5.2, 0.9, x, 2.4, z, FAR.crypt, { ry: -0.15 })); }
   const watcher = (x: number, z: number, s: number, ry: number): void => {    // 监视者雕像剪影（Boss 房守望者主题前呼）
     const tone = 0x0c0f16, fx = Math.sin(ry), fz = Math.cos(ry);
     farGeoms.push(boxG(0.5 * s, 0.16 * s, 0.5 * s, x, 0.08 * s, z, tone, { ry }));                        // 基座
@@ -281,9 +314,9 @@ export function buildCemetery(scene: THREE.Scene): {
     farGeoms.push(boxG(0.055 * s, 2.7 * s, 0.1 * s, x + fx * 0.42 * s, 1.34 * s, z + fz * 0.42 * s, 0x0a0d13, { ry }));  // 拄地大剑
     farGeoms.push(boxG(0.3 * s, 0.06 * s, 0.16 * s, x + fx * 0.42 * s, 2.6 * s, z + fz * 0.42 * s, 0x0a0d13, { ry }));  // 剑格
   };
-  watcher(70.5, -13.5, 1.5, -Math.PI / 2);         // C2 东北崩塌豁口正中立影（西望场心，月下孤高）
-  watcher(78.5, 1.5, 1.2, -Math.PI / 2 + 0.2);
-  watcher(71.5, 11.5, 0.95, -Math.PI / 2 - 0.3);
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 70.5, -13.5); watcher(x, z, 1.5, -Math.PI / 2); } // C2 东北崩塌豁口正中立影
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 78.5, 1.5); watcher(x, z, 1.2, -Math.PI / 2 + 0.2); }
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 71.5, 11.5); watcher(x, z, 0.95, -Math.PI / 2 - 0.3); }
   const deadTree = (x: number, z: number, s: number, lean: number): void => {    // 枯树剪影（围墙之内，最近一层）
     farGeoms.push(cylG(0.05 * s, 0.17 * s, 2.5 * s, 7, x, 1.25 * s, z, FAR.tree, { rz: lean, jitter: 0.15 }));
     for (let b = 0; b < 5; b++) {
@@ -296,9 +329,9 @@ export function buildCemetery(scene: THREE.Scene): {
   deadTree(-80, -13, 0.85, 0.12);
   deadTree(-58, 12, 1.1, -0.1);
   deadTree(-30, -14, 0.9, 0.13);
-  deadTree(5, 13, 1.2, -0.12);
-  deadTree(36, -12, 1.0, 0.1);
-  deadTree(66, 13, 1.15, -0.13);
+  { const [x, z] = expandXZ(A3C0, A3R0, A3C, A3R, 5, 13); deadTree(x, z, 1.2, -0.12); }
+  deadTree(36 + A3_DX, -12, 1.0, 0.1);
+  { const [x, z] = expandXZ(C2C0, C2R0, C2C, C2R, 66, 13); deadTree(x, z, 1.15, -0.13); }
   root.add(batch(farGeoms, track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false })), "none"));
 
   // ---------------- 主石构 + 地面：按空间分 5 块合批（frustum 剔剪），共享 1 个顶点色材质 ----------------
@@ -500,13 +533,14 @@ export function buildCemetery(scene: THREE.Scene): {
     brazier(E, GATE_X - 1.05, -3.05, 2.4);
   }
 
-  // —— A3 古达 Boss 房（d24，c=-1.5）：残柱环 + 外圈墓群（敞场废墟，沿用原版竞技场语言） ——
+  // —— A3 古达 Boss 房（r17，c=3.5，可走 32.2）：残柱环贴新圆边 + 外圈墓群 ——
   {
     const E = structE, cx = A3C;
+    const colR = A3R - 0.5;                              // 旧 11.5 = r-0.5，贴可走边外侧
     for (let i = 0; i < 11; i++) {
       const a = (i / 11) * Math.PI * 2 + 0.28;
       if (Math.abs(Math.cos(a)) > 0.86) continue;        // 让开东西两口（雾门/门 B）
-      const x = cx + Math.cos(a) * 11.5, z = Math.sin(a) * 11.5;
+      const x = cx + Math.cos(a) * colR, z = Math.sin(a) * colR;
       const h = 1.5 + ((i * 7919) % 100) / 100 * 2.0;
       E.push(boxG(0.85, 0.26, 0.85, x, 0.13, z, PAL.stoneMid, { jitter: 0.08 }));
       E.push(cylG(0.3, 0.35, h, 9, x, 0.26 + h / 2, z, PAL.stone, { jitter: 0.1 }));
@@ -515,7 +549,7 @@ export function buildCemetery(scene: THREE.Scene): {
     for (let i = 0; i < 16; i++) {                       // 外环墓群（墙界之外）
       const a = (i / 16) * Math.PI * 2 + 0.22;
       if (Math.abs(Math.cos(a)) > 0.82) continue;
-      grave(E, cx + Math.cos(a) * rr(13.5, 16.5), Math.sin(a) * rr(13.5, 16.5));
+      grave(E, cx + Math.cos(a) * rr(A3R + 1.5, A3R + 4.5), Math.sin(a) * rr(A3R + 1.5, A3R + 4.5));
     }
     rubble(E, cx + 3.5, -4.8, 0.7, 7); rubble(E, cx - 4.6, 5.2, 0.6, 6); rubble(E, cx + 6.8, 2.2, 0.6, 5);
     // 门 B（A 区东界 → C 区）：沉重黑拱 + 幽蓝门槛——「坠入深处」的门洞（进出无碰撞，深处由主线程 zoneUnlocks 把关）
@@ -546,7 +580,7 @@ export function buildCemetery(scene: THREE.Scene): {
     rubble(E, DOOR_B - 0.9, 2.9, 0.5, 4); rubble(E, DOOR_B - 0.6, -3.0, 0.45, 3);                     // 门前塌落碎石
   }
 
-  // —— C1 法兰哨路（9.6..45.9，36m 下沉暗廊）：墙沿 x 渐高、压顶横梁渐低、地面渐暗、缝光渐弱 ——
+  // —— C1 法兰哨路（门 B..C2 西鼻，36m 下沉暗廊，整段随 A3 东移）：墙沿 x 渐高、压顶横梁渐低、地面渐暗、缝光渐弱 ——
   {
     const C = structC;
     const X0 = DOOR_B + 0.4, X1 = C2_W - 0.4;
@@ -606,7 +640,7 @@ export function buildCemetery(scene: THREE.Scene): {
       haloQ(x, 2.62, s * 2.76, 1.15, s > 0 ? Math.PI : 0);                            // 光晕（halo 批）
       mossPatch(C, x - 0.55, x + 0.55, s, 0.95, 2.935);                               // 龛下湿痕
     };
-    lantern(15, 1); lantern(23, -1); lantern(31, 1); lantern(39, -1);
+    lantern(15 + A3_DX, 1); lantern(23 + A3_DX, -1); lantern(31 + A3_DX, 1); lantern(39 + A3_DX, -1);
     // —— 法兰残旗 ×2：撕裂多边形 + 湿重下垂（顶点色做旧渐变，静态并入石构批）——
     const banner = (x: number, s: number): void => {
       C.push(cylG(0.045, 0.06, 5.2, 7, x, 2.6, s * 3.05, 0x2c2620, { rz: rr(-0.05, 0.05), jitter: 0.1 }));
@@ -617,7 +651,7 @@ export function buildCemetery(scene: THREE.Scene): {
       fg.translate(x, 4.68, s * 2.44);
       C.push(fg);
     };
-    banner(19, 1); banner(35, -1);
+    banner(19 + A3_DX, 1); banner(35 + A3_DX, -1);
     // —— 骨堆叙事：乱骨+颅骨加密（监视者的旧部）——
     const bones = (x: number, s: number): void => {
       for (let i = 0; i < 8; i++)
@@ -625,7 +659,7 @@ export function buildCemetery(scene: THREE.Scene): {
       C.push(dodG(rr(0.16, 0.24), x, 0.16, s * 2.35, PAL.bone, { ry: rnd() * 3 }));
       C.push(boxG(0.16, 0.13, 0.15, x + rr(-0.5, 0.5), 0.1, s * rr(2.1, 2.6), PAL.bone, { ry: rnd() * 3 }));   // 颅骨
     };
-    bones(12.5, -1); bones(27, 1); bones(33.5, -1); bones(43, 1);
+    bones(12.5 + A3_DX, -1); bones(27 + A3_DX, 1); bones(33.5 + A3_DX, -1); bones(43 + A3_DX, 1);
     // —— 盔甲残骸（盾/矛/盔/断剑散件，合批剪影）——
     const armor = (x: number, s: number): void => {
       C.push(cylG(0.3, 0.3, 0.05, 10, x, 0.3, s * 2.6, 0x2b2f37, { rx: Math.PI / 2 - 0.3, ry: rnd() * 3 }));    // 倚墙圆盾
@@ -635,7 +669,7 @@ export function buildCemetery(scene: THREE.Scene): {
       C.push(boxG(0.2, 0.15, 0.2, x - 0.5, 0.09, s * 2.3, 0x2b2f37, { ry: rnd() * 3, rz: 0.2 }));                // 滚落头盔
       C.push(boxG(0.05, rr(0.5, 0.8), 0.02, x + rr(-0.8, 0.8), 0.28, s * rr(2.2, 2.7), PAL.steel, { ry: rnd() * 3, rz: rr(0.3, 0.7) }));  // 断剑
     };
-    armor(21.5, -1); armor(37, 1);
+    armor(21.5 + A3_DX, -1); armor(37 + A3_DX, 1);
     // —— 路缘「深渊凝视者」跪尸（低模剪影批：跪伏躬身，面朝深处）——
     const kneeler = (x: number, z: number, ry: number): void => {
       const tone = 0x191c23, fx = Math.sin(ry), fz = Math.cos(ry);
@@ -645,21 +679,22 @@ export function buildCemetery(scene: THREE.Scene): {
       C.push(boxG(0.08, 0.42, 0.08, x + fz * 0.16 + fx * 0.26, 0.28, z - fx * 0.16 + fz * 0.26, tone, { ry, rz: 0.35 }));  // 撑地手臂 ×2
       C.push(boxG(0.08, 0.42, 0.08, x - fz * 0.16 + fx * 0.26, 0.28, z + fx * 0.16 + fz * 0.26, tone, { ry, rz: -0.35 }));
     };
-    kneeler(17.8, -2.25, Math.PI / 2 + 0.18);
-    kneeler(38.4, 2.3, Math.PI / 2 - 0.24);
-    rubble(C, 21, -1.8, 0.55, 5); rubble(C, 41.5, 1.9, 0.5, 4);
+    kneeler(17.8 + A3_DX, -2.25, Math.PI / 2 + 0.18);
+    kneeler(38.4 + A3_DX, 2.3, Math.PI / 2 - 0.24);
+    rubble(C, 21 + A3_DX, -1.8, 0.55, 5); rubble(C, 41.5 + A3_DX, 1.9, 0.5, 4);
     mossPatch(C, X0 + 1.2, X0 + 4.6, -1, 1.15, 2.935);                                // 墙脚苔纹湿痕 ×3
-    mossPatch(C, 28.6, 32.4, 1, 1.3, 2.935);
+    mossPatch(C, 28.6 + A3_DX, 32.4 + A3_DX, 1, 1.3, 2.935);
     mossPatch(C, X1 - 5.2, X1 - 1.6, -1, 1.0, 2.935);
   }
 
-  // —— C2 监视者 Boss 房（d24，c=57）：符文尖碑环 + 环缘残墙（崩塌豁口望冷月）+ 断王座仪式 + 蓝烛台 ——
+  // —— C2 监视者 Boss 房（r19，c=74，可走 36.2）：符文尖碑环 + 环缘残墙 + 断王座仪式 + 蓝烛台 ——
   {
     const C = structC, cx = C2C;
+    const obeliskR = C2R - 0.5;                         // 旧 11.5 = r-0.5，贴可走边外侧
     for (let i = 0; i < 10; i++) {                       // 尖碑环（让开西口；朝场一面刻法兰符文 emissive）
       const a = (i / 10) * Math.PI * 2 + 0.31;
       if (Math.cos(a) > 0.86) continue;
-      const x = cx + Math.cos(a) * 11.5, z = Math.sin(a) * 11.5;
+      const x = cx + Math.cos(a) * obeliskR, z = Math.sin(a) * obeliskR;
       const h = 2.2 + ((i * 7919) % 100) / 100 * 1.3;
       const ry0 = -a + Math.PI / 2;                      // 碑身切向对齐（符文面贴实）
       const sd = rr(0.35, 0.5);
@@ -670,8 +705,8 @@ export function buildCemetery(scene: THREE.Scene): {
         blueGeoms.push(boxG(rr(0.05, 0.1), rr(0.18, 0.4), 0.05,
           x - Math.cos(a) * (sd / 2 + 0.028), 0.85 + k * 0.62 + rnd() * 0.2, z - Math.sin(a) * (sd / 2 + 0.028), 0x000000, { ry: ry0 }));
     }
-    // 环缘残墙（r≈12.45，让开西口/南侧封门位）：东北段崩塌豁口——豁口之上望见天穹冷月与监视者立影
-    const RIM = 12.45, moonA = -0.59, doorA = Math.atan2(-13.2, 2.2);
+    // 环缘残墙（贴 r+0.45，让开西口/南侧封门位）：东北段崩塌豁口——豁口之上望见天穹冷月与监视者立影
+    const RIM = C2R + 0.45, moonA = -0.59, doorA = Math.atan2(-13.2, 2.2);
     for (let i = 0; i < 26; i++) {
       const a = (i / 26) * Math.PI * 2 + 0.09;
       if (Math.cos(a) < -0.82) continue;                                     // 让开西口（走廊衔接）
@@ -685,9 +720,9 @@ export function buildCemetery(scene: THREE.Scene): {
         C.push(boxG(0.6, mh, 0.45, cx + Math.cos(a) * (RIM - 0.05), h + 0.15 + mh / 2, Math.sin(a) * (RIM - 0.05), PAL.cryptMid, { ry: -a + Math.PI / 2, jitter: 0.14 }));
       }
     }
-    rubble(C, cx + Math.cos(moonA) * 10.5, Math.sin(moonA) * 10.5, 0.85, 7); // 豁口内侧塌落碎石
-    // —— 东沿断王座：三层仪式台阶 + 高背主座 + 两侧残座 + 散落王冠 + 剑冢插地（Boss 背景地标）——
-    const TX = cx + 9.7;
+    rubble(C, cx + Math.cos(moonA) * (RIM - 1.95), Math.sin(moonA) * (RIM - 1.95), 0.85, 7); // 豁口内侧塌落碎石（环内 1.95m，同旧 12.45-10.5）
+    // —— 东沿断王座：三层仪式台阶 + 高背主座 + 两侧残座 + 散落王冠 + 剑冢插地（贴新东沿）——
+    const TX = cx + (C2R - 2.3);                         // 旧 cx+9.7 = r-2.3，靠背仍贴环墙内侧
     C.push(boxG(6.6, 0.2, 7.8, TX - 0.5, 0.1, 0, PAL.cryptMid, { jitter: 0.07 }));       // 一层台
     C.push(boxG(5.4, 0.2, 6.0, TX + 0.2, 0.3, 0, PAL.cryptMid, { jitter: 0.07 }));       // 二层台
     C.push(boxG(4.2, 0.22, 4.3, TX + 0.9, 0.5, 0, PAL.crypt, { jitter: 0.07 }));         // 三层台
@@ -720,13 +755,13 @@ export function buildCemetery(scene: THREE.Scene): {
       if (len > 0.55)
         C.push(boxG(0.24, 0.045, 0.05, x + dx * 1.5, Math.cos(tilt) * len * 0.76, z + dz * 1.5, 0x2c3038, { ry, rz: leanX ? tilt : 0, rx: leanX ? 0 : tilt }));
     };
-    for (const [sx, sz, ry, leanX, tilt, len] of [
-      [63.2, -2.5, 0.4, 0, 0.28, 1.05], [64.1, -1.5, 1.2, 1, 0.22, 0.9], [63.0, -0.4, 2.2, 0, 0.38, 1.2],
-      [64.6, 0.6, 0.8, 1, 0.3, 0.85], [63.4, 1.7, 2.8, 0, 0.2, 1.0], [64.9, 2.6, 1.9, 1, 0.42, 0.7],
-      [62.2, 0.9, 0.1, 0, 0.5, 0.6], [65.3, -0.9, 1.5, 1, 0.55, 0.4], [62.8, 2.4, 2.5, 0, 0.15, 0.95],
-    ] as const) sword(sx, sz, ry, leanX === 1, tilt, len);
-    const candelabra = (a: number): void => {            // 蓝烛台（三脚 + 光芯 + 光晕）
-      const x = cx + Math.cos(a) * 10.4, z = Math.sin(a) * 10.4;
+    for (const [dx, sz, ry, leanX, tilt, len] of [
+      [-3.5, -2.5, 0.4, 0, 0.28, 1.05], [-2.6, -1.5, 1.2, 1, 0.22, 0.9], [-3.7, -0.4, 2.2, 0, 0.38, 1.2],
+      [-2.1, 0.6, 0.8, 1, 0.3, 0.85], [-3.3, 1.7, 2.8, 0, 0.2, 1.0], [-1.8, 2.6, 1.9, 1, 0.42, 0.7],
+      [-4.5, 0.9, 0.1, 0, 0.5, 0.6], [-1.4, -0.9, 1.5, 1, 0.55, 0.4], [-3.9, 2.4, 2.5, 0, 0.15, 0.95],
+    ] as const) sword(TX + dx, sz, ry, leanX === 1, tilt, len);   // 相对旧座石 TX=66.7 的偏移，跟着新东沿走
+    const candelabra = (a: number): void => {            // 蓝烛台（三脚 + 光芯 + 光晕；旧 r-1.6，仍在可走边内侧 0.7m）
+      const x = cx + Math.cos(a) * (C2R - 1.6), z = Math.sin(a) * (C2R - 1.6);
       for (let i = 0; i < 3; i++) {
         const la = (i / 3) * Math.PI * 2 + 0.5;
         C.push(cylG(0.03, 0.04, 1.2, 5, x + Math.cos(la) * 0.2, 0.58, z + Math.sin(la) * 0.2, PAL.bone, { ry: -la, rz: 0.22 }));
@@ -742,8 +777,9 @@ export function buildCemetery(scene: THREE.Scene): {
       root.add(light);
       glowLights.push({ light, ph: 4.1, base: 2.2 });
     }
-    C.push(boxG(2.0, 2.4, 0.6, cx + 2.2, 1.2, -13.2, PAL.cryptMid, { ry: 0.3, jitter: 0.1 }));   // 南缘封死侧门（监视者胜后的 C2→A2 捷径位，T6 开）
-    C.push(boxG(1.4, 1.8, 0.4, cx + 2.0, 0.9, -13.5, PAL.cryptDeep, { ry: 0.3 }));
+    const doorS = RIM / (C2R0 + 0.45);                   // 南缘封门沿同一射线贴到新环外（旧环 12.45）
+    C.push(boxG(2.0, 2.4, 0.6, cx + 2.2 * doorS, 1.2, -13.2 * doorS, PAL.cryptMid, { ry: 0.3, jitter: 0.1 }));   // 南缘封死侧门（监视者胜后的 C2→A2 捷径位，T6 开）
+    C.push(boxG(1.4, 1.8, 0.4, cx + 2.0 * doorS, 0.9, -13.5 * doorS, PAL.cryptDeep, { ry: 0.3 }));
     rubble(C, cx - 4.5, -6.2, 0.6, 6); rubble(C, cx + 5.5, 6.5, 0.6, 6); rubble(C, cx - 7.5, 3.5, 0.5, 5);
   }
 
@@ -751,7 +787,8 @@ export function buildCemetery(scene: THREE.Scene): {
   {
     const W = floorW, E = floorE;
     W.push(boxG(110, 0.12, 74, -91, -0.07, 0, 0x14161b, { jitter: 0.05 }));              // 大地·西半（远景基面）
-    E.push(boxG(112, 0.12, 74, 20, -0.07, 0, 0x14161b, { jitter: 0.05 }));               // 大地·东半
+    const gX0 = -36, gX1 = D2C + D2R + 24;                                              // 东半铺过拉塔恩圆边，相机在可走边外仍踩得到地
+    E.push(boxG(gX1 - gX0, 0.12, (D2R + 24) * 2, (gX0 + gX1) / 2, -0.07, 0, 0x14161b, { jitter: 0.05 })); // 大地·东半
     W.push(boxG(12.6, 0.16, 7.2, -136, -0.02, 0, PAL.mortar, { jitter: 0.08 }));         // A1 台地基座
     const slabRun = (dst: THREE.BufferGeometry[], x0: number, x1: number, tones: number[]): void => {
       let i = 0;
@@ -765,9 +802,9 @@ export function buildCemetery(scene: THREE.Scene): {
     slabRun(E, -38.8, GATE_X - 0.4, [PAL.pathC, PAL.pathA, PAL.pathB, PAL.pathB]);
     W.push(paint(new THREE.CircleGeometry(7.0, 40).rotateX(-Math.PI / 2).translate(-95, 0.001, 0), COLORS.ground, 0.05));   // 墓苑 I 场地
     W.push(paint(new THREE.CircleGeometry(7.0, 40).rotateX(-Math.PI / 2).translate(-45, 0.001, 0), COLORS.ground, 0.05));   // 墓苑 II 场地
-    E.push(paint(new THREE.CircleGeometry(12.2, 48).rotateX(-Math.PI / 2).translate(A3C, 0.001, 0), COLORS.ground, 0.05));  // A3 场地
-    E.push(paint(new THREE.RingGeometry(2.6, 3.0, 44).rotateX(-Math.PI / 2).translate(A3C, 0.012, 0), 0x1c2026, 0.06));     // A3 环纹 ×2
-    E.push(paint(new THREE.RingGeometry(8.4, 8.9, 44).rotateX(-Math.PI / 2).translate(A3C, 0.014, 0), 0x1b1f24, 0.06));
+    E.push(paint(new THREE.CircleGeometry(A3R + 0.2, 48).rotateX(-Math.PI / 2).translate(A3C, 0.001, 0), COLORS.ground, 0.05));  // A3 场地（旧 r+0.2）
+    E.push(paint(new THREE.RingGeometry(2.6 * A3k, 3.0 * A3k, 44).rotateX(-Math.PI / 2).translate(A3C, 0.012, 0), 0x1c2026, 0.06));     // A3 环纹 ×2
+    E.push(paint(new THREE.RingGeometry(8.4 * A3k, 8.9 * A3k, 44).rotateX(-Math.PI / 2).translate(A3C, 0.014, 0), 0x1b1f24, 0.06));
     W.push(paint(new THREE.CircleGeometry(1.0, 20).rotateX(-Math.PI / 2).translate(-140.5, 0.015, 0), PAL.ash, 0.12));      // 篝火灰圈
     {   // C1 暗廊石板：沿 x 色板渐沉（cryptPath→近黑），偶发塌陷缺板露出暗床——越走越深的地面
       let i = 0;
@@ -778,10 +815,10 @@ export function buildCemetery(scene: THREE.Scene): {
         i++;
       }
     }
-    E.push(paint(new THREE.CircleGeometry(12.2, 48).rotateX(-Math.PI / 2).translate(C2C, 0.001, 0), 0x191c22, 0.05));       // C2 场地
-    E.push(paint(new THREE.RingGeometry(3.1, 3.55, 44).rotateX(-Math.PI / 2).translate(C2C, 0.012, 0), 0x232a38, 0.07));    // C2 深蓝徽环（法兰纹）
-    E.push(paint(new THREE.RingGeometry(9.0, 9.4, 44).rotateX(-Math.PI / 2).translate(C2C, 0.014, 0), 0x1d2129, 0.06));
-    for (const [px, pz] of [[14, 1.9], [22, -2.0], [30, 1.8], [38, -1.9], [44, 1.2], [C2C - 6, -5.5], [C2C + 2, 6.2], [C2C + 7.5, -3.0]] as const)
+    E.push(paint(new THREE.CircleGeometry(C2R + 0.2, 48).rotateX(-Math.PI / 2).translate(C2C, 0.001, 0), 0x191c22, 0.05));       // C2 场地（旧 r+0.2）
+    E.push(paint(new THREE.RingGeometry(3.1 * C2k, 3.55 * C2k, 44).rotateX(-Math.PI / 2).translate(C2C, 0.012, 0), 0x232a38, 0.07));    // C2 深蓝徽环（法兰纹）
+    E.push(paint(new THREE.RingGeometry(9.0 * C2k, 9.4 * C2k, 44).rotateX(-Math.PI / 2).translate(C2C, 0.014, 0), 0x1d2129, 0.06));
+    for (const [px, pz] of [[14 + A3_DX, 1.9], [22 + A3_DX, -2.0], [30 + A3_DX, 1.8], [38 + A3_DX, -1.9], [44 + A3_DX, 1.2], [C2C - 6, -5.5], [C2C + 2, 6.2], [C2C + 7.5, -3.0]] as const)
       E.push(paint(new THREE.CircleGeometry(rr(0.55, 1.1), 14).rotateX(-Math.PI / 2).translate(px, 0.021, pz), 0x1b222b, 0.1));   // 病沼湿痕（冷青暗斑）
     // —— D 区地板：碎星径荒灰石板（焦红渐入）+ D2 战场场地/陨坑焦痕/重力紫徽环 ——
     {
@@ -791,17 +828,18 @@ export function buildCemetery(scene: THREE.Scene): {
         E.push(boxG(1.06, 0.07, 5.9, x + 0.53, 0.004 + (i % 2) * 0.004, rr(-0.02, 0.02), mix(0x282226, 0x1e1a1c, d), { jitter: 0.07 }));
         i++;
       }
-      E.push(paint(new THREE.CircleGeometry(14.2, 52).rotateX(-Math.PI / 2).translate(D2C, 0.001, 0), 0x1b181c, 0.05));      // D2 战场场地（荒灰近黑）
-      E.push(paint(new THREE.RingGeometry(4.2, 4.8, 48).rotateX(-Math.PI / 2).translate(D2C, 0.012, 0), 0x2e2440, 0.08));    // 重力紫徽环（拉塔恩纹）
-      E.push(paint(new THREE.RingGeometry(10.6, 11.2, 48).rotateX(-Math.PI / 2).translate(D2C, 0.014, 0), 0x231d28, 0.07));
-      for (const [cx2, cz2, cr] of [[D2C - 6.5, -5.0, 2.2], [D2C + 5.5, 4.5, 1.7], [D2C + 2.0, -8.0, 1.2], [D2C - 3.0, 8.0, 0.9]] as const) {   // 陨坑焦痕 ×4
-        E.push(paint(new THREE.CircleGeometry(cr, 20).rotateX(-Math.PI / 2).translate(cx2, 0.02, cz2), 0x121014, 0.16));
-        E.push(paint(new THREE.RingGeometry(cr, cr + 0.35, 20).rotateX(-Math.PI / 2).translate(cx2, 0.022, cz2), 0x241d20, 0.12));
+      E.push(paint(new THREE.CircleGeometry(D2R + 0.2, 64).rotateX(-Math.PI / 2).translate(D2C, 0.001, 0), 0x1b181c, 0.05));      // D2 战场场地铺到新圆边（旧 r+0.2）
+      E.push(paint(new THREE.RingGeometry(4.2 * D2k, 4.8 * D2k, 64).rotateX(-Math.PI / 2).translate(D2C, 0.012, 0), 0x2e2440, 0.08));    // 重力紫徽环（拉塔恩纹）
+      E.push(paint(new THREE.RingGeometry(10.6 * D2k, 11.2 * D2k, 64).rotateX(-Math.PI / 2).translate(D2C, 0.014, 0), 0x231d28, 0.07));
+      for (const [ox, oz, cr] of [[-6.5, -5.0, 2.2], [5.5, 4.5, 1.7], [2.0, -8.0, 1.2], [-3.0, 8.0, 0.9]] as const) {   // 陨坑焦痕 ×4，按新半径铺开
+        const cx2 = D2C + ox * D2k, cz2 = oz * D2k, rk = cr * D2k;
+        E.push(paint(new THREE.CircleGeometry(rk, 24).rotateX(-Math.PI / 2).translate(cx2, 0.02, cz2), 0x121014, 0.16));
+        E.push(paint(new THREE.RingGeometry(rk, rk + 0.35 * D2k, 24).rotateX(-Math.PI / 2).translate(cx2, 0.022, cz2), 0x241d20, 0.12));
       }
     }
   }
 
-  // —— D 区石构（碎星战场：C2 东口塌方 → 荒径 → d28 战场；剑冢+陨石+断柱，重力紫 shard 走独立 emissive 批） ——
+  // —— D 区石构（碎星战场：C2 东口塌方 → 荒径 → r91 战场；剑冢+陨石+断柱，重力紫 shard 走独立 emissive 批） ——
   {
     const D = structD;
     // D1 荒径墙体（碎星径：残墙更矮更破——被「星坠」砸过的痕迹）
@@ -811,34 +849,36 @@ export function buildCemetery(scene: THREE.Scene): {
     D.push(dodG(1.1, C2_E + 0.7, 0.5, 1.9, PAL.stoneDeep, { ry: 1.8 }));
     D.push(boxG(3.4, 0.4, 0.5, C2_E + 1.4, 2.6, -1.2, PAL.stoneMid, { rz: 0.18, ry: 0.3, jitter: 0.1 }));   // 探出断梁
     rubble(D, C2_E + 2.0, 0.2, 0.6, 6);
-    // D2 环缘残墙（r≈14.1，西口让位 ±28°，随机残缺——比监视者房更残破）
+    // D2 环缘残墙（贴 r-0.1..r+0.8，西口让位 ±28°，切向宽度按半径放大，否则 3.6m 墙段在 180m 圆上消失）
     for (let i = 0; i < 18; i++) {
       const a = Math.PI + (Math.PI * 2 * i) / 18;
       const mouth = Math.cos(a % (Math.PI * 2)) < -0.883;   // 西口 ±28°
       if (mouth || rnd() < 0.22) continue;
-      const r = rr(13.9, 14.8);
-      D.push(boxG(3.6, rr(1.2, 3.0), 0.5, D2C + Math.cos(a) * r, rr(0.6, 1.5), Math.sin(a) * r, PAL.stoneDark, { ry: -a + Math.PI / 2, jitter: 0.12 }));
+      const r = rr(D2R - 0.1, D2R + 0.8);
+      D.push(boxG(3.6 * D2k, rr(1.2, 3.0), 0.5, D2C + Math.cos(a) * r, rr(0.6, 1.5), Math.sin(a) * r, PAL.stoneDark, { ry: -a + Math.PI / 2, jitter: 0.12 }));
     }
-    // 陨石半埋 ×3（紫纹巨砾——「星坠」的实体证词；裂纹走 purpleGeoms 重力微光）
-    for (const [mx, mz, ms] of [[D2C - 6.5, -5.0, 1.05], [D2C + 5.5, 4.5, 0.85], [D2C + 2.0, -8.0, 0.6]] as const) {
+    // 陨石半埋 ×3（紫纹巨砾——「星坠」的实体证词；位置随陨坑铺到新战场，裂纹走 purpleGeoms）
+    for (const [ox, oz, ms] of [[-6.5, -5.0, 1.05], [5.5, 4.5, 0.85], [2.0, -8.0, 0.6]] as const) {
+      const mx = D2C + ox * D2k, mz = oz * D2k;
       D.push(dodG(ms, mx, ms * 0.45, mz, 0x241f2a, { ry: rnd() * 3, rx: rnd() * 0.4 }));
       for (let k = 0; k < 3; k++)
         purpleGeoms.push(dodG(ms * 0.16, mx + rr(-ms * 0.5, ms * 0.5), ms * 0.4 + rr(-0.1, 0.2), mz + rr(-ms * 0.5, ms * 0.5), 0x1a1424, { ry: rnd() * 3, rz: rnd() * 3 }));
     }
     // 剑冢插地 ×12（碎星祭的献剑——战场遍地）
     for (let i = 0; i < 12; i++) {
-      const a = rnd() * Math.PI * 2, r = rr(4.5, 11.5);
+      const a = rnd() * Math.PI * 2, r = rr(4.5, 11.5) * D2k;
       D.push(boxG(0.06, rr(0.8, 1.25), 0.024, D2C + Math.cos(a) * r, 0.45, Math.sin(a) * r, PAL.steel, { ry: rnd() * 3, rz: rr(-0.35, 0.35) }));
       if (rnd() < 0.4) D.push(boxG(0.16, 0.05, 0.05, D2C + Math.cos(a) * r, 0.62, Math.sin(a) * r, PAL.steel, { ry: rnd() * 3 }));   // 护手残段
     }
     // 断柱环 ×5（战前廊柱的残段——高低参差）
     for (const a of [0.4, 1.7, 2.9, 4.2, 5.4])
-      D.push(cylG(0.34, 0.4, rr(0.8, 2.6), 7, D2C + Math.cos(a) * rr(8.5, 10.5), 0.5, Math.sin(a) * rr(8.5, 10.5), PAL.stoneDeep, { jitter: 0.1 }));
-    // 坠骑残骸（碎星祭的战马与骑士——远景剪影，东北角）
-    D.push(boxG(1.6, 0.55, 0.5, D2C + 7.5, 0.3, -8.5, 0x26222a, { ry: -0.8, jitter: 0.12 }));
-    D.push(boxG(0.5, 0.9, 0.35, D2C + 8.3, 0.45, -8.2, 0x26222a, { ry: -0.5, rz: 0.3 }));
-    // 路缘碎石
-    for (const [rx2, rz2] of [[72, -2.6], [76, 2.7], [79, -2.5]] as const) rubble(D, rx2, rz2, 0.4, 3);
+      D.push(cylG(0.34, 0.4, rr(0.8, 2.6), 7, D2C + Math.cos(a) * rr(8.5, 10.5) * D2k, 0.5, Math.sin(a) * rr(8.5, 10.5) * D2k, PAL.stoneDeep, { jitter: 0.1 }));
+    // 坠骑残骸（碎星祭的战马与骑士——东北；整组按半径外推，零件相对位置不动）
+    const hx = D2C + 7.9 * D2k, hz = -8.35 * D2k;
+    D.push(boxG(1.6, 0.55, 0.5, hx - 0.4, 0.3, hz - 0.15, 0x26222a, { ry: -0.8, jitter: 0.12 }));
+    D.push(boxG(0.5, 0.9, 0.35, hx + 0.4, 0.45, hz + 0.15, 0x26222a, { ry: -0.5, rz: 0.3 }));
+    // 路缘碎石（D1 荒径，整段东移）
+    for (const [rx2, rz2] of [[72 + D_DX, -2.6], [76 + D_DX, 2.7], [79 + D_DX, -2.5]] as const) rubble(D, rx2, rz2, 0.4, 3);
   }
   root.add(batch(structW, stoneMat, "both"));
   root.add(batch(structE, stoneMat, "both"));
@@ -878,11 +918,11 @@ export function buildCemetery(scene: THREE.Scene): {
     root.add(mesh);
     mists.push({ mesh, bx: x, bz: z, dx: rr(1.4, 2.8), dz: rr(1.0, 2.2), ph: rnd() * 6.28, spx: rr(0.04, 0.09), spz: rr(0.03, 0.07) });
   };
-  mistAt(11.2, 0.24, 0, 3.2, true);                     // 门 B 门槛溢出的冷息
-  mistAt(14.5, 0.22, 0.5, 4.6, true); mistAt(19.5, 0.5, -0.5, 5.2, false);
-  mistAt(26.5, 0.2, 0.4, 5.0, true); mistAt(33, 0.55, -0.4, 5.6, false);
-  mistAt(40.5, 0.26, 0.2, 4.8, true);
-  mistAt(C2C, 0.3, 0, 9.5, true);                       // C2 病沼中心雾盘
+  mistAt(11.2 + A3_DX, 0.24, 0, 3.2, true);             // 门 B 门槛溢出的冷息
+  mistAt(14.5 + A3_DX, 0.22, 0.5, 4.6, true); mistAt(19.5 + A3_DX, 0.5, -0.5, 5.2, false);
+  mistAt(26.5 + A3_DX, 0.2, 0.4, 5.0, true); mistAt(33 + A3_DX, 0.55, -0.4, 5.6, false);
+  mistAt(40.5 + A3_DX, 0.26, 0.2, 4.8, true);
+  mistAt(C2C, 0.3, 0, 9.5 * C2k, true);                 // C2 病沼中心雾盘（随厅径放大）
 
   // ---------------- 灰烬斑：走廊/墓苑/竞技场的半透明暗斑（单 Mesh 单材质） ----------------
   {
@@ -893,7 +933,7 @@ export function buildCemetery(scene: THREE.Scene): {
     }
     for (const [px, pz, pr] of [[-95, 2.5, 1.8], [-45, -2.0, 1.6], [A3C + 2, -3, 2.0], [C2C - 1, 2, 2.2]] as const)
       patchGeoms.push(new THREE.CircleGeometry(pr, 18).rotateX(-Math.PI / 2).translate(px, 0.02, pz));
-    for (const px of [16, 28, 40]) patchGeoms.push(new THREE.CircleGeometry(rr(0.7, 1.3), 16).rotateX(-Math.PI / 2).translate(px, 0.02, rr(-1.4, 1.4)));
+    for (const px of [16 + A3_DX, 28 + A3_DX, 40 + A3_DX]) patchGeoms.push(new THREE.CircleGeometry(rr(0.7, 1.3), 16).rotateX(-Math.PI / 2).translate(px, 0.02, rr(-1.4, 1.4)));
     const patches = new THREE.Mesh(mergeGeometries(patchGeoms, false)!, track(new THREE.MeshBasicMaterial({ color: 0x0a0b0e, transparent: true, opacity: 0.4, depthWrite: false })));
     for (const g of patchGeoms) g.dispose();
     root.add(patches);
@@ -901,7 +941,7 @@ export function buildCemetery(scene: THREE.Scene): {
 
   // ---------------- 飘灰：110 粒缓落灰烬（全图分布，Points + 位置数组直写，区域内循环） ----------------
   const ASH_N = 110;
-  const ASH_X0 = -146, ASH_X1 = 72;
+  const ASH_X0 = -146, ASH_X1 = D2C + D2R;
   const ashPos = new Float32Array(ASH_N * 3);
   const ashVy = new Float32Array(ASH_N);
   const ashPh = new Float32Array(ASH_N);
@@ -969,6 +1009,8 @@ export function buildCemetery(scene: THREE.Scene): {
       const sx = Math.round(scratch.x / 2) * 2;
       moonLight.position.set(sx + 19, 6, -7);
       moonTarget.position.set(sx - 2, 0, 0);
+      const fk = Math.min(1, Math.max(0, (scratch.x - C2_E) / (D2_W - C2_E)));
+      cemFog.density = FOG_NEAR + (FOG_FIELD - FOG_NEAR) * fk;   // D1 渐入，战场上能看见 180m 对岸
     }
   };
 

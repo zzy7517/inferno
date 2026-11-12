@@ -112,7 +112,7 @@ ok("蒙格特击败(解锁墓地C)", k.defeated?.includes("morgott"), JSON.strin
 cur = { cur: "stormveil", to: "墓地" };
 sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("再入墓地+Boss=监视者@C房", sc === "cemetery" && st.id === "watchers" && Math.abs(st.bx - 58.8) < 0.8, JSON.stringify({ sc, ...st }));
+ok("再入墓地+Boss=监视者@C房", sc === "cemetery" && st.id === "watchers" && Math.abs(st.bx - 75.8) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("watchers");
 ok("监视者击败(解锁墓地D)", k.defeated?.includes("watchers"), JSON.stringify(k.defeated));
 st = await p.evaluate(() => window.__game.progress.zoneUnlocks.includes("cemetery:D"));
@@ -122,7 +122,7 @@ sc = await travelTo(cur);
 cur = { cur: "highwall", to: "墓地" };
 sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, cls: window.__game.boss.constructor.name, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("再入墓地+Boss=拉塔恩@D碎星战场", sc === "cemetery" && st.id === "radahn" && st.cls === "Radahn" && Math.abs(st.bx - 95.8) < 0.8, JSON.stringify({ sc, ...st }));
+ok("再入墓地+Boss=拉塔恩@D碎星战场", sc === "cemetery" && st.id === "radahn" && st.cls === "Radahn" && Math.abs(st.bx - 196.8) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("radahn");
 ok("拉塔恩击败(解锁高墙D)", k.defeated?.includes("radahn"), JSON.stringify(k.defeated));
 
