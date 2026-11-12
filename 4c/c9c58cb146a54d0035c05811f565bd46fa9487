@@ -1,0 +1,19 @@
+web/src/scene-highwall.ts
+  s_eb3e785bcb9cea::t_9bfa8fa0ffd683 84-85,855-914,916,923-927,929,931-936,976,992-993,1107,1114-1117,1119-1122,1139,1141,1149-1150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "4cc9c58cb146a54d0035c05811f565bd46fa9487",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
