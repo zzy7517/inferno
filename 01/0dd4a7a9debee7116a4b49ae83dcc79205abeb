@@ -1,0 +1,36 @@
+web/src/scene-highwall.ts
+  s_683e7d7bce55f4::t_2736f02482911d 73-80,83-84
+  s_683e7d7bce55f4::t_28eaaeb3493ace 883
+  s_683e7d7bce55f4::t_19ad97fb540a48 1142-1143
+  s_683e7d7bce55f4::t_5eb2bfea6bb9af 1029
+  s_683e7d7bce55f4::t_45ab11a2a0171b 185
+  s_683e7d7bce55f4::t_5f11c3606826e5 7,9-10
+  s_683e7d7bce55f4::t_28f091cd504b6b 745,750-755,757-759,763,765,767,769,773,775,778,780,794-795,799-805,807,816,820-822,824-825,828
+  s_683e7d7bce55f4::t_a74a03e5c1ac7a 832
+  s_683e7d7bce55f4::t_56b4cc56bd16ae 879
+  s_683e7d7bce55f4::t_fb76876936f0b9 1054
+  s_683e7d7bce55f4::t_0539a0cdd7f316 211
+  s_683e7d7bce55f4::t_88c99d8118845a 1022
+  s_683e7d7bce55f4::t_d8971373973bbe 905,907-909
+  s_683e7d7bce55f4::t_f29171dc6b81b6 1015
+  s_683e7d7bce55f4::t_9d969f8f5a5fe9 24
+  s_683e7d7bce55f4::t_177a57847c28e9 898
+  s_683e7d7bce55f4::t_ac6d7fe90e022b 1139-1140
+  s_683e7d7bce55f4::t_40e3ab8a3dcbe2 930,935-941,946,948,950,953,955-956,958-966,968-969,973-976,978
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "010dd4a7a9debee7116a4b49ae83dcc79205abeb",
+  "prompts": {},
+  "sessions": {
+    "s_683e7d7bce55f4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7271c54e-84a8-424d-aaf7-218c8cf2b231",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
