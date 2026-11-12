@@ -2,11 +2,12 @@
  * 通用机制（状态机/削韧破绽/弹反/多段判定/冷却/走近追踪/阶段转换）全在 BossBase（boss-base.ts），
  * 本文件只保留沙力万专属：MOVES_SULYVANN/FEEL_SULYVANN（模块加载即并入 config 总表——调校台/存档自动收录，不改现有文件）、
  * 双剑外观与 Pose 系统、选招权重、投射物发射（暗月矢/纵横月焰经 host.fireProjectile → game 侧 Projectiles 池）、
- * 二阶段双焰点燃 + 投影分身（本体骨架克隆换半透明材质，纯视觉不造成伤害；
+ * 二阶段双焰点燃 + 投影分身（半透明克隆，轮廓和眼睛用暗紫勾开，纯视觉不造成伤害；
  * 只在一次双剑四连期间现身，四连进入后摇即消散，12s 后才能再召）。
  * 暗紫（0x7a4d9e 系）是本 Boss 主题色例外（m3-bosses.md 破例条款，与玻尔多冰蓝同理）。
  */
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted } from "./boss-base";
@@ -95,11 +96,68 @@ for (const m of Object.values(MOVES_SULYVANN)) {
   P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg, hitInterval: m.hitInterval };
 }
 
-/** 投影分身材质：半透明暗紫加色（本体克隆件统一换此材质） */
+/** 投影分身填充：半透明加色。雾会把它和深色本体抹平，轮廓 / 眼睛另用 DARKFLAME。 */
+const GHOST_FILL_OP = 0.35;
+const GHOST_EDGE_OP = 0.72;
+const GHOST_EYE_OP = 0.88;
 const GHOST_MAT = new THREE.MeshBasicMaterial({
-  color: GHOST_COLOR, transparent: true, opacity: 0.35,
+  color: GHOST_COLOR, transparent: true, opacity: GHOST_FILL_OP,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
 });
+/** 分身轮廓：左剑那支暗紫，不吃雾。条本身仍半透明。 */
+const GHOST_EDGE_MAT = new THREE.MeshBasicMaterial({
+  color: DARKFLAME, transparent: true, opacity: GHOST_EDGE_OP,
+  depthWrite: false, fog: false,
+});
+/** 分身眼睛：同一支暗紫，比本体浅紫眼光更深，侧面能对上另一张脸。 */
+const GHOST_EYE_MAT = new THREE.MeshBasicMaterial({
+  color: DARKFLAME, transparent: true, opacity: GHOST_EYE_OP,
+  depthWrite: false, fog: false,
+});
+
+function paintGhost(k: number): void {
+  GHOST_MAT.opacity = GHOST_FILL_OP * k;
+  GHOST_EDGE_MAT.opacity = GHOST_EDGE_OP * k;
+  GHOST_EYE_MAT.opacity = GHOST_EYE_OP * k;
+}
+
+/** 沿硬边铺一条约 3cm 的暗紫，只勾大块轮廓，链饰太碎不勾。命中用的 hilt/tip 不在这些网格上。 */
+const GHOST_EDGE_THICK = 0.03;
+function ghostRimGeometry(src: THREE.BufferGeometry): THREE.BufferGeometry | null {
+  src.computeBoundingBox();
+  const bb = src.boundingBox;
+  if (!bb) return null;
+  const maxDim = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z);
+  if (maxDim < 0.18) return null;
+  const edges = new THREE.EdgesGeometry(src);
+  const attr = edges.getAttribute("position");
+  const parts: THREE.BufferGeometry[] = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  const dir = new THREE.Vector3();
+  const mid = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  for (let i = 0; i < attr.count; i += 2) {
+    mid.set(
+      (attr.getX(i) + attr.getX(i + 1)) * 0.5,
+      (attr.getY(i) + attr.getY(i + 1)) * 0.5,
+      (attr.getZ(i) + attr.getZ(i + 1)) * 0.5,
+    );
+    dir.set(attr.getX(i + 1) - attr.getX(i), attr.getY(i + 1) - attr.getY(i), attr.getZ(i + 1) - attr.getZ(i));
+    const len = dir.length();
+    if (len < 1e-4) continue;
+    dir.multiplyScalar(1 / len);
+    const box = new THREE.BoxGeometry(GHOST_EDGE_THICK, len, GHOST_EDGE_THICK);
+    q.setFromUnitVectors(up, dir);
+    box.applyQuaternion(q);
+    box.translate(mid.x, mid.y, mid.z);
+    parts.push(box);
+  }
+  edges.dispose();
+  if (!parts.length) return null;
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
 
 // ---------------- 姿态（Pose）：双剑臂各自 lift/swing ----------------
 interface Pose {
@@ -257,7 +315,11 @@ export class Sulyvahn extends BossBase {
     // 头：冠下无脸（黑域）+ 两点紫眼光 + 教宗冠（四棱锥高冠 + 金带 + 冠翼）
     this.head.position.set(0, 0.8, 0.02);
     this.head.add(box(0.22, 0.24, 0.22, clothDark, 0, 0, 0));                 // 面部黑域
-    for (const ex of [-0.055, 0.055]) this.head.add(box(0.045, 0.03, 0.02, this.eyeMat, ex, 0.02, 0.115));
+    for (const ex of [-0.055, 0.055]) {
+      const eye = box(0.045, 0.03, 0.02, this.eyeMat, ex, 0.02, 0.115);
+      eye.name = "sulEye";
+      this.head.add(eye);
+    }
     const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.19, 0.46, 4), cloth);
     crown.position.y = 0.36; crown.rotation.y = Math.PI / 4; crown.castShadow = true;
     this.head.add(crown);
@@ -316,18 +378,41 @@ export class Sulyvahn extends BossBase {
     this.root.add(this.body);
     this.body.add(this.torso);
 
-    // ---- 投影分身：本体骨架整体克隆换半透明投影材质（挂 scene 不挂 root——独立缓动站位；仅二阶段可见） ----
+    // ---- 投影分身：半透明填充 + 暗紫轮廓/眼睛（挂 scene 不挂 root；不进判定，灯保持熄灭） ----
     this.body.name = "sulBody"; this.torso.name = "sulTorso"; this.head.name = "sulHead";
     this.armR.name = "sulArmR"; this.armL.name = "sulArmL";
     this.legR.name = "sulLegR"; this.legL.name = "sulLegL";
     this.shinR.name = "sulShinR"; this.shinL.name = "sulShinL";
     const ghost = this.body.clone(true);
+    const parts: THREE.Mesh[] = [];
     ghost.traverse(o => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) { m.material = GHOST_MAT; m.castShadow = false; }
+      if (m.isMesh) {
+        m.castShadow = false;
+        if (m.name === "sulEye") {
+          m.material = GHOST_EYE_MAT;
+          m.renderOrder = 3;
+        } else {
+          m.material = GHOST_MAT;
+          m.renderOrder = 1;
+          parts.push(m);
+        }
+      }
       const l = o as THREE.PointLight;
       if (l.isPointLight) l.intensity = 0;      // 分身不发光（本体灯的克隆，永久熄灭）
     });
+    for (const m of parts) {
+      const rimGeo = ghostRimGeometry(m.geometry);
+      if (!rimGeo || !m.parent) continue;
+      const rim = new THREE.Mesh(rimGeo, GHOST_EDGE_MAT);
+      rim.name = "sulGhostEdge";
+      rim.position.copy(m.position);
+      rim.rotation.copy(m.rotation);
+      rim.scale.copy(m.scale);
+      rim.castShadow = false;
+      rim.renderOrder = 2;
+      m.parent.add(rim);
+    }
     this.gBody = ghost;
     this.gTorso = ghost.getObjectByName("sulTorso") as THREE.Group;
     this.gHead = ghost.getObjectByName("sulHead") as THREE.Group;
@@ -776,7 +861,7 @@ export class Sulyvahn extends BossBase {
     this.ghostFade = 0;
     this.ghostCd = 0;
     this.ghostRoot.visible = false;
-    GHOST_MAT.opacity = 0.35;
+    paintGhost(1);
     this.slashFired = 0;
     this.volleyFired = 0;
     this.arrowLoosed = false;
@@ -789,8 +874,12 @@ export class Sulyvahn extends BossBase {
     this.lerpPose(STANCE, STATUE, 1);
   }
 
-  /** 投影分身挂在 scene 直下（不随 root），dispose 时需单独摘除 */
+  /** 投影分身挂在 scene 直下（不随 root），dispose 时需单独摘除。轮廓几何是分身专有的。 */
   protected override extraDispose(): void {
+    this.ghostRoot.traverse(o => {
+      if (o.name !== "sulGhostEdge") return;
+      (o as THREE.Mesh).geometry?.dispose();
+    });
     this.ghostRoot.removeFromParent();
   }
 
@@ -799,7 +888,7 @@ export class Sulyvahn extends BossBase {
   private beginGhost(): void {
     this.ghostDismiss = false;
     this.ghostFade = 1;
-    GHOST_MAT.opacity = 0.35;
+    paintGhost(1);
     this.spawnGhost();
   }
 
@@ -833,7 +922,7 @@ export class Sulyvahn extends BossBase {
       if (this.ghostOn) this.finishGhost();
       return;
     }
-    GHOST_MAT.opacity = 0.35 * this.ghostFade;
+    paintGhost(this.ghostFade);
     if (this.ghostDismiss) return;   // 停在四连最后一帧上淡出，不去追下一招
     const dt = Math.max(0, this.lastDt);
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
@@ -863,7 +952,7 @@ export class Sulyvahn extends BossBase {
     this.ghostFade = 0;
     this.ghostCd = 12;
     this.ghostRoot.visible = false;
-    GHOST_MAT.opacity = 0.35;
+    paintGhost(1);
   }
 
   private easeJoint(dst: THREE.Object3D, src: THREE.Object3D, k: number): void {
