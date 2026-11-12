@@ -61,9 +61,9 @@ const SHORTCUT_DEFS: (ShortcutDef & { scene: SceneId })[] = [
   // D2 沙力万房东北（房心 99.1 r19，相对旧点东移 18m）→ B 走廊东端
   { id: "highwall:d-b", scene: "highwall", kind: "elevator", label: "月坛电梯",
     pos: new THREE.Vector3(98.7, 0, 6.6), dest: new THREE.Vector3(-6, 0, 0), destName: "高墙 · 城墙步道" },
-  // E4 残柱厅中段（12.4..24 half 4，拱门 x=14.5 之东）→ E1 篝火旁（走廊 -38..-20.5 half 11）
+  // E4 残柱厅中段（走廊 36.4..48，相对旧点东移 24m）→ E1 篝火旁（走廊 -38..-20.5 half 11）
   { id: "stormveil:e4-e1", scene: "stormveil", kind: "elevator", label: "教堂电梯",
-    pos: new THREE.Vector3(16, 0, -2.5), dest: new THREE.Vector3(-35.4, 0, 1.6), destName: "城垣 · 外梯" },
+    pos: new THREE.Vector3(40, 0, -2.5), dest: new THREE.Vector3(-35.4, 0, 1.6), destName: "城垣 · 外梯" },
 ];
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

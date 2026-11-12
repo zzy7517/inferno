@@ -94,7 +94,7 @@ sc = await travelTo(cur);
 cur = { cur: "cemetery", to: "城垣" };
 sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("再入城垣+Boss=葛瑞克@E5教堂", sc === "stormveil" && st.id === "godrick" && Math.abs(st.bx - 28.3) < 0.8, JSON.stringify({ sc, ...st }));
+ok("再入城垣+Boss=葛瑞克@E5教堂", sc === "stormveil" && st.id === "godrick" && Math.abs(st.bx - 64.3) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("godrick");
 ok("葛瑞克击败(解锁城垣F)", k.defeated?.includes("godrick"), JSON.stringify(k.defeated));
 st = await p.evaluate(() => window.__game.progress.zoneUnlocks.includes("stormveil:F"));
@@ -104,7 +104,7 @@ sc = await travelTo(cur);
 cur = { cur: "cemetery", to: "城垣" };
 sc = await travelTo(cur);
 st = await p.evaluate(() => ({ scene: window.__game.sceneId, id: window.__game.bossId, cls: window.__game.boss.constructor.name, bx: +window.__game.boss.root.position.x.toFixed(1) }));
-ok("再入城垣+Boss=蒙格特@F王座厅", sc === "stormveil" && st.id === "morgott" && st.cls === "Morgott" && Math.abs(st.bx - 67.8) < 0.8, JSON.stringify({ sc, ...st }));
+ok("再入城垣+Boss=蒙格特@F王座厅", sc === "stormveil" && st.id === "morgott" && st.cls === "Morgott" && Math.abs(st.bx - 132.8) < 0.8, JSON.stringify({ sc, ...st }));
 k = await killBoss("morgott");
 ok("蒙格特击败(解锁墓地C)", k.defeated?.includes("morgott"), JSON.stringify(k.defeated));
 
