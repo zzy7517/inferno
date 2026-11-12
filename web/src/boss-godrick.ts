@@ -149,31 +149,31 @@ interface GPose {
   jaw: number;                     // P2 龙嘴开合（0 闭 / 1 大张）
 }
 const STANCE: GPose = { y: 0, lean: 0.14, twist: -0.08, crouch: 0.05, reach: 0, rLift: 0.35, rSwing: 0.15, lLift: 0.25, lSwing: -0.2, nod: 0.12, spin: 0, jaw: 0 };
-const STATUE: GPose = { ...STANCE, lean: 0.2, crouch: 0.18, y: -0.12, nod: 0.55, rLift: 0.75, rSwing: 0.05 };   // 巨斧拄地垂首伫立
-// 巨斧横扫：右侧大开大合
-const CLW: GPose = { ...STANCE, twist: 0.7, rLift: -1.5, rSwing: -0.85, lean: -0.1, crouch: 0.1, nod: 0.05 };
-const CLK: GPose = { ...STANCE, twist: -0.9, rLift: 0.7, rSwing: 1.3, lean: 0.35, reach: 0.4, crouch: 0.12 };
+const STATUE: GPose = { ...STANCE, lean: 0.2, crouch: 0.18, y: -0.12, nod: 0.55, rLift: 0.52, rSwing: 0.05 };   // 巨斧拄地垂首伫立
+// 巨斧横扫：右侧大开大合。角度加大，拍子不变——抡起来刃面要转过身前
+const CLW: GPose = { ...STANCE, twist: 0.95, rLift: -1.9, rSwing: -1.25, lean: -0.16, crouch: 0.12, nod: -0.05 };
+const CLK: GPose = { ...STANCE, twist: -1.15, rLift: 1.0, rSwing: 1.7, lean: 0.42, reach: 0.48, crouch: 0.1 };
 // 斧臂三连三拍（拍内 wind→strike；1 右劈 / 2 左回抡 / 3 左臂横抓——对应判定 0.56/0.96/1.36）
-const A1W: GPose = { ...STANCE, twist: 0.5, rLift: -1.0, rSwing: -0.7, nod: 0.1 };
-const A1K: GPose = { ...STANCE, twist: -0.45, rLift: 0.6, rSwing: 0.85, lean: 0.22 };
-const A2W: GPose = { ...STANCE, twist: -0.5, rLift: -1.2, rSwing: 0.75, nod: 0.1 };
-const A2K: GPose = { ...STANCE, twist: 0.55, rLift: 0.65, rSwing: -0.9, lean: 0.2 };
+const A1W: GPose = { ...STANCE, twist: 0.7, rLift: -1.4, rSwing: -1.1, nod: 0.08 };
+const A1K: GPose = { ...STANCE, twist: -0.65, rLift: 0.85, rSwing: 1.2, lean: 0.28 };
+const A2W: GPose = { ...STANCE, twist: -0.7, rLift: -1.55, rSwing: 1.1, nod: 0.08 };
+const A2K: GPose = { ...STANCE, twist: 0.75, rLift: 0.9, rSwing: -1.3, lean: 0.26 };
 const A3W: GPose = { ...STANCE, twist: 0.35, lLift: -0.9, lSwing: 0.5, lean: -0.05, rLift: 0.2 };
 const A3K: GPose = { ...STANCE, lLift: 1.1, lSwing: -0.3, lean: 0.45, reach: 0.5, crouch: 0.15 };
 // 狂乱五连五拍（对应判定 1.14/1.56/1.98/2.40/2.82）：逆时针 / 顺时针快 / 逆挑 / 下劈 / 再下劈
-const F1W: GPose = { ...STANCE, twist: 0.6, rLift: -0.9, rSwing: -1.1 };
-const F1K: GPose = { ...STANCE, twist: -0.7, rLift: 0.5, rSwing: 1.2, lean: 0.2 };
-const F2W: GPose = { ...STANCE, twist: -0.6, rLift: -0.7, rSwing: 0.9 };
-const F2K: GPose = { ...STANCE, twist: 0.65, rLift: 0.55, rSwing: -1.25, lean: 0.18 };
-const F3W: GPose = { ...STANCE, twist: 0.3, rLift: -0.4, rSwing: -0.8, crouch: 0.15 };
-const F3K: GPose = { ...STANCE, rLift: -1.8, rSwing: 0.2, lean: -0.12, y: 0.1, nod: -0.1 };   // 逆挑：斧走立圆
-const F4W: GPose = { ...STANCE, twist: 0.25, rLift: -1.9, rSwing: 0.1, lean: -0.15, nod: 0.15 };
-const F4K: GPose = { ...STANCE, rLift: 0.8, rSwing: 0.2, lean: 0.42, crouch: 0.18 };
-const F5W: GPose = { ...STANCE, twist: -0.15, rLift: -1.6, rSwing: -0.15, lean: -0.1 };
-const F5K: GPose = { ...STANCE, rLift: 0.9, rSwing: 0.25, lean: 0.55, crouch: 0.28, nod: 0.3 };
+const F1W: GPose = { ...STANCE, twist: 0.8, rLift: -1.35, rSwing: -1.5 };
+const F1K: GPose = { ...STANCE, twist: -0.95, rLift: 0.75, rSwing: 1.6, lean: 0.28 };
+const F2W: GPose = { ...STANCE, twist: -0.8, rLift: -1.15, rSwing: 1.25 };
+const F2K: GPose = { ...STANCE, twist: 0.9, rLift: 0.8, rSwing: -1.6, lean: 0.24 };
+const F3W: GPose = { ...STANCE, twist: 0.4, rLift: -0.65, rSwing: -1.1, crouch: 0.15 };
+const F3K: GPose = { ...STANCE, rLift: -2.15, rSwing: 0.35, lean: -0.18, y: 0.14, nod: -0.15 };   // 逆挑：斧走立圆
+const F4W: GPose = { ...STANCE, twist: 0.35, rLift: -2.35, rSwing: 0.18, lean: -0.22, nod: 0.1 };
+const F4K: GPose = { ...STANCE, rLift: 1.05, rSwing: 0.3, lean: 0.5, crouch: 0.22 };
+const F5W: GPose = { ...STANCE, twist: -0.22, rLift: -2.05, rSwing: -0.3, lean: -0.16 };
+const F5K: GPose = { ...STANCE, rLift: 1.15, rSwing: 0.4, lean: 0.62, crouch: 0.32, nod: 0.35 };
 // 斧突刺：斧收身后长蓄（延迟欺诈）→ 前刺扎地；tel 末段 hop（双脚离地）在 movePose 附加
-const LUW: GPose = { ...STANCE, twist: 0.55, rLift: 0.5, rSwing: -0.6, crouch: 0.2, lean: 0.1, nod: 0.18 };
-const LUK: GPose = { ...STANCE, twist: -0.1, rLift: 1.4, rSwing: 0.05, lean: 0.45, reach: 0.5, crouch: 0.22 };
+const LUW: GPose = { ...STANCE, twist: 0.75, rLift: 0.22, rSwing: -1.0, crouch: 0.24, lean: 0.06, nod: 0.22 };
+const LUK: GPose = { ...STANCE, twist: -0.15, rLift: 1.75, rSwing: 0.08, lean: 0.55, reach: 0.62, crouch: 0.18 };
 // 接肢臂抓取（P1）：前摇扬爪 → 伸直（命中与 knockUp 同帧）→ 高举 → 按地（纯演出，不再补伤）
 const GRW: GPose = { ...STANCE, crouch: 0.28, twist: 0.4, lLift: -1.3, lSwing: -0.4, lean: 0.1 };
 const GR1: GPose = { ...STANCE, lLift: 1.2, lSwing: 0.1, lean: 0.4, reach: 0.6, crouch: 0.18, twist: 0.15 };
@@ -185,8 +185,8 @@ const DG1: GPose = { ...STANCE, lLift: 1.3, lSwing: 0.05, lean: 0.42, reach: 0.6
 const DG2: GPose = { ...STANCE, lLift: -2.2, lSwing: -0.1, lean: -0.15, y: 0.12, nod: -0.2, jaw: 1.0 };
 const DG3: GPose = { ...STANCE, lLift: 1.5, lSwing: 0.2, lean: 0.6, crouch: 0.32, nod: 0.35, jaw: 0.2 };
 // 旋斧：双臂收拢蓄势 → 张臂转体（spin 整圈）
-const SPW: GPose = { ...STANCE, crouch: 0.2, twist: 0.3, rLift: -0.4, rSwing: 0.4, lLift: -0.4, lSwing: -0.4, nod: 0.15 };
-const SPK: GPose = { ...STANCE, rSwing: -1.4, lSwing: 1.4, rLift: 0.5, lLift: 0.5, lean: 0.1 };
+const SPW: GPose = { ...STANCE, crouch: 0.22, twist: 0.4, rLift: -0.7, rSwing: 0.7, lLift: -0.5, lSwing: -0.5, nod: 0.12 };
+const SPK: GPose = { ...STANCE, rSwing: -1.75, lSwing: 1.7, rLift: 0.72, lLift: 0.6, lean: 0.12 };
 // 风暴呼啸：双臂交扣胸前吸气 → 双掌前推（风压持续）
 const GUW: GPose = { ...STANCE, crouch: 0.25, lean: -0.15, nod: 0.2, rLift: -0.9, rSwing: 0.6, lLift: -0.9, lSwing: -0.6 };
 const GUK: GPose = { ...STANCE, rLift: 1.3, lLift: 1.3, rSwing: 0.1, lSwing: -0.1, lean: 0.3, reach: 0.5 };
@@ -194,13 +194,13 @@ const GUK: GPose = { ...STANCE, rLift: 1.3, lLift: 1.3, rSwing: 0.1, lSwing: -0.
 const FLW: GPose = { ...STANCE, lLift: -1.5, lSwing: 0.9, lean: -0.2, nod: -0.12, jaw: 0.7, rLift: 0.5 };
 const FLK: GPose = { ...FLW, lSwing: -0.9, lLift: -1.4, jaw: 0.25, lean: 0.22, nod: 0.05 };
 // 我命尔跪！：斧头朝下高举（斧刃垂地）→ 两连快砸 → 缓缓再举（停顿的恐惧）→ 第三砸（最深一跪）
-const KNW: GPose = { ...STANCE, rLift: -2.3, rSwing: 0.05, lean: -0.18, nod: -0.2, y: 0.1, crouch: 0.1 };
-const KN1: GPose = { ...STANCE, rLift: 0.9, lean: 0.45, crouch: 0.3, nod: 0.3 };
-const KN2: GPose = { ...STANCE, rLift: -1.2, lean: -0.05, crouch: 0.15, nod: 0.1 };
-const KN3: GPose = { ...STANCE, rLift: 1.0, lean: 0.7, crouch: 0.5, y: -0.25, nod: 0.45, rSwing: 0.2 };
+const KNW: GPose = { ...STANCE, rLift: -2.55, rSwing: 0.1, lean: -0.26, nod: -0.28, y: 0.16, crouch: 0.08 };
+const KN1: GPose = { ...STANCE, rLift: 1.15, lean: 0.55, crouch: 0.36, nod: 0.35 };
+const KN2: GPose = { ...STANCE, rLift: -1.55, lean: -0.1, crouch: 0.12, nod: 0.05 };
+const KN3: GPose = { ...STANCE, rLift: 1.25, lean: 0.78, crouch: 0.55, y: -0.28, nod: 0.5, rSwing: 0.25 };
 // 斩臂接龙演出：仰天自白（"Forefathers, one and all… bear witness!"）→ 挥斧斩断左臂 → 跪伏剧痛 → 举龙臂嘶吼
 const REEL: GPose = { ...STANCE, lean: -0.35, y: 0.1, nod: -0.35, rLift: -1.2, lLift: -1.2, crouch: 0.1 };
-const CHOP: GPose = { ...STANCE, lean: 0.3, nod: 0.35, rLift: 1.1, rSwing: -0.9, twist: 0.35, crouch: 0.22 };   // 斧劈向自己左臂
+const CHOP: GPose = { ...STANCE, lean: 0.38, nod: 0.4, rLift: 1.35, rSwing: -1.2, twist: 0.5, crouch: 0.24 };   // 斧劈向自己左臂
 const AGONY: GPose = { ...STANCE, lean: 0.5, crouch: 0.45, y: -0.34, nod: 0.55, rLift: 0.2, lLift: 0.2 };
 const BRANDISH: GPose = { ...STANCE, lean: -0.16, y: 0.12, nod: -0.3, lLift: -2.2, lSwing: 0.25, jaw: 1.0, rLift: 0.6 };
 
@@ -220,6 +220,8 @@ export class Godrick extends BossBase {
   private stump!: THREE.Mesh;                  // 断臂残端（斩臂后显示、接龙后隐藏）
   private graftArms: THREE.Group[] = [];       // 躯干伸出的三条嫁接手臂（updateVisuals 蠕动）
   private graftBase: { x: number; z: number }[] = [];
+  private axeHead = new THREE.Object3D();      // 月刃腹心：刀光贴着刃，不从胸口铺开
+  private maw = new THREE.Object3D();          // 龙口外沿：龙焰从这里喷出
   private eyeMat!: THREE.MeshStandardMaterial;
   private flameMat!: THREE.MeshStandardMaterial;   // P2 龙口内焰
   private flameLight!: THREE.PointLight;
@@ -257,7 +259,7 @@ export class Godrick extends BossBase {
     const steel = new THREE.MeshStandardMaterial({ color: 0x707784, roughness: 0.45, metalness: 0.6, flatShading: true });
     const wood = new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 0.95, flatShading: true });
     const dragonMat = new THREE.MeshStandardMaterial({ color: DRAGON, roughness: 0.8, metalness: 0.1, flatShading: true });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x140f08, roughness: 0.5, emissive: GOLD_TRIM, emissiveIntensity: 0.9 });
+    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x140f08, roughness: 0.5, emissive: GOLD_TRIM, emissiveIntensity: 0.9, flatShading: true });
     this.flameMat = new THREE.MeshStandardMaterial({
       color: FLAME, emissive: FLAME, emissiveIntensity: 0, roughness: 0.4, flatShading: true,
       transparent: true, opacity: 0.9,
@@ -325,18 +327,47 @@ export class Godrick extends BossBase {
     this.armR.add(box(0.26, 0.2, 0.26, iron, 0, -0.9, 0.04));          // 手甲
     const axe = new THREE.Group();
     axe.position.set(0, -0.98, 0.05);
-    axe.rotation.x = 0.3;                                              // 斧头前下曳——垂斧时恰好拄地
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.9, 6), wood);
-    shaft.position.set(0, 0.2, 0.6); shaft.rotation.x = Math.PI / 2 - 0.3; shaft.castShadow = true;
+    // 整柄前下倾，月刃落在身前近地处。0.3 只把旧薄刃略往下带，宽刃要再倾一点才拄得住；再大就会翻回躯干
+    axe.rotation.x = 0.58;
+    const haftLen = 1.7;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, haftLen, 6), wood);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.set(0, 0, haftLen * 0.5 - 0.04);
+    shaft.castShadow = true;
     axe.add(shaft);
-    const blade = box(0.06, 0.72, 0.5, steel, 0.1, 0.85, 1.05);        // 大月刃（右伸）
-    blade.rotation.z = 0.12;
-    axe.add(blade);
-    const spike = box(0.1, 0.3, 0.3, steel, -0.08, 0.7, 0.95);         // 背侧倒钩
-    spike.rotation.z = -0.5;
+    axe.add(box(0.13, 0.13, 0.14, goldTrim, 0, 0, -0.14));             // 柄尾
+    axe.add(box(0.11, 0.11, 0.24, iron, 0, 0, 0.1));                   // 握把
+    axe.add(box(0.1, 0.1, 0.07, goldTrim, 0, 0, 0.46));                // 缠金
+    axe.add(box(0.1, 0.1, 0.07, goldTrim, 0, 0, 0.86));
+    axe.add(box(0.11, 0.11, 0.07, goldTrim, 0, 0, 1.22));
+    const hz = haftLen - 0.08;
+    axe.add(box(0.2, 0.22, 0.22, iron, 0.02, 0.0, hz - 0.06));          // 斧銎
+    // 月刃：一段重叠的弧带，外缘亮、上尖下钩。斜看也是一整块，不是散开的木条
+    const ax = 0.0;
+    const moon = (ang: number, radius: number, len: number, thick: number, depth: number, mat: THREE.Material, zBias = 0) => {
+      const m = box(len, thick, depth, mat, ax + Math.cos(ang) * radius, Math.sin(ang) * radius, hz + zBias);
+      m.rotation.z = ang + Math.PI / 2;
+      axe.add(m);
+      return m;
+    };
+    for (const ang of [-1.12, -0.74, -0.36, 0, 0.36, 0.74, 1.1]) {
+      moon(ang, 0.52, 0.5, 0.36, 0.24, gold);
+      moon(ang, 0.74, 0.42, 0.08, 0.09, goldTrim, 0.02);
+    }
+    const point = (ang: number, radius: number, reach: number, girth: number, depth: number, mat: THREE.Material) => {
+      const m = box(girth, reach, depth, mat, ax + Math.cos(ang) * radius, Math.sin(ang) * radius, hz);
+      m.rotation.z = ang - Math.PI / 2;                                 // 长轴沿半径，探出弧外
+      axe.add(m);
+      return m;
+    };
+    point(1.28, 0.86, 0.5, 0.1, 0.07, goldTrim);                        // 上尖
+    point(1.28, 1.12, 0.22, 0.06, 0.045, goldTrim);
+    point(-1.26, 0.78, 0.42, 0.11, 0.08, gold);                         // 下钩，垂斧时接近地面
+    const spike = box(0.34, 0.09, 0.1, steel, -0.22, 0.05, hz);         // 背侧倒钩
+    spike.rotation.z = 0.5;
     axe.add(spike);
-    axe.add(box(0.09, 0.06, 0.09, goldTrim, 0, -0.25, 0.35));          // 缠金 ×2
-    axe.add(box(0.09, 0.06, 0.09, goldTrim, 0, 0.05, 0.5));
+    this.axeHead.position.set(0.62, 0.02, hz);
+    axe.add(this.axeHead);
     this.armR.add(axe);
     this.torso.add(this.armR);
 
@@ -349,28 +380,61 @@ export class Godrick extends BossBase {
       this.fleshArm.add(box(0.05, 0.22, 0.05, fleshDark, fx, -1.12, fz));  // 三爪
     }
     this.armL.add(this.fleshArm);
-    // 龙头手臂（P2）：短颈 + 上下颚 + 牙 + 角 + 口内焰
-    this.dragon.add(box(0.3, 0.42, 0.34, dragonMat, 0, -0.2, 0.02));   // 颈（接肢断面）
-    this.dragon.add(box(0.36, 0.16, 0.4, dragonMat, 0, -0.48, 0.06));  // 领甲
-    this.dragon.add(box(0.34, 0.24, 0.56, dragonMat, 0, -0.75, 0.22)); // 上颚
-    this.jawLower.position.set(0, -0.68, 0.0);
-    this.jawLower.add(box(0.3, 0.14, 0.5, dragonMat, 0, -0.06, 0.24)); // 下颚（枢轴开合）
-    this.jawLower.add(box(0.04, 0.1, 0.04, steel, -0.1, 0.04, 0.44));  // 牙 ×2
-    this.jawLower.add(box(0.04, 0.1, 0.04, steel, 0.1, 0.04, 0.44));
+    // 龙头手臂（P2）：颈 + 前伸吻部 + 可开合的嘴 + 后掠长角。何时显示仍由接龙演出决定
+    this.dragon.add(box(0.34, 0.5, 0.38, dragonMat, 0, -0.22, 0.02));   // 颈
+    this.dragon.add(box(0.44, 0.16, 0.46, dragonMat, 0, -0.5, 0.08));   // 领
+    this.dragon.add(box(0.38, 0.24, 0.36, dragonMat, 0, -0.66, 0.14));  // 颅
+    this.dragon.add(box(0.42, 0.1, 0.18, dragonMat, 0, -0.5, 0.3));     // 眉脊，把眼压进脸里
+    this.dragon.add(box(0.24, 0.14, 0.44, dragonMat, 0, -0.68, 0.56));  // 吻
+    this.dragon.add(box(0.14, 0.1, 0.32, dragonMat, 0, -0.66, 0.9));    // 吻尖收窄，嘴有方向
+    this.jawLower.position.set(0, -0.86, 0.3);
+    this.jawLower.add(box(0.26, 0.12, 0.62, dragonMat, 0, -0.01, 0.38)); // 下颚
+    this.jawLower.add(box(0.14, 0.08, 0.28, dragonMat, 0, 0.0, 0.76));  // 下巴尖
+    for (const fx of [-0.09, -0.03, 0.03, 0.09]) {
+      const fang = box(0.045, 0.15, 0.045, steel, fx, 0.1, 0.58 + Math.abs(fx) * 1.4);
+      fang.rotation.x = -0.35;
+      this.jawLower.add(fang);
+    }
+    const lick = box(0.1, 0.06, 0.22, this.flameMat, 0, 0.07, 0.4);    // 下焰留在牙后，跟着嘴张合
+    lick.castShadow = false;
+    this.jawLower.add(lick);
     this.dragon.add(this.jawLower);
-    this.dragon.add(box(0.05, 0.1, 0.05, steel, -0.1, -0.66, 0.48));   // 上颚牙 ×2
-    this.dragon.add(box(0.05, 0.1, 0.05, steel, 0.1, -0.66, 0.48));
-    this.dragon.add(box(0.05, 0.04, 0.03, this.eyeMat, -0.14, -0.68, 0.28));   // 龙眼（金）
-    this.dragon.add(box(0.05, 0.04, 0.03, this.eyeMat, 0.14, -0.68, 0.28));
-    const horn1 = box(0.06, 0.28, 0.06, dragonMat, -0.16, -0.6, -0.08);
-    horn1.rotation.set(-0.5, 0, -0.35);
-    const horn2 = box(0.06, 0.28, 0.06, dragonMat, 0.16, -0.6, -0.08);
-    horn2.rotation.set(-0.5, 0, 0.35);
-    this.dragon.add(horn1, horn2);
-    const glow = box(0.2, 0.1, 0.3, this.flameMat, 0, -0.72, 0.22);    // 口内焰
-    this.dragon.add(glow);
+    for (const fx of [-0.08, -0.025, 0.025, 0.08]) {
+      this.dragon.add(box(0.04, 0.14, 0.04, steel, fx, -0.76, 0.62 + Math.abs(fx) * 1.6));
+    }
+    this.dragon.add(box(0.08, 0.055, 0.04, this.eyeMat, -0.14, -0.58, 0.36));
+    this.dragon.add(box(0.08, 0.055, 0.04, this.eyeMat, 0.14, -0.58, 0.36));
+    const addHorn = (s: number) => {
+      const h = new THREE.Group();
+      h.position.set(s * 0.16, -0.5, 0.06);
+      h.rotation.set(-0.42, s * 0.18, s * -0.9);
+      h.add(box(0.15, 0.36, 0.14, dragonMat, 0, 0.16, 0));
+      const mid = box(0.09, 0.44, 0.09, dragonMat, 0, 0.5, 0);
+      mid.rotation.z = s * -0.38;
+      const tip = box(0.05, 0.34, 0.05, gold, 0, 0.84, 0);
+      tip.rotation.z = s * -0.28;
+      h.add(mid, tip);
+      this.dragon.add(h);
+    };
+    addHorn(-1);
+    addHorn(1);
+    const nose = box(0.055, 0.32, 0.055, gold, 0, -0.52, 1.0);         // 吻上短角，侧面剪影有一个尖
+    nose.rotation.x = 1.2;
+    this.dragon.add(nose);
+    for (const [yy, zz, rx] of [[-0.06, -0.16, -0.75], [-0.24, -0.2, -0.55], [-0.4, -0.14, -0.4]] as [number, number, number][]) {
+      const sp = box(0.06, 0.2, 0.06, dragonMat, 0, yy, zz);
+      sp.rotation.x = rx;
+      this.dragon.add(sp);
+    }
+    const throat = box(0.18, 0.1, 0.22, this.flameMat, 0, -0.78, 0.46);
+    const breath = box(0.12, 0.09, 0.16, this.flameMat, 0, -0.76, 0.64);
+    throat.castShadow = false;
+    breath.castShadow = false;
+    this.dragon.add(throat, breath);
+    this.maw.position.set(0, -0.74, 1.12);
+    this.dragon.add(this.maw);
     this.flameLight = new THREE.PointLight(FLAME, 0, 6, 2);
-    this.flameLight.position.set(0, -0.75, 0.4);
+    this.flameLight.position.copy(this.maw.position);
     this.dragon.add(this.flameLight);
     this.dragon.visible = false;
     this.armL.add(this.dragon);
@@ -414,7 +478,7 @@ export class Godrick extends BossBase {
     this.head.rotation.x = p.nod;
     this.armR.rotation.set(-p.rLift, 0, -p.rSwing);
     this.armL.rotation.set(-p.lLift, -0.12, p.lSwing);
-    this.jawLower.rotation.x = 0.08 + p.jaw * 0.65;   // P1 无龙颚时无副作用（隐藏子树）
+    this.jawLower.rotation.x = 0.06 + p.jaw * 0.85;   // 张大才露出牙和口内焰；P1 龙颚隐藏，无副作用
     // 蹲伏/跪伏：前腿弓、后腿屈
     this.legR.rotation.x = -p.crouch * 0.7;
     this.shinR.rotation.x = p.crouch * 1.3;
@@ -596,14 +660,16 @@ export class Godrick extends BossBase {
     }
   }
 
-  /** 横扫龙焰的扫掠余烬：沿当前扫掠角 (yaw+off) 方向喷出 */
+  /** 横扫龙焰的扫掠余烬：从龙口出发，沿扫掠角铺到原来的锥上 */
   private flameSpray(dist: number, off: number): void {
     const yaw = this.yaw + off;
     const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const side = new THREE.Vector3(fwd.z, 0, -fwd.x);
-    this.vfx.embers.burst(
-      this.root.position.clone().addScaledVector(fwd, dist).addScaledVector(side, (Math.random() - 0.5) * 1.4).setY(0.5 + Math.random() * 0.9),
-      2, 1.6, 1.0);
+    const mouth = this.maw.getWorldPosition(new THREE.Vector3());
+    const at = mouth.clone().addScaledVector(fwd, dist).addScaledVector(side, (Math.random() - 0.5) * 0.85);
+    const fall = clamp01(dist / 6.5);
+    at.y = mouth.y + (0.4 + Math.random() * 0.45 - mouth.y) * fall;
+    this.vfx.embers.burst(at, 2, 1.6, 1.0);
   }
 
   // ---------------- 葛瑞克专属覆盖点 ----------------
@@ -673,13 +739,13 @@ export class Godrick extends BossBase {
     this.flameMat.emissiveIntensity = p2 ? 1.7 * flick : 0;
     this.flameLight.intensity = p2 ? 3.4 * flick : 0;
     if (p2 && this.state === "combat" && this.sub === "idle") this.pose.jaw = 0.12 + Math.sin(now * 0.005) * 0.06;
-    // 刀光：近战多段每段一光（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）——金辉
+    // 刀光：近战多段每段一光（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）。弧心在刃腹，半径只罩月刃
     if (this.state === "combat" && this.sub === "act" && this.move &&
       (this.move.name === "godrickCleave" || this.move.name === "godrickAxeCombo" || this.move.name === "godrickFury")) {
       while (this.slashFired < this.hitFired) {
         this.slashFired++;
-        this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.85,
-          this.move.arc > 2 || this.move.name === "godrickFury", p2 ? FLAME : AXE_SLASH);
+        const wide = this.move.arc > 2 || this.move.name === "godrickFury";
+        this.vfx.slash(this.axeHead.getWorldPosition(new THREE.Vector3()), this.yaw, wide ? 1.25 : 0.9, wide, AXE_SLASH);
       }
     }
     // 龙焰火痕：每判定段铺满正面锥（命中也是这整条锥，不是摆臂的单侧）
@@ -691,8 +757,7 @@ export class Godrick extends BossBase {
           const fwd = new THREE.Vector3(Math.sin(this.yaw + off), 0, Math.cos(this.yaw + off));
           this.vfx.scorch(this.root.position.clone().addScaledVector(fwd, 4.0).setY(0.05), 1.35, FLAME);
         }
-        const mid = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-        this.vfx.embers.burst(this.chestWorld().addScaledVector(mid, 2.2), 6, 3, 0.9);
+        this.vfx.embers.burst(this.maw.getWorldPosition(new THREE.Vector3()), 6, 3, 0.9);
       }
     }
     // 风暴呼啸：持续风流尘（自中心向前吹）
