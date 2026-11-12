@@ -1,0 +1,33 @@
+web/src/boss-godrick.ts
+  s_13104582db41c9::t_20581b57e918e7 460-462
+  s_13104582db41c9::t_bb76380390d181 499-530,532-537,540-553
+  s_13104582db41c9::t_08bb9198d4d574 245
+  s_13104582db41c9::t_f86ee6ea100a55 943
+  s_13104582db41c9::t_0c4185215eef65 316-317
+  s_13104582db41c9::t_d4b29099bbc237 11,15-16
+  s_13104582db41c9::t_1781d19dff7e5f 538-539
+  s_13104582db41c9::t_eb25c60c16fb3f 388-391
+  s_13104582db41c9::t_dc56f12c1c9561 232-238
+  s_13104582db41c9::t_d4c2d328761403 5
+  s_13104582db41c9::t_c1b7e6f4db6442 403-405
+  s_13104582db41c9::t_f81d9f0236af79 139-145
+  s_13104582db41c9::t_cdc981c7871191 718,720-722
+  s_13104582db41c9::t_b4b024f26d4cfd 962-967,969
+  s_13104582db41c9::t_419d8207122173 531
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "333456ba4692a7c329474acd74f1e3ff39840a4a",
+  "prompts": {},
+  "sessions": {
+    "s_13104582db41c9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47506d1a-4fc3-4e71-ba48-b37f72fb8369",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
