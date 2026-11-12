@@ -1,0 +1,35 @@
+web/src/boss-base.ts
+  s_eb3e785bcb9cea::t_620f87f166c55f 359-368
+web/src/boss-godrick.ts
+  s_eb3e785bcb9cea::t_566204a3aff870 14,910-911
+web/src/boss-margit.ts
+  s_eb3e785bcb9cea::t_c4f945d9035974 18,945
+web/src/boss-morgott.ts
+  s_eb3e785bcb9cea::t_f5ec66eec3cc5a 22,1040-1041
+web/src/boss-radahn.ts
+  s_eb3e785bcb9cea::t_b77d06bd076d4d 17,987
+web/src/boss-sulyvahn.ts
+  s_eb3e785bcb9cea::t_d48e459fd6b1ef 12,815
+web/src/boss-vordt.ts
+  s_eb3e785bcb9cea::t_7c37a64e8672cd 11,560
+web/src/boss-watchers.ts
+  s_eb3e785bcb9cea::t_a28fb6c5da2245 11,568
+web/src/boss.ts
+  s_eb3e785bcb9cea::t_d48b046c405dea 10,420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "925b6f5da905a8a35437e8fbf6a71acd0f82aa59",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
