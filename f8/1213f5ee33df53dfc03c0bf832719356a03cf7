@@ -1,0 +1,27 @@
+web/src/scene-cemetery.ts
+  s_a361f799aaf133::t_62b631e8d5b84d 803,811-815,817,820
+  s_a361f799aaf133::t_f138e3d48ab522 952-954,957,959-964
+  s_a361f799aaf133::t_b50cdfb756af4d 498
+  s_a361f799aaf133::t_11f886a2ffc24c 21-22
+  s_a361f799aaf133::t_eac2f0ea3fd9b6 446-497,499-509,521-524,526-527,530-531
+  s_a361f799aaf133::t_d3de87dafbcf22 510-520,525,528-529
+  s_a361f799aaf133::t_525217b377ef08 825
+  s_a361f799aaf133::t_777ac1aeed321a 629,632-633
+  s_a361f799aaf133::t_e0bed613305227 784,787-788
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f81213f5ee33df53dfc03c0bf832719356a03cf7",
+  "prompts": {},
+  "sessions": {
+    "s_a361f799aaf133": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "750889a2-1395-4f11-94e5-2e827f49a4c9",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
