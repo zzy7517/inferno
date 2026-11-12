@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
-import { BossBase, BossStats, clamp01, smooth, seg } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
@@ -812,9 +812,6 @@ export class Sulyvahn extends BossBase {
     // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里。够不到的近战不空挥，交给 idle 走近。
     const cands = pool.filter(([m, weight]) => weight > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
     if (!cands.length) return null;
-    const sum = cands.reduce((s, [, weight]) => s + weight, 0);
-    let r = Math.random() * sum;
-    for (const [m, weight] of cands) { r -= weight; if (r <= 0) return take(m); }
-    return take(cands[0][0]);
+    return take(pickWeighted(cands) ?? cands[0][0]);
   }
 }

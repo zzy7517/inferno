@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
 import type { BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -984,13 +984,7 @@ export class Radahn extends BossBase {
   private pickWeighted(cands: [MoveDef, number][]): MoveDef | null {
     const live = cands.filter(([, weight]) => weight > 0);
     if (!live.length) return null;
-    const sum = live.reduce((s, [, weight]) => s + weight, 0);
-    let r = Math.random() * sum;
-    let chosen = live[0][0];
-    for (const [m, weight] of live) {
-      r -= weight;
-      if (r <= 0) { chosen = m; break; }
-    }
+    const chosen = pickByWeight(live) ?? live[0][0];
     this.lastPick = chosen.name;
     return chosen;
   }

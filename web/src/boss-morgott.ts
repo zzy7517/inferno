@@ -19,7 +19,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg, angleWithin } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
 import type { BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
@@ -1037,7 +1037,8 @@ export class Morgott extends BossBase {
         // 降权而不是剔除：只剩这一招时（探针封锁其余冷却）仍然选得到
         cands.push([m, m.name === this.lastMove ? w * REPEAT_W : w]);
       }
-      return this.pickWeighted(cands);
+      if (!cands.length) return null;
+      return pickWeighted(cands) ?? cands[0][0];
     };
     const toP = TO_P.set(this.playerPos.x - this.root.position.x, 0, this.playerPos.z - this.root.position.z);
     const dirYaw = Math.atan2(toP.x, toP.z);
@@ -1073,13 +1074,6 @@ export class Morgott extends BossBase {
     ]);
   }
 
-  private pickWeighted(cands: [MoveDef, number][]): MoveDef | null {
-    if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
-  }
 }
 
 /** 魅影武器凝聚金尘 / 聚气金尘 / 喷扇定向流的取位临时量（避免每帧分配） */

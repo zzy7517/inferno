@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { BOSS, MOVES, MoveDef, COLORS } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, clamp01, smooth, seg } from "./boss-base";
+import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -413,15 +413,11 @@ export class Boss extends BossBase {
   private choose(cands: [MoveDef, number][]): MoveDef | null {
     if (!cands.length) return null;
     const hasAlt = cands.some(([m]) => m.name !== this.lastMove);
-    let sum = 0;
     const weighted: [MoveDef, number][] = cands.map(([m, w]) => {
       const ww = hasAlt && m.name === this.lastMove ? w * 0.18 : w;
-      sum += ww;
       return [m, ww];
     });
-    let r = Math.random() * sum;
-    for (const [m, w] of weighted) { r -= w; if (r <= 0) return m; }
-    return weighted[0][0];
+    return pickWeighted(weighted) ?? weighted[0][0];
   }
 }
 

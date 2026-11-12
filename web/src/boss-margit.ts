@@ -15,7 +15,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg, angleWithin } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg, angleWithin, pickWeighted as pickByWeight } from "./boss-base";
 import type { BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
@@ -942,9 +942,7 @@ export class Margit extends BossBase {
       return [m, adj] as [MoveDef, number];
     });
     if (sum <= 0) return null;
-    let r = Math.random() * sum;
-    for (const [m, w] of weighted) { r -= w; if (r <= 0) return m; }
-    return weighted[0][0];
+    return pickByWeight(weighted) ?? weighted[0][0];
   }
 }
 

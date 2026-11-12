@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg } from "./boss-base";
+import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
 import type { BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -907,10 +907,8 @@ export class Godrick extends BossBase {
     const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (!useRange || dist < m.range * 0.95));
     if (!cands.length) return null;
     const wgt = (m: MoveDef, w: number) => m.name === this.lastMove ? w * 0.3 : w;
-    const sum = cands.reduce((s, [m, w]) => s + wgt(m, w), 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= wgt(m, w); if (r <= 0) return m; }
-    return cands[cands.length - 1][0];
+    const weighted: [MoveDef, number][] = cands.map(([m, w]) => [m, wgt(m, w)]);
+    return pickByWeight(weighted) ?? cands[cands.length - 1][0];
   }
 
   // ---------------- 选招（葛瑞克权重：距离分档——远/中/贴身三带 + P2 开场固定技） ----------------

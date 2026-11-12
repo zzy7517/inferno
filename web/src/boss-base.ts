@@ -356,5 +356,15 @@ export function angleWithin(a: number, b: number, half: number): boolean {
   d = Math.atan2(Math.sin(d), Math.cos(d));
   return Math.abs(d) <= half;
 }
+/** 按调用方算好的权重抽一项。0 也照原样走表，不在这里剔除，也不管冷却、距离、同招降权。
+ *  空池返回 null。权重减完仍未命中（浮点残差）也返回 null，回退到哪一项由调用方按原逻辑决定。
+ */
+export function pickWeighted<T>(cands: readonly [T, number][]): T | null {
+  if (!cands.length) return null;
+  const sum = cands.reduce((s, [, w]) => s + w, 0);
+  let r = Math.random() * sum;
+  for (const [item, w] of cands) { r -= w; if (r <= 0) return item; }
+  return null;
+}
 /** chestWorld 复用偏移量（避免命中帧反复分配） */
 const CHEST_OFF = new THREE.Vector3(0, 0.2, 0);

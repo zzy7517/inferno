@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin } from "./boss-base";
+import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
 import type { BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -565,10 +565,7 @@ export class Watchers extends BossBase {
     // 回斩 / 横扫 / 后撤斩不进池：后两段只从 chain 来，后撤斩只从受击来
     const cands = pool.filter(([m, w]) => w > 0 && ready(m) && dist < m.range * 0.95);
     if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return this.remember(m); }
-    return this.remember(cands[0][0]);
+    return this.remember(pickWeighted(cands) ?? cands[0][0]);
   }
 
   private remember(m: MoveDef): MoveDef {

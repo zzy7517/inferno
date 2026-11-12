@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef, COLORS } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, clamp01, smooth, seg } from "./boss-base";
+import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { BossHost, BossStats } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -557,9 +557,6 @@ export class Vordt extends BossBase {
     ];
     const cands = pool.filter(([m, w]) => w > 0 && ready(m) && dist < m.range * 0.95);
     if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    return pickWeighted(cands) ?? cands[0][0];
   }
 }
