@@ -17,6 +17,7 @@ import bpy
 import json
 import math
 from pathlib import Path
+from mathutils import Matrix, Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "web" / "public" / "assets"
@@ -338,13 +339,18 @@ def build_parts(arm_obj):
 
     make_cape()
 
-    # —— 剑在右手（+X / Hand.L）。握点不动，只把刃做长、护手做宽，远看认得出 ——
-    make_cyl("Grip", (0.645, 0, 1.62), M_DARK, 0.016, 0.15, seg=8)
-    make_box("Guard", (0.22, 0.028, 0.038), (0.645, 0, 1.535), M_METAL)
-    make_sphere("Pommel", (0.645, 0, 1.705), M_METAL, 0.028, seg=8, ring=6)
-    make_cone("Blade", (0.645, 0, 1.10), M_STEEL, 0.003, 0.036, 0.88, seg=6, scale=(1.0, 0.20, 1.0))
-    # 刃口一条窄余烬，贴在钢刃朝前的一侧，远看能把剑从披风里认出来
-    make_cone("BladeEdge", (0.645, 0.02, 1.12), M_EMBER, 0.001, 0.012, 0.78, seg=4, scale=(1.0, 0.18, 1.0))
+    # —— 剑在右手（+X / Hand.L），顺着小臂伸出去。
+    #    以前刃垂直焊在手腕上，手臂一转剑就绕骨拧。锥尖是局部 -Z，Ry(-90) 把它送向 +X。
+    SWORD_R = (0, math.radians(-90), 0)
+    make_sphere("Pommel", (0.56, 0.02, 1.43), M_METAL, 0.028, seg=8, ring=6)
+    make_cyl("Grip", (0.66, 0.02, 1.43), M_DARK, 0.016, 0.15, seg=8, rot=SWORD_R)
+    guard = make_box("Guard", (0.22, 0.028, 0.038), (0.75, 0.02, 1.43), M_METAL)
+    guard.rotation_euler = SWORD_R
+    make_cone("Blade", (1.18, 0.02, 1.43), M_STEEL, 0.003, 0.036, 0.88, seg=6,
+              rot=SWORD_R, scale=(1.0, 0.20, 1.0))
+    # 刃口一条窄余烬，贴在朝前的一侧，远看能把剑从披风里认出来
+    make_cone("BladeEdge", (1.16, 0.05, 1.43), M_EMBER, 0.001, 0.012, 0.78, seg=4,
+              rot=SWORD_R, scale=(1.0, 0.18, 1.0))
 
     # —— 圆盾在左手 ——
     shield_rot = (math.radians(72), 0, 0)
@@ -372,67 +378,167 @@ def build_parts(arm_obj):
     for name, bone in BONE_OF.items():
         attach_to_bone(bpy.data.objects[name], arm_obj, bone)
 
+
 # ============================================================
-# 3. 动画（pose 关键帧 → 独立 action → NLA 轨道）
-#    待机 / 走 / 翻滚 / 格挡 / 弹反 / 原素瓶 / 受击 / 死亡 / 架势的时长不动。
-#    攻击：前摇停在蓄力，命中窗里 3 帧扫过，再过冲，后摇回 STANCE。
+# 3. 动画
+#    时长与 FRAME_DATA 一致。挥砍直接写在真正拿剑的骨头上。
+#
+# 局部轴（静止姿态量过的，location 不是世界坐标）：
+#   躯干：X 世界右，Y 世界向上，Z 世界向后。
+#     欧拉 X 负 = 前倾；欧拉 Y 正 = 右肩向前。
+#     location.y = 上下，location.z = 向后。静止高度已经在骨上，不要再写 0.96。
+#   腿：大腿 X 正 = 向前抬。膝盖用负值才是向前弯，正值会反关节。
+#   持剑臂 .L（+X，面朝 +Y 时的右手），持盾臂 .R。骨长是局部 Y。
+#   剑 mesh 顺着这条骨长伸出，所以手臂指向哪，剑尖就指向哪。
 # ============================================================
 RAD = math.radians
+_prev_q = {}
+
+# 剑的方向是世界空间骨长（+Y 朝前，+Z 朝上）。
+# 盾的方向是胸口空间 (右, 前, 上)，身体转向时盾留在左胸前，不滑到胯边。
+C_GUARD = (-8.0, -4.0, 0.0)
+SU_G = (0.58, 0.28, -0.72)
+SF_G = (0.22, 0.78, -0.48)
+HU_G = (-0.75, 0.40, -0.05)   # 肘向外，略向前
+HF_G = (0.35, 0.85, 0.05)     # 小臂横在胸前
+LEG_G = (10.0, -18.0, -8.0, -14.0)  # 右大腿、右膝、左大腿、左膝
+# 小臂瞄准后再绕骨长转这么多，圆盾的盘面才朝向敌人。对当前绑定量过。
+SHIELD_ROLL = -24.0
+
 
 def pose_bones(arm_obj):
-    for pb in arm_obj.pose.bones:
-        pb.rotation_mode = "XYZ"
     return arm_obj.pose.bones
 
-def key(pb, frame, rot=None, loc=None):
-    if rot is not None:
-        pb.rotation_euler = rot
-        pb.keyframe_insert("rotation_euler", frame=frame)
-    if loc is not None:
-        pb.location = loc
-        pb.keyframe_insert("location", frame=frame)
-
 def begin_action(arm_obj, name, start):
+    global _prev_q
+    _prev_q = {}
     if arm_obj.animation_data is None:
         arm_obj.animation_data_create()
+    arm_obj.animation_data.use_nla = False
     action = bpy.data.actions.new(name)
     action.use_fake_user = True
     track = arm_obj.animation_data.nla_tracks.new()
     track.name = name
-    # strip 一律落在 frame 1（各占一条 NLA 轨道，同帧不冲突）：
-    # 导出的关键帧时间即 0 基，three.js 从 t=0 播放才对得上帧数据表
+    track.mute = True
+    # strip 落在 frame 1：导出的关键帧时间即 0 基，three.js 从 t=0 才对得上帧数据
     track.strips.new(name, 1, action)
     arm_obj.animation_data.action = action
+    for t in arm_obj.animation_data.nla_tracks:
+        t.mute = True
     return action
 
-# 书写约定：这里的 .R 仍当「持剑臂」来摆（历史关键帧都写在 .R 上）。
-# 导出前 swap_arm_sides 会把左右臂通道对调、Z 欧拉取反，
-# 挥砍才落到真正拿剑的那只手（骨名 .L，+X，面朝 +Y 时的右手）。
-STANCE = {  # 待机：剑垂在身侧，盾收在身前。f1 / 收尾都回到这里
-    "Chest":      {"rot": (RAD(8), 0, 0)},
-    "Spine":      {"rot": (RAD(4), 0, 0)},
-    "Head":       {"rot": (RAD(-6), 0, 0)},
-    "UpperArm.R": {"rot": (RAD(-42), 0, RAD(-22))},  # 持剑臂下垂，剑尖朝下
-    "LowerArm.R": {"rot": (RAD(-8), 0, 0)},
-    "UpperArm.L": {"rot": (RAD(-34), 0, RAD(36))},   # 持盾臂前收
-    "LowerArm.L": {"rot": (RAD(-68), 0, RAD(-12))},
-}
+def reset_pose(arm_obj):
+    for pb in arm_obj.pose.bones:
+        pb.location = (0.0, 0.0, 0.0)
+        pb.rotation_mode = "QUATERNION"
+        pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
 
-def apply_stance(pbs, frame):
-    for bone, p in STANCE.items():
-        key(pbs[bone], frame, rot=p["rot"])
+def _euler(pb, deg):
+    pb.rotation_mode = "XYZ"
+    pb.rotation_euler = (RAD(deg[0]), RAD(deg[1]), RAD(deg[2]))
 
-def stamp(pbs, frames, pose):
-    """同一姿势打到多帧上，前摇才停得住，而不是顺着贝塞尔从第一帧滑到命中。"""
-    if isinstance(frames, int):
-        frames = (frames,)
-    done = set()
-    for frame in frames:
-        if frame in done:
-            continue
-        done.add(frame)
-        for bone, spec in pose.items():
-            key(pbs[bone], frame, rot=spec.get("rot"), loc=spec.get("loc"))
+def _aim_quat(pb, y_dir, z_hint=(0.0, 0.0, 1.0)):
+    """让骨长（局部 Y）指向 y_dir。z_hint 只负责扭转，避免剑绕握把自旋。"""
+    y = Vector(y_dir).normalized()
+    hint = Vector(z_hint)
+    z = hint - y * y.dot(hint)
+    if z.length < 1e-6:
+        alt = Vector((0.0, 1.0, 0.0))
+        z = alt - y * y.dot(alt)
+    z.normalize()
+    x = y.cross(z).normalized()
+    z = x.cross(y).normalized()
+    arm_rot = Matrix((x, y, z)).transposed()
+    rest = pb.bone.matrix_local.to_3x3()
+    if pb.parent:
+        parent_pose = pb.parent.matrix.to_3x3()
+        parent_rest = pb.parent.bone.matrix_local.to_3x3()
+        basis = rest.inverted() @ parent_rest @ parent_pose.inverted() @ arm_rot
+    else:
+        basis = rest.inverted() @ arm_rot
+    q = basis.to_quaternion()
+    prev = _prev_q.get(pb.name)
+    if prev is not None and prev.dot(q) < 0.0:
+        q.negate()
+    _prev_q[pb.name] = q.copy()
+    pb.rotation_mode = "QUATERNION"
+    pb.rotation_quaternion = q
+
+def _body_dir(chest_pb, spec):
+    """胸口空间 (右, 前, 上) → 世界方向。胸口 Z 轴朝后，所以前方是 -Z。"""
+    right, forward, up = spec
+    m = chest_pb.matrix.to_3x3()
+    return m.col[0] * right - m.col[2] * forward + m.col[1] * up
+
+def _roll_local_y(pb, degrees):
+    q = pb.rotation_quaternion @ Quaternion((0.0, 1.0, 0.0), RAD(degrees))
+    prev = _prev_q.get(pb.name)
+    if prev is not None and prev.dot(q) < 0.0:
+        q.negate()
+    _prev_q[pb.name] = q.copy()
+    pb.rotation_quaternion = q
+
+def pose_now(arm_obj, chest, su, sf, hu, hf, legs, head=None):
+    """先把髋归零再瞄准，手臂局部旋转才不会被翻滚的髋带着算歪。
+    剑用世界方向，盾用胸口方向，挥砍时盾跟着上身转。"""
+    pbs = arm_obj.pose.bones
+    hip = pbs["Hips"]
+    hip.rotation_mode = "XYZ"
+    hip.rotation_euler = (0.0, 0.0, 0.0)
+    hip.location = (0.0, 0.0, 0.0)
+    _euler(pbs["Chest"], chest)
+    _euler(pbs["Spine"], (chest[0] * 0.45, chest[1] * 0.45, 0.0))
+    if head is None:
+        head = (chest[0] * 0.25, -chest[1] * 0.2, 0.0)
+    _euler(pbs["Head"], head)
+    bpy.context.view_layer.update()
+    face = _body_dir(pbs["Chest"], (0.0, 1.0, 0.0))
+    _aim_quat(pbs["UpperArm.L"], su)
+    _aim_quat(pbs["UpperArm.R"], _body_dir(pbs["Chest"], hu), face)
+    bpy.context.view_layer.update()
+    _aim_quat(pbs["LowerArm.L"], sf)
+    fore = pbs["LowerArm.R"]
+    _aim_quat(fore, _body_dir(pbs["Chest"], hf), face)
+    _roll_local_y(fore, SHIELD_ROLL)
+    _euler(pbs["UpperLeg.L"], (legs[0], 0.0, 0.0))
+    _euler(pbs["LowerLeg.L"], (legs[1], 0.0, 0.0))
+    _euler(pbs["UpperLeg.R"], (legs[2], 0.0, 0.0))
+    _euler(pbs["LowerLeg.R"], (legs[3], 0.0, 0.0))
+    bpy.context.view_layer.update()
+
+def pose_frame(arm_obj, frame, chest, su, sf, hu, hf, legs, hips_loc=None, hips_rot=None, head=None):
+    pose_now(arm_obj, chest, su, sf, hu, hf, legs, head=head)
+    pbs = arm_obj.pose.bones
+    for name in ("Chest", "Spine", "Head", "UpperLeg.L", "LowerLeg.L", "UpperLeg.R", "LowerLeg.R"):
+        pbs[name].keyframe_insert("rotation_euler", frame=frame)
+    for name in ("UpperArm.L", "LowerArm.L", "UpperArm.R", "LowerArm.R"):
+        pbs[name].keyframe_insert("rotation_quaternion", frame=frame)
+    if hips_loc is None and hips_rot is None:
+        return
+    hip = pbs["Hips"]
+    if hips_rot is not None:
+        _euler(hip, hips_rot)
+        hip.keyframe_insert("rotation_euler", frame=frame)
+    if hips_loc is not None:
+        hip.location = hips_loc
+        hip.keyframe_insert("location", frame=frame)
+
+def key_hips(arm_obj, frame, rot, loc):
+    hip = arm_obj.pose.bones["Hips"]
+    _euler(hip, rot)
+    hip.location = loc
+    hip.keyframe_insert("rotation_euler", frame=frame)
+    hip.keyframe_insert("location", frame=frame)
+
+def guard(arm_obj, frame, chest=None, legs=None, head=None, hips_loc=None):
+    pose_frame(
+        arm_obj, frame,
+        C_GUARD if chest is None else chest,
+        SU_G, SF_G, HU_G, HF_G,
+        LEG_G if legs is None else legs,
+        hips_loc=hips_loc, head=head,
+    )
 
 def hit_window(clip):
     """startup/active 秒数 → 1 基帧。attack 的 6/30、3/30 得到前摇到 f6、命中 f7–f9。"""
@@ -442,511 +548,294 @@ def hit_window(clip):
     print(f"INFERNO_HIT {clip} hold_until=f{wind} active=f{wind + 1}-f{active_end}")
     return wind, active_end
 
-def body_pose(hips, chest, sword, forearm, shield=(-34, 0, 36), shield_fore=(-68, 0, -12),
-              head=(-6, 0, 0), spine=(4, 0, 0),
-              thigh_l=(0, 0, 0), shin_l=(0, 0, 0), thigh_r=(0, 0, 0), shin_r=(0, 0, 0)):
-    """度数。sword / forearm 写在 .R 上，导出前 swap_arm_sides 才落到持剑的 .L。"""
-    def e(d):
-        return (RAD(d[0]), RAD(d[1]), RAD(d[2]))
-    return {
-        "Hips": {"loc": hips},
-        "Chest": {"rot": e(chest)},
-        "Spine": {"rot": e(spine)},
-        "Head": {"rot": e(head)},
-        "UpperArm.R": {"rot": e(sword)},
-        "LowerArm.R": {"rot": e(forearm)},
-        "UpperArm.L": {"rot": e(shield)},
-        "LowerArm.L": {"rot": e(shield_fore)},
-        "UpperLeg.L": {"rot": e(thigh_l)},
-        "LowerLeg.L": {"rot": e(shin_l)},
-        "UpperLeg.R": {"rot": e(thigh_r)},
-        "LowerLeg.R": {"rot": e(shin_r)},
-    }
-
-def hang_pose(hips=(0, 0, 0.96)):
-    """待机垂剑。角度与 STANCE 一致。"""
-    return body_pose(hips, (8, 0, 0), (-42, 0, -22), (-8, 0, 0))
-
-def guard_pose():
-    """架势基准，与 _stance_pose 同一套角度。盾的小臂不另弯。"""
-    return body_pose(
-        (0, 0.01, 0.92), (10, 0, 8), (-8, 0, -52), (-78, 0, 0),
-        shield=(-15, 0, -45), shield_fore=(0, 0, 0),
-        head=(-8, 0, 0), spine=(2, 0, 0),
-        thigh_l=(18, 0, 0), shin_l=(20, 0, 0), thigh_r=(-12, 0, 0), shin_r=(18, 0, 0),
-    )
-
-def recover_stance(pbs, frame):
-    apply_stance(pbs, frame)
-    key(pbs["Hips"], frame, loc=(0, 0, 0.96))
-    for b in ("UpperLeg.L", "LowerLeg.L", "UpperLeg.R", "LowerLeg.R"):
-        key(pbs[b], frame, rot=(0, 0, 0))
-
-def unwrap_sword_end(pbs, frame, z_deg):
-    """收势和待机是同一个姿势。Z 多写一圈，刺击回收才顺着短路回来。"""
-    key(pbs["UpperArm.R"], frame, rot=(RAD(-42), 0, RAD(z_deg)))
-    key(pbs["LowerArm.R"], frame, rot=(RAD(-8), 0, 0))
+def seat_shield(arm_obj):
+    """盾面朝向敌人（+Y）。圆盾跟着左小臂走，架势里才正对前方。"""
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode="POSE")
+    reset_pose(arm_obj)
+    pose_now(arm_obj, C_GUARD, SU_G, SF_G, HU_G, HF_G, LEG_G)
+    rot = Matrix.Identity(4)
+    rot.col[0] = Vector((1.0, 0.0, 0.0, 0.0))
+    rot.col[1] = Vector((0.0, 0.0, 1.0, 0.0))
+    rot.col[2] = Vector((0.0, 1.0, 0.0, 0.0))
+    for name, loc, sc in (
+        ("Shield", (-0.28, 0.40, 1.28), (1.0, 1.0, 1.0)),
+        ("ShieldRim", (-0.28, 0.42, 1.28), (1.0, 1.0, 1.0)),
+        ("ShieldBoss", (-0.28, 0.445, 1.28), (1.0, 1.0, 0.5)),
+    ):
+        obj = bpy.data.objects[name]
+        obj.matrix_world = Matrix.Translation(Vector(loc)) @ rot @ Matrix.Diagonal(Vector((*sc, 1.0)))
+    bpy.context.view_layer.update()
+    normal = bpy.data.objects["Shield"].matrix_world.to_3x3().col[2].normalized()
+    if normal.y < 0.8:
+        raise RuntimeError(f"盾没有朝前: {tuple(round(c, 2) for c in normal)}")
+    reset_pose(arm_obj)
+    print(f"INFERNO_SHIELD normal={tuple(round(c, 2) for c in normal)}")
 
 def anim_idle(arm_obj, start=1):
+    """120f 呼吸。剑垂在身前，盾横在胸前。"""
     begin_action(arm_obj, "idle", start)
-    pbs = pose_bones(arm_obj)
-    for f, breathe in [(1, 0), (30, 1), (60, 0), (90, -1), (120, 0)]:
-        frame = f
-        apply_stance(pbs, frame)
-        key(pbs["Chest"], frame, rot=(RAD(6 + 1.4 * breathe), 0, 0))
-        key(pbs["Head"], frame, rot=(RAD(-6 - 0.8 * breathe), RAD(3 * breathe), 0))
-        key(pbs["Hips"], frame, loc=(0, 0, 0.96 - 0.008 * breathe))
+    reset_pose(arm_obj)
+    for f, breathe in ((1, 0), (30, 1), (60, 0), (90, -1), (120, 0)):
+        guard(
+            arm_obj, f,
+            chest=(-8.0 - 1.2 * breathe, -4.0, 0.0),
+            head=(-6.0 - 0.8 * breathe, 3.0 * breathe, 0.0),
+            hips_loc=(0.0, -0.008 * breathe, 0.0),
+        )
 
 def anim_attack(arm_obj, start=200):
-    """27f 横斩。f3–f6 剑停在肩后，f7–f9 水平扫过身体，f12 过冲，f27 回待机。"""
+    """27f 横斩。f3–f6 剑停在右肩上方，f7–f9 贴着身前扫过，f12 收到左侧，f27 回架势。"""
     begin_action(arm_obj, "attack", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("attack")
     assert (wind, active_end) == (6, 9), (wind, active_end)
-    # 蓄力：剑在肩后（Z≈-50）。命中窗把剑送到身体另一侧（Z 过 0 到 +40），高度保住。
-    charge = body_pose(
-        (0, 0, 0.95), (8, 0, 16), (0, 0, -50), (-85, 0, 0),
-        head=(-4, 0, 8), spine=(6, 0, 6),
-    )
-    leaving = body_pose(
-        (0, 0, 0.95), (8, 0, 2), (-30, 0, -8), (-48, 0, 0),
-        head=(-2, 0, 2), spine=(4, 0, 0),
-    )
-    across = body_pose(
-        (0, 0, 0.95), (8, 0, -12), (-70, 0, 28), (-18, 0, 0),
-        head=(-2, 0, -6), spine=(4, 0, -6),
-    )
-    passed = body_pose(
-        (0, 0.01, 0.955), (6, 0, -20), (-68, 0, 42), (-8, 0, 0),
-        head=(-2, 0, -10), spine=(2, 0, -8),
-    )
-    over = body_pose(
-        (0, 0.02, 0.96), (4, 0, -28), (-58, 0, 55), (-4, 0, 0),
-        head=(0, 0, -12), spine=(2, 0, -10),
-    )
-    stamp(pbs, 1, hang_pose())
-    stamp(pbs, (3, wind), charge)
-    stamp(pbs, wind + 1, leaving)     # f7
-    stamp(pbs, wind + 2, across)      # f8 剑横在胸前
-    stamp(pbs, active_end, passed)    # f9 已经扫到另一侧
-    stamp(pbs, active_end + 3, over)  # f12
-    recover_stance(pbs, 27)
+    guard(arm_obj, 1)
+    chamber = ((-6, -24, 0), (0.85, 0.10, 0.35), (0.55, 0.35, 0.70), HU_G, HF_G, (8, -14, -6, -10))
+    pose_frame(arm_obj, 3, *chamber)
+    pose_frame(arm_obj, wind, *chamber)
+    pose_frame(arm_obj, wind + 1, (-8, 2, 0), (0.45, 0.55, 0.15), (0.55, 0.78, 0.10), HU_G, HF_G, (12, -20, -6, -10))
+    pose_frame(arm_obj, wind + 2, (-10, 12, 0), (0.15, 0.82, 0.05), (0.0, 0.98, 0.06), HU_G, HF_G, (14, -24, -4, -8))
+    pose_frame(arm_obj, active_end, (-8, 20, 0), (-0.10, 0.55, 0.02), (-0.55, 0.78, 0.02), HU_G, HF_G, (12, -20, -6, -10))
+    pose_frame(arm_obj, active_end + 3, (-4, 30, 0), (-0.15, 0.32, -0.05), (-0.88, 0.40, -0.10), HU_G, HF_G, (8, -14, -8, -12))
+    guard(arm_obj, 27)
 
 def anim_roll(arm_obj, start=400):
-    """21f=0.7s：前滚翻，原地滚（M0 无位移系统）"""
+    """21f 前滚。手臂贴着身体，髋绕 X 翻一圈；位移不再把人推到身后。"""
     begin_action(arm_obj, "roll", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    # —— f3 蜷身蓄力
-    key(pbs["Hips"], 3, loc=(0, 0.05, 0.62), rot=(RAD(30), 0, 0))
-    key(pbs["Spine"], 3, rot=(RAD(40), 0, 0))
-    key(pbs["UpperLeg.L"], 3, rot=(RAD(-70), 0, 0))
-    key(pbs["UpperLeg.R"], 3, rot=(RAD(-70), 0, 0))
-    key(pbs["LowerLeg.L"], 3, rot=(RAD(80), 0, 0))
-    key(pbs["LowerLeg.R"], 3, rot=(RAD(80), 0, 0))
-    # —— f4-f18 髋关节整圈前翻
-    for f, ang in [(4, 30), (7, -60), (11, -180), (15, -300), (18, -355)]:
-        key(pbs["Hips"], f, loc=(0, 0.05 + (0.25 if 4 <= f <= 17 else 0), 0.60 if 4 <= f <= 17 else 0.70), rot=(RAD(ang), 0, 0))
-    # —— f20 伸展落地，f21 回待机
-    key(pbs["Hips"], 20, loc=(0, 0.05, 0.90), rot=(RAD(-4), 0, 0))
-    apply_stance(pbs, 21)
-    key(pbs["Hips"], 21, loc=(0, 0, 0.96), rot=(0, 0, 0))
+    reset_pose(arm_obj)
+    su, sf = (0.35, 0.40, -0.35), (0.20, 0.45, -0.50)
+    hu, hf = (-0.45, 0.30, -0.10), (0.05, 0.45, -0.20)
+    legs = (50, -60, 50, -60)
+    pose_frame(arm_obj, 1, (8, 0, 0), su, sf, hu, hf, legs, hips_loc=(0, -0.26, 0), hips_rot=(30, 0, 0))
+    for f, ang, loc in (
+        (4, 30, (0, -0.24, 0)),
+        (7, -60, (0, -0.20, 0)),
+        (11, -180, (0, -0.18, 0)),
+        (15, -300, (0, -0.20, 0)),
+    ):
+        key_hips(arm_obj, f, (ang, 0, 0), loc)
+    pose_frame(arm_obj, 18, (8, 0, 0), su, sf, hu, hf, legs, hips_loc=(0, -0.12, 0), hips_rot=(-355, 0, 0))
+    guard(arm_obj, 21, hips_loc=(0, 0, 0))
+    # -360 和 0 是同一个姿态，但插值才不会从 -355 绕远路甩回去
+    key_hips(arm_obj, 21, (-360, 0, 0), (0, 0, 0))
 
 def anim_walk(arm_obj, start=600):
-    """24f 循环步行：双腿摆动+髋部起伏，待机姿态叠加"""
+    """24f 循环步行。向前的那条腿屈膝，脚不要反着撇出去。"""
     begin_action(arm_obj, "walk", start)
-    pbs = pose_bones(arm_obj)
-    for f, phase in [(1, 0), (7, 1), (13, 0), (19, -1), (24, 0)]:
-        apply_stance(pbs, f)
-        key(pbs["UpperLeg.L"], f, rot=(RAD(-32 * phase), 0, 0))
-        key(pbs["UpperLeg.R"], f, rot=(RAD(32 * phase), 0, 0))
-        key(pbs["LowerLeg.L"], f, rot=(RAD(20 + 25 * max(0, phase)), 0, 0))
-        key(pbs["LowerLeg.R"], f, rot=(RAD(20 + 25 * max(0, -phase)), 0, 0))
-        key(pbs["Hips"], f, loc=(0, 0, 0.95 - 0.015 * abs(phase)))
+    reset_pose(arm_obj)
+    for f, phase in ((1, 0.0), (7, 1.0), (13, 0.0), (19, -1.0), (24, 0.0)):
+        # phase>0：左腿在前。膝盖负值才是向前弯。
+        legs = (
+            -28.0 * phase, -10.0 - 24.0 * max(0.0, -phase),
+            28.0 * phase, -10.0 - 24.0 * max(0.0, phase),
+        )
+        guard(arm_obj, f, legs=legs, hips_loc=(0.0, -0.012 * abs(phase), 0.0))
 
 def anim_block(arm_obj, start=800):
-    """40f 循环举盾：左臂横档胸前，重心微沉"""
+    """40f 举盾。盾挡在胸前，剑收到右侧。"""
     begin_action(arm_obj, "block_idle", start)
-    pbs = pose_bones(arm_obj)
-    for f, breathe in [(1, 0), (20, 1), (40, 0)]:
-        apply_stance(pbs, f)
-        key(pbs["UpperArm.L"], f, rot=(RAD(-35 - 2 * breathe), 0, RAD(-75)))
-        key(pbs["LowerArm.L"], f, rot=(RAD(-55), 0, RAD(-15)))
-        key(pbs["UpperArm.R"], f, rot=(RAD(-15), 0, RAD(30)))   # 剑回收警戒
-        key(pbs["Hips"], f, loc=(0, 0, 0.94))
+    reset_pose(arm_obj)
+    for f, breathe in ((1, 0.0), (20, 1.0), (40, 0.0)):
+        pose_frame(
+            arm_obj, f, (-4.0, 0.0, 0.0),
+            SU_G, SF_G,
+            (-0.45, 0.40, 0.35), (0.10, 0.70, 0.45 + 0.04 * breathe),
+            LEG_G, hips_loc=(0.0, -0.02 - 0.01 * breathe, 0.0),
+        )
 
 def anim_parry(arm_obj, start=1000):
-    """14f 盾击弹反：f3-f7 盾向前推（window 0.08-0.20s ≈ f2.4-f6）"""
+    """14f 盾击。f4 盾推向敌人，再收回架势。"""
     begin_action(arm_obj, "parry", start)
-    pbs = pose_bones(arm_obj)
-    # 起手 = 举盾姿态
-    apply_stance(pbs, 1)
-    key(pbs["UpperArm.L"], 1, rot=(RAD(-35), 0, RAD(-75)))
-    key(pbs["LowerArm.L"], 1, rot=(RAD(-55), 0, RAD(-15)))
-    # 盾猛推向前（判定窗）
-    key(pbs["UpperArm.L"], 4, rot=(RAD(-70), 0, RAD(-30)))
-    key(pbs["LowerArm.L"], 4, rot=(RAD(-15), 0, RAD(0)))
-    key(pbs["Chest"], 4, rot=(RAD(-6), 0, RAD(-10)))   # 上身前顶
-    # 收回举盾
-    key(pbs["UpperArm.L"], 8, rot=(RAD(-40), 0, RAD(-60)))
-    key(pbs["LowerArm.L"], 8, rot=(RAD(-45), 0, RAD(-10)))
-    apply_stance(pbs, 14)
+    reset_pose(arm_obj)
+    pose_frame(
+        arm_obj, 1, (-4, 0, 0),
+        SU_G, SF_G,
+        (-0.55, 0.50, 0.15), (0.20, 0.85, 0.20), LEG_G,
+    )
+    pose_frame(
+        arm_obj, 4, (-14, 2, 0),
+        SU_G, SF_G,
+        (-0.25, 0.75, 0.10), (0.05, 1.05, 0.08), (8, -16, -4, -10),
+    )
+    pose_frame(
+        arm_obj, 8, (-6, 0, 0),
+        SU_G, SF_G,
+        (-0.60, 0.55, 0.05), (0.25, 0.90, 0.12), LEG_G,
+    )
+    guard(arm_obj, 14)
 
 def anim_estus(arm_obj, start=1200):
-    """33f 原素瓶：左手举起饮用，f16(0.53s) 低头，f18 后回复"""
+    """33f 喝药。手举到嘴边，盾留在头的左侧，不扣到面甲上。"""
     begin_action(arm_obj, "estus", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    key(pbs["UpperArm.L"], 8, rot=(RAD(-120), 0, RAD(-30)))   # 举瓶到面前
-    key(pbs["LowerArm.L"], 8, rot=(RAD(-90), 0, 0))
-    key(pbs["Head"], 10, rot=(RAD(-25), 0, 0))                 # 仰头
-    key(pbs["Head"], 16, rot=(RAD(-30), 0, 0))
-    key(pbs["Head"], 22, rot=(RAD(-8), 0, 0))
-    apply_stance(pbs, 33)
+    reset_pose(arm_obj)
+    guard(arm_obj, 1)
+    pose_frame(
+        arm_obj, 8, (-4, 0, 0), SU_G, SF_G,
+        (-0.55, 0.15, 0.65), (-0.45, 0.20, 0.80), LEG_G, head=(18, 0, 0),
+    )
+    pose_frame(
+        arm_obj, 16, (-4, 0, 0), SU_G, SF_G,
+        (-0.55, 0.15, 0.65), (-0.45, 0.20, 0.80), LEG_G, head=(22, 0, 0),
+    )
+    pose_frame(
+        arm_obj, 22, (-6, 0, 0), SU_G, SF_G,
+        (-0.65, 0.30, 0.25), (-0.05, 0.55, 0.35), LEG_G, head=(4, 0, 0),
+    )
+    guard(arm_obj, 33)
 
 def anim_hurt(arm_obj, start=1400):
-    """12f 受击趔趄：上身后仰"""
+    """12f 受击。上身向后仰，手臂收到身前。"""
     begin_action(arm_obj, "hurt", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    key(pbs["Chest"], 3, rot=(RAD(-18), 0, 0))
-    key(pbs["Head"], 3, rot=(RAD(-22), 0, 0))
-    apply_stance(pbs, 12)
+    reset_pose(arm_obj)
+    guard(arm_obj, 1)
+    pose_frame(
+        arm_obj, 3, (14, 0, 0),
+        (0.40, 0.15, -0.50), (0.20, 0.30, -0.60),
+        (-0.60, 0.30, -0.05), (0.15, 0.65, 0.0),
+        LEG_G, head=(18, 0, 0),
+    )
+    guard(arm_obj, 12)
 
 def anim_death(arm_obj, start=1600):
-    """30f 死亡倒地：髋前倾 90°，全身瘫软"""
+    """24f 向前倒。髋的 X 负值才是前倾。"""
     begin_action(arm_obj, "death", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    key(pbs["Hips"], 8, loc=(0, 0.1, 0.55), rot=(RAD(55), 0, 0))
-    key(pbs["Spine"], 8, rot=(RAD(30), 0, 0))
-    key(pbs["UpperLeg.L"], 8, rot=(RAD(-40), 0, 0))
-    key(pbs["UpperLeg.R"], 8, rot=(RAD(-30), 0, 0))
-    key(pbs["Hips"], 24, loc=(0, 0.12, 0.18), rot=(RAD(88), 0, 0))
-    key(pbs["Spine"], 24, rot=(RAD(15), 0, 0))
-    key(pbs["Head"], 24, rot=(RAD(10), 0, 0))
-    key(pbs["UpperArm.L"], 24, rot=(0, 0, RAD(10)))
-    key(pbs["UpperArm.R"], 24, rot=(0, 0, RAD(-10)))
-
-# ============================================================
-# 3b. DS3 直剑完全表·新招动画（时序与 FRAME_DATA 同源；位移由代码 lunge 驱动）
-#     剑尖在静止髋上量过（写在 .R，导出前才换到 .L）：前臂约 -80° 时
-#     Z≈-90 指后，Z≈0 扫到身体另一侧，Z≈90（或 -270）平刺向前，Z≈±180 张开在持剑侧。
-#     上挑不改这条 Z，只把前臂 X 从 +15° 收到 -120°，剑从下翻到上。
-#     UpperLeg x+ 腿前抬。关键帧终点都 ≥ total×30+1 帧。
-# ============================================================
-
-def _stance_pose(pbs, frame):
-    """架势基准姿（DS3 Stance）：剑放平前指、沉胯、前后站位"""
-    key(pbs["Hips"], frame, loc=(0, 0.01, 0.92))
-    key(pbs["Chest"], frame, rot=(RAD(10), 0, RAD(8)))
-    key(pbs["Spine"], frame, rot=(RAD(2), 0, 0))
-    key(pbs["Head"], frame, rot=(RAD(-8), 0, 0))
-    key(pbs["UpperArm.R"], frame, rot=(RAD(-8), 0, RAD(-52)))    # 持剑前指
-    key(pbs["LowerArm.R"], frame, rot=(RAD(-78), 0, 0))          # 剑放平
-    key(pbs["UpperArm.L"], frame, rot=(RAD(-15), 0, RAD(-45)))   # 盾收体侧
-    key(pbs["UpperLeg.L"], frame, rot=(RAD(18), 0, 0))
-    key(pbs["LowerLeg.L"], frame, rot=(RAD(20), 0, 0))
-    key(pbs["UpperLeg.R"], frame, rot=(RAD(-12), 0, 0))
-    key(pbs["LowerLeg.R"], frame, rot=(RAD(18), 0, 0))
-
-def _reset_legs(pbs, frame):
-    for b in ("UpperLeg.L", "LowerLeg.L", "UpperLeg.R", "LowerLeg.R"):
-        key(pbs[b], frame, rot=(0, 0, 0))
+    reset_pose(arm_obj)
+    guard(arm_obj, 1)
+    key_hips(arm_obj, 1, (0, 0, 0), (0, 0, 0))
+    pose_frame(
+        arm_obj, 8, (-18, 0, 0),
+        (0.30, 0.20, -0.70), (0.10, 0.15, -0.80),
+        (-0.35, 0.15, -0.55), (-0.10, 0.15, -0.70),
+        (30, -50, 25, -40), hips_loc=(0, -0.40, -0.06), hips_rot=(-55, 0, 0),
+    )
+    pose_frame(
+        arm_obj, 24, (-8, 0, 0),
+        (0.45, 0.10, -0.80), (0.15, 0.05, -0.90),
+        (-0.40, 0.05, -0.70), (-0.15, 0.05, -0.85),
+        (12, -18, 10, -16), hips_loc=(0, -0.78, -0.10), hips_rot=(-82, 0, 0), head=(12, 0, 0),
+    )
 
 def anim_run_attack(arm_obj, start=1800):
-    """24f 跑攻前刺。f2–f5 低身把剑停在腰后，f6–f8 刺出，f9 停在刺直，f12 身体扑过，f24 回待机。"""
+    """24f 跑攻前刺。剑先收到右后方，再沿身前平刺出去。前冲距离由代码负责。"""
     begin_action(arm_obj, "runAttack", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("runAttack")
     assert (wind, active_end) == (5, 9), (wind, active_end)
-    # 蓄力：剑张开在持剑侧（Z≈-170）。刺击沿右侧收到正前（Z 收到 -270，即 +90），不绕到另一侧。
-    charge = body_pose(
-        (0, -0.02, 0.90), (14, 0, 4), (6, 0, -170), (-88, 0, 0),
-        shield=(-20, 0, -32), shield_fore=(-50, 0, -8),
-        head=(-4, 0, 2), spine=(8, 0, 2),
-        thigh_l=(30, 0, 0), shin_l=(35, 0, 0), thigh_r=(-12, 0, 0), shin_r=(8, 0, 0),
-    )
-    leaving = body_pose(
-        (0, 0.01, 0.86), (16, 0, 2), (2, 0, -210), (-86, 0, 0),
-        shield=(-22, 0, -44), shield_fore=(-36, 0, -4),
-        head=(-2, 0, 0), spine=(6, 0, 0),
-        thigh_l=(36, 0, 0), shin_l=(24, 0, 0), thigh_r=(-22, 0, 0), shin_r=(8, 0, 0),
-    )
-    thrust = body_pose(
-        (0, 0.03, 0.84), (18, 0, 0), (-2, 0, -240), (-84, 0, 0),
-        shield=(-25, 0, -55), shield_fore=(-22, 0, 0),
-        head=(-2, 0, 0), spine=(4, 0, 0),
-        thigh_l=(42, 0, 0), shin_l=(15, 0, 0), thigh_r=(-32, 0, 0), shin_r=(8, 0, 0),
-    )
-    through = body_pose(
-        (0, 0.05, 0.81), (20, 0, 0), (-6, 0, -270), (-80, 0, 0),
-        shield=(-28, 0, -64), shield_fore=(-14, 0, 0),
-        head=(0, 0, 0), spine=(2, 0, 0),
-        thigh_l=(50, 0, 0), shin_l=(8, 0, 0), thigh_r=(-38, 0, 0), shin_r=(4, 0, 0),
-    )
-    over = body_pose(
-        (0, 0.06, 0.79), (26, 0, 0), (-12, 0, -290), (-76, 0, 0),
-        shield=(-32, 0, -70), shield_fore=(-8, 0, 0),
-        head=(6, 0, 0), spine=(0, 0, 0),
-        thigh_l=(56, 0, 0), shin_l=(4, 0, 0), thigh_r=(-44, 0, 0), shin_r=(2, 0, 0),
-    )
-    stamp(pbs, 1, hang_pose())
-    stamp(pbs, (2, wind), charge)
-    stamp(pbs, wind + 1, leaving)                         # f6
-    stamp(pbs, wind + 2, thrust)                          # f7
-    stamp(pbs, (wind + 3, active_end), through)           # f8–f9 剑已刺直
-    stamp(pbs, active_end + 3, over)                      # f12 肩和重心扑过刺直线
-    recover_stance(pbs, 24)
-    unwrap_sword_end(pbs, 24, -382)
+    guard(arm_obj, 1)
+    chamber = ((-16, -12, 0), (0.55, -0.30, 0.10), (0.30, -0.70, 0.35), HU_G, HF_G, (-12, -16, 18, -30))
+    pose_frame(arm_obj, 2, *chamber)
+    pose_frame(arm_obj, wind, *chamber)
+    pose_frame(arm_obj, wind + 1, (-16, -2, 0), (0.35, 0.45, 0.08), (0.12, 0.75, 0.10), HU_G, HF_G, (-14, -14, 22, -28))
+    pose_frame(arm_obj, wind + 2, (-18, 4, 0), (0.12, 0.85, 0.04), (0.0, 0.98, 0.05), HU_G, HF_G, (-16, -12, 24, -26))
+    pose_frame(arm_obj, active_end, (-18, 6, 0), (0.05, 0.90, 0.0), (0.0, 1.0, 0.02), HU_G, HF_G, (-16, -12, 26, -24))
+    pose_frame(arm_obj, active_end + 3, (-14, 8, 0), (0.02, 0.92, -0.04), (-0.06, 0.98, 0.0), HU_G, HF_G, (-12, -14, 20, -26))
+    guard(arm_obj, 24)
 
 def anim_roll_attack(arm_obj, start=2000):
-    """20f 起身横扫。f1–f4 停在翻滚收尾的低伏，f5–f7 抡起来扫过，f8 停在扫过身，f11 过冲，f20 回待机。"""
+    """20f 起身横扫。从低伏把剑抡到身前，再扫向左侧。"""
     begin_action(arm_obj, "rollAttack", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("rollAttack")
     assert (wind, active_end) == (4, 8), (wind, active_end)
-    # 起手剑尖朝下贴地。起身时再扫到身前，和站立横斩的肩后蓄力不是同一个轮廓。
-    charge = body_pose(
-        (0, 0.03, 0.74), (20, 0, 18), (18, 0, -75), (-35, 0, 0),
-        head=(8, 0, 8), spine=(18, 0, 6),
-        thigh_l=(-35, 0, 0), shin_l=(50, 0, 0), thigh_r=(20, 0, 0), shin_r=(30, 0, 0),
-    )
-    leaving = body_pose(
-        (0, 0.02, 0.82), (16, 0, 4), (-8, 0, -28), (-30, 0, 0),
-        head=(2, 0, 2), spine=(12, 0, 2),
-        thigh_l=(-20, 0, 0), shin_l=(36, 0, 0), thigh_r=(12, 0, 0), shin_r=(18, 0, 0),
-    )
-    across = body_pose(
-        (0, 0.015, 0.88), (12, 0, -6), (-40, 0, 4), (-20, 0, 0),
-        head=(-2, 0, -2), spine=(8, 0, -2),
-        thigh_l=(-8, 0, 0), shin_l=(18, 0, 0), thigh_r=(6, 0, 0), shin_r=(8, 0, 0),
-    )
-    passed = body_pose(
-        (0, 0.01, 0.93), (8, 0, -16), (-70, 0, 28), (-18, 0, 0),
-        head=(-4, 0, -8), spine=(4, 0, -6),
-        thigh_l=(0, 0, 0), shin_l=(6, 0, 0), thigh_r=(0, 0, 0), shin_r=(2, 0, 0),
-    )
-    over = body_pose(
-        (0, 0, 0.99), (4, 0, -24), (-62, 0, 46), (-8, 0, 0),
-        head=(-6, 0, -12), spine=(2, 0, -8),
-    )
-    stamp(pbs, (1, wind), charge)
-    stamp(pbs, wind + 1, leaving)                         # f5 离地
-    stamp(pbs, wind + 2, across)                          # f6 剑扫到身前
-    stamp(pbs, (wind + 3, active_end), passed)            # f7–f8 起身扫过
-    stamp(pbs, active_end + 3, over)                      # f11
-    recover_stance(pbs, 20)
+    low = ((-20, -8, 0), (0.45, 0.20, -0.80), (0.20, 0.40, -0.85), HU_G, HF_G, (24, -42, 18, -36))
+    pose_frame(arm_obj, 1, *low, hips_loc=(0, -0.20, -0.02))
+    pose_frame(arm_obj, wind, *low, hips_loc=(0, -0.18, -0.02))
+    pose_frame(arm_obj, wind + 1, (-14, -2, 0), (0.50, 0.45, 0.20), (0.30, 0.70, 0.40), HU_G, HF_G, (16, -30, 12, -24), hips_loc=(0, -0.10, 0))
+    pose_frame(arm_obj, wind + 2, (-12, 8, 0), (0.30, 0.65, 0.10), (0.20, 0.85, 0.15), HU_G, HF_G, (14, -26, 8, -18), hips_loc=(0, -0.06, 0))
+    pose_frame(arm_obj, active_end, (-10, 16, 0), (0.05, 0.70, 0.05), (-0.25, 0.90, 0.08), HU_G, HF_G, (12, -22, 6, -16))
+    pose_frame(arm_obj, active_end + 3, (-6, 26, 0), (-0.10, 0.40, 0.0), (-0.80, 0.45, -0.05), HU_G, HF_G, LEG_G)
+    guard(arm_obj, 20)
 
 def anim_backstep(arm_obj, start=2200):
-    """16f 后撤步：后跃（1.6m 代码驱动），f3 蹬地 f6 腾空 f9 落定；面朝不变"""
+    """16f 后撤步。后跃距离由代码驱动，这里只做蹬地和落地。"""
     begin_action(arm_obj, "backstep", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    key(pbs["Hips"], 1, loc=(0, 0, 0.96))
-    # f3 蹬地后跃：上身前倾、前后劈腿蓄势
-    key(pbs["Hips"], 3, loc=(0, 0.02, 0.98))
-    key(pbs["Chest"], 3, rot=(RAD(16), 0, RAD(-6)))
-    key(pbs["UpperArm.L"], 3, rot=(RAD(-30), 0, RAD(-60)))
-    key(pbs["UpperLeg.L"], 3, rot=(RAD(35), 0, 0))
-    key(pbs["LowerLeg.L"], 3, rot=(RAD(20), 0, 0))
-    key(pbs["UpperLeg.R"], 3, rot=(RAD(-25), 0, 0))
-    key(pbs["LowerLeg.R"], 3, rot=(RAD(45), 0, 0))
-    # f6 空中收腿（最高点）
-    key(pbs["Hips"], 6, loc=(0, 0, 0.99))
-    key(pbs["UpperLeg.L"], 6, rot=(RAD(20), 0, 0))
-    key(pbs["UpperLeg.R"], 6, rot=(RAD(-12), 0, 0))
-    key(pbs["LowerLeg.R"], 6, rot=(RAD(30), 0, 0))
-    # f9 落定沉胯 → f16 回待机
-    key(pbs["Hips"], 9, loc=(0, 0, 0.90))
-    key(pbs["Chest"], 9, rot=(RAD(10), 0, 0))
-    _reset_legs(pbs, 9)
-    key(pbs["Hips"], 16, loc=(0, 0, 0.96))
-    apply_stance(pbs, 16)
+    reset_pose(arm_obj)
+    guard(arm_obj, 1)
+    key_hips(arm_obj, 1, (0, 0, 0), (0, 0, 0))
+    pose_frame(arm_obj, 3, (-12, 0, 0), SU_G, SF_G, HU_G, HF_G, (28, -16, -22, -30), hips_loc=(0, 0.04, 0.02))
+    pose_frame(arm_obj, 6, (-6, 0, 0), SU_G, SF_G, HU_G, HF_G, (12, -12, -8, -16), hips_loc=(0, 0.06, 0))
+    pose_frame(arm_obj, 9, (-8, 0, 0), SU_G, SF_G, HU_G, HF_G, LEG_G, hips_loc=(0, -0.04, 0))
+    guard(arm_obj, 16)
 
 def anim_backstep_attack(arm_obj, start=2400):
-    """22f 后撤直刺。f2–f5 剑停在肋侧，f6–f8 平刺，f11 肩送过，f22 回待机。站得比跑攻高，盾不甩开。"""
+    """22f 后撤直刺。人站得比跑攻高，盾留在身前，剑从肋侧平刺。"""
     begin_action(arm_obj, "backstepAttack", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("backstepAttack")
     assert (wind, active_end) == (5, 8), (wind, active_end)
-    # 和跑攻同一条刺击，但人站得高、步子小、盾留在身前。Z 走 -170→-270，剑从持剑侧收到正前。
-    charge = body_pose(
-        (0, 0, 0.92), (8, 0, 2), (4, 0, -170), (-88, 0, 0),
-        shield=(-18, 0, -46), shield_fore=(-48, 0, -8),
-        head=(-4, 0, 2), spine=(4, 0, 0),
-        thigh_l=(6, 0, 0), shin_l=(8, 0, 0), thigh_r=(-4, 0, 0), shin_r=(6, 0, 0),
-    )
-    leaving = body_pose(
-        (0, 0.01, 0.905), (10, 0, 0), (2, 0, -215), (-86, 0, 0),
-        shield=(-16, 0, -44), shield_fore=(-42, 0, -6),
-        head=(-2, 0, 0), spine=(2, 0, 0),
-        thigh_l=(12, 0, 0), shin_l=(6, 0, 0), thigh_r=(-8, 0, 0), shin_r=(4, 0, 0),
-    )
-    thrust = body_pose(
-        (0, 0.02, 0.89), (12, 0, 0), (-2, 0, -245), (-84, 0, 0),
-        shield=(-14, 0, -42), shield_fore=(-36, 0, -4),
-        head=(-2, 0, 0), spine=(2, 0, 0),
-        thigh_l=(16, 0, 0), shin_l=(4, 0, 0), thigh_r=(-10, 0, 0), shin_r=(2, 0, 0),
-    )
-    through = body_pose(
-        (0, 0.025, 0.885), (14, 0, 0), (-4, 0, -270), (-80, 0, 0),
-        shield=(-12, 0, -40), shield_fore=(-32, 0, -2),
-        head=(0, 0, 0), spine=(2, 0, 0),
-        thigh_l=(18, 0, 0), shin_l=(2, 0, 0), thigh_r=(-12, 0, 0), shin_r=(0, 0, 0),
-    )
-    over = body_pose(
-        (0, 0.03, 0.87), (18, 0, 0), (-8, 0, -286), (-76, 0, 0),
-        shield=(-10, 0, -38), shield_fore=(-28, 0, 0),
-        head=(4, 0, 0), spine=(0, 0, 0),
-        thigh_l=(20, 0, 0), shin_l=(0, 0, 0), thigh_r=(-14, 0, 0), shin_r=(0, 0, 0),
-    )
-    stamp(pbs, 1, hang_pose())
-    stamp(pbs, (2, wind), charge)
-    stamp(pbs, wind + 1, leaving)               # f6
-    stamp(pbs, wind + 2, thrust)                # f7
-    stamp(pbs, active_end, through)             # f8 刺直
-    stamp(pbs, active_end + 3, over)            # f11
-    recover_stance(pbs, 22)
-    unwrap_sword_end(pbs, 22, -382)
+    guard(arm_obj, 1)
+    chamber = ((-8, -8, 0), (0.50, -0.15, -0.05), (0.25, -0.55, 0.30), HU_G, HF_G, (6, -14, -4, -12))
+    pose_frame(arm_obj, 2, *chamber)
+    pose_frame(arm_obj, wind, *chamber)
+    pose_frame(arm_obj, wind + 1, (-8, 2, 0), (0.30, 0.55, 0.05), (0.10, 0.85, 0.08), HU_G, HF_G, (8, -16, -2, -10))
+    pose_frame(arm_obj, active_end, (-8, 8, 0), (0.12, 0.80, 0.02), (0.0, 0.98, 0.04), HU_G, HF_G, (10, -16, 0, -10))
+    pose_frame(arm_obj, active_end + 3, (-6, 10, 0), (0.08, 0.82, 0.0), (-0.04, 0.96, 0.02), HU_G, HF_G, LEG_G)
+    guard(arm_obj, 22)
 
 def anim_kick(arm_obj, start=2600):
-    """24f 踢。剑全程停在待机角度。f3–f7 提膝停住，f8–f10 小腿弹出，f13 过冲，f24 回待机。"""
+    """24f 左腿前踢。剑和盾停在架势里，不跟着甩。"""
     begin_action(arm_obj, "kick", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("kick")
     assert (wind, active_end) == (7, 10), (wind, active_end)
-    sword, fore = (-42, 0, -22), (-8, 0, 0)
-    shield, sfore = (-28, 0, -70), (-52, 0, -8)
-    charge = body_pose(
-        (0, -0.02, 0.94), (-6, 0, -4), sword, fore, shield=shield, shield_fore=sfore,
-        head=(-8, 0, 0), spine=(2, 0, 0),
-        thigh_l=(-8, 0, 0), shin_l=(10, 0, 0), thigh_r=(50, 0, 0), shin_r=(78, 0, 0),
+    guard(arm_obj, 1)
+    pose_frame(arm_obj, 3, (-4, 0, 0), SU_G, SF_G, HU_G, HF_G, (8, -14, 58, -72))
+    pose_frame(arm_obj, wind, (-2, 0, 0), SU_G, SF_G, HU_G, HF_G, (6, -12, 64, -68))
+    pose_frame(arm_obj, wind + 1, (4, 0, 0), SU_G, SF_G, HU_G, HF_G, (6, -12, 78, -28))
+    pose_frame(arm_obj, wind + 2, (8, 0, 0), SU_G, SF_G, HU_G, HF_G, (4, -10, 88, -6))
+    pose_frame(arm_obj, active_end, (8, 0, 0), SU_G, SF_G, HU_G, HF_G, (4, -10, 92, 0))
+    pose_frame(arm_obj, active_end + 3, (6, 0, 0), SU_G, SF_G, HU_G, HF_G, (6, -12, 100, -8))
+    guard(arm_obj, 24)
+
+def _stance_pose(arm_obj, frame):
+    pose_frame(
+        arm_obj, frame, (-6, -10, 0),
+        (0.30, 0.60, -0.05), (0.08, 0.96, 0.10),
+        (-0.80, 0.20, -0.55), (-0.25, 0.45, -0.40),
+        (20, -26, -16, -20),
     )
-    leaving = body_pose(
-        (0, 0, 0.95), (-12, 0, -2), sword, fore, shield=shield, shield_fore=sfore,
-        head=(-10, 0, 0), spine=(0, 0, 0),
-        thigh_l=(-8, 0, 0), shin_l=(12, 0, 0), thigh_r=(72, 0, 0), shin_r=(36, 0, 0),
-    )
-    snap = body_pose(
-        (0, 0.02, 0.96), (-16, 0, 0), sword, fore, shield=shield, shield_fore=sfore,
-        head=(-12, 0, 0), spine=(-2, 0, 0),
-        thigh_l=(-8, 0, 0), shin_l=(12, 0, 0), thigh_r=(90, 0, 0), shin_r=(4, 0, 0),
-    )
-    through = body_pose(
-        (0, 0.03, 0.97), (-18, 0, 0), sword, fore, shield=shield, shield_fore=sfore,
-        head=(-14, 0, 0), spine=(-4, 0, 0),
-        thigh_l=(-6, 0, 0), shin_l=(10, 0, 0), thigh_r=(100, 0, 0), shin_r=(-8, 0, 0),
-    )
-    over = body_pose(
-        (0, 0.02, 0.99), (-26, 0, 0), sword, fore, shield=shield, shield_fore=sfore,
-        head=(-18, 0, 0), spine=(-6, 0, 0),
-        thigh_l=(-4, 0, 0), shin_l=(6, 0, 0), thigh_r=(112, 0, 0), shin_r=(-18, 0, 0),
-    )
-    stamp(pbs, 1, hang_pose())
-    stamp(pbs, (3, wind), charge)
-    stamp(pbs, wind + 1, leaving)       # f8 小腿弹出
-    stamp(pbs, wind + 2, snap)          # f9 腿蹬直
-    stamp(pbs, active_end, through)     # f10
-    stamp(pbs, active_end + 3, over)    # f13 脚踢过水平线，上身再后仰
-    recover_stance(pbs, 24)
 
 def anim_stance(arm_obj, start=2800):
-    """20f 战技·架势：f5 入架，f20 保持（0.6s 由代码按帧数据结算）"""
+    """20f 战技架势。剑平指前方，盾收到左侧。"""
     begin_action(arm_obj, "stance", start)
-    pbs = pose_bones(arm_obj)
-    apply_stance(pbs, 1)
-    key(pbs["Hips"], 1, loc=(0, 0, 0.96))
-    _stance_pose(pbs, 5)
-    _stance_pose(pbs, 20)
+    reset_pose(arm_obj)
+    guard(arm_obj, 1)
+    _stance_pose(arm_obj, 5)
+    _stance_pose(arm_obj, 20)
 
 def anim_stance_poke(arm_obj, start=3000):
-    """25f 架势突刺。f3–f6 从架势收回并停住，f7–f9 盾冲着刺出，f10 停在刺直，f13 过冲，f25 回待机。"""
+    """25f 架势突刺。先收到肋侧，再和盾一起刺出去。"""
     begin_action(arm_obj, "stancePoke", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("stancePoke")
     assert (wind, active_end) == (6, 10), (wind, active_end)
-    guard = guard_pose()
-    # 从架势收到持剑侧再刺出。盾跟着往前压，步子比后撤刺大。
-    charge = body_pose(
-        (0, 0, 0.91), (8, 0, 4), (4, 0, -165), (-86, 0, 0),
-        shield=(-12, 0, -42), shield_fore=(0, 0, 0),
-        head=(-6, 0, 2), spine=(4, 0, 2),
-        thigh_l=(12, 0, 0), shin_l=(16, 0, 0), thigh_r=(-6, 0, 0), shin_r=(14, 0, 0),
-    )
-    leaving = body_pose(
-        (0, 0.02, 0.88), (14, 0, 2), (0, 0, -205), (-84, 0, 0),
-        shield=(-28, 0, -34), shield_fore=(0, 0, 0),
-        head=(-4, 0, 0), spine=(2, 0, 0),
-        thigh_l=(30, 0, 0), shin_l=(14, 0, 0), thigh_r=(-20, 0, 0), shin_r=(10, 0, 0),
-    )
-    thrust = body_pose(
-        (0, 0.045, 0.85), (18, 0, 0), (-4, 0, -240), (-82, 0, 0),
-        shield=(-42, 0, -28), shield_fore=(0, 0, 0),
-        head=(-2, 0, 0), spine=(2, 0, 0),
-        thigh_l=(48, 0, 0), shin_l=(10, 0, 0), thigh_r=(-36, 0, 0), shin_r=(6, 0, 0),
-    )
-    through = body_pose(
-        (0, 0.055, 0.84), (22, 0, 0), (-6, 0, -270), (-80, 0, 0),
-        shield=(-50, 0, -18), shield_fore=(0, 0, 0),
-        head=(0, 0, 0), spine=(0, 0, 0),
-        thigh_l=(54, 0, 0), shin_l=(8, 0, 0), thigh_r=(-40, 0, 0), shin_r=(4, 0, 0),
-    )
-    over = body_pose(
-        (0, 0.04, 0.86), (28, 0, 0), (-10, 0, -292), (-76, 0, 0),
-        shield=(-56, 0, -10), shield_fore=(0, 0, 0),
-        head=(6, 0, 0), spine=(0, 0, 0),
-        thigh_l=(60, 0, 0), shin_l=(12, 0, 0), thigh_r=(-44, 0, 0), shin_r=(2, 0, 0),
-    )
-    stamp(pbs, 1, guard)
-    stamp(pbs, (3, wind), charge)
-    stamp(pbs, wind + 1, leaving)                         # f7
-    stamp(pbs, wind + 2, thrust)                          # f8 盾压前、剑刺出
-    stamp(pbs, (wind + 3, active_end), through)           # f9–f10
-    stamp(pbs, active_end + 3, over)                      # f13
-    recover_stance(pbs, 25)
-    unwrap_sword_end(pbs, 25, -382)
+    _stance_pose(arm_obj, 1)
+    chamber = ((-8, -14, 0), (0.50, -0.15, -0.05), (0.35, -0.50, 0.25), (-0.55, 0.35, -0.15), (0.05, 0.55, 0.05), (16, -24, -8, -16))
+    pose_frame(arm_obj, 3, *chamber)
+    pose_frame(arm_obj, wind, *chamber)
+    pose_frame(arm_obj, wind + 1, (-12, 0, 0), (0.25, 0.55, 0.05), (0.10, 0.85, 0.06), (-0.30, 0.70, 0.08), (0.08, 0.95, 0.08), (20, -22, -6, -12))
+    pose_frame(arm_obj, wind + 2, (-14, 6, 0), (0.10, 0.85, 0.0), (0.0, 1.0, 0.02), (-0.25, 0.80, 0.06), (0.05, 1.00, 0.06), (24, -20, -4, -10))
+    pose_frame(arm_obj, active_end, (-14, 8, 0), (0.05, 0.90, -0.02), (0.0, 1.0, 0.0), (-0.20, 0.85, 0.04), (0.02, 1.02, 0.04), (24, -18, -2, -8))
+    pose_frame(arm_obj, active_end + 3, (-10, 10, 0), (0.02, 0.88, -0.04), (-0.08, 0.96, 0.0), (-0.35, 0.65, 0.0), (0.05, 0.90, 0.02), (18, -22, -6, -12))
+    guard(arm_obj, 25)
 
 def anim_stance_up(arm_obj, start=3200):
-    """28f 上挑。f3–f7 剑停在身前垂地，f8–f10 从下往上挑过胸，f11 停在挑起，f14 过冲，f28 回待机。"""
+    """28f 上挑。剑从身前下方翻上来，尖端走到头顶，不扫到身体另一侧。"""
     begin_action(arm_obj, "stanceUp", start)
-    pbs = pose_bones(arm_obj)
+    reset_pose(arm_obj)
     wind, active_end = hit_window("stanceUp")
     assert (wind, active_end) == (7, 11), (wind, active_end)
-    legs = dict(thigh_l=(18, 0, 0), shin_l=(20, 0, 0), thigh_r=(-12, 0, 0), shin_r=(18, 0, 0))
-    # 臂 Z 钉在 90° 附近，只收前臂：剑尖从脚下翻到头顶，不走到横斩那一侧。
-    charge = body_pose(
-        (0, 0.01, 0.87), (18, 0, 4), (-5, 0, 90), (15, 0, 0),
-        shield=(-16, 0, -44), shield_fore=(0, 0, 0),
-        head=(10, 0, 0), spine=(10, 0, 0), **legs,
-    )
-    leaving = body_pose(
-        (0, 0.01, 0.90), (10, 0, 2), (-15, 0, 88), (-15, 0, 0),
-        shield=(-28, 0, -48), shield_fore=(0, 0, 0),
-        head=(0, 0, 0), spine=(4, 0, 0), **legs,
-    )
-    rising = body_pose(
-        (0, 0.01, 0.95), (2, 0, 0), (-35, 0, 90), (-55, 0, 0),
-        shield=(-36, 0, -52), shield_fore=(0, 0, 0),
-        head=(-8, 0, 0), spine=(0, 0, 0), **legs,
-    )
-    up = body_pose(
-        (0, 0.005, 1.00), (-12, 0, -4), (-55, 0, 90), (-120, 0, 0),
-        shield=(-46, 0, -56), shield_fore=(0, 0, 0),
-        head=(-18, 0, 0), spine=(-4, 0, 0), **legs,
-    )
-    over = body_pose(
-        (0, -0.01, 1.02), (-20, 0, -6), (-68, 0, 85), (-135, 0, 0),
-        shield=(-52, 0, -62), shield_fore=(0, 0, 0),
-        head=(-24, 0, 0), spine=(-8, 0, 0), **legs,
-    )
-    stamp(pbs, 1, guard_pose())
-    stamp(pbs, (3, wind), charge)
-    stamp(pbs, wind + 1, leaving)                         # f8 剑离地
-    stamp(pbs, wind + 2, rising)                          # f9 挑过胸线
-    stamp(pbs, (wind + 3, active_end), up)                # f10–f11 剑指天
-    stamp(pbs, active_end + 3, over)                      # f14 再扬过头顶
-    recover_stance(pbs, 28)
+    _stance_pose(arm_obj, 1)
+    hold = ((-0.80, 0.20, -0.55), (-0.25, 0.45, -0.40))
+    low = ((-4, -8, 0), (0.35, 0.45, -0.40), (0.12, 0.40, -0.88), *hold, (18, -24, -14, -18))
+    pose_frame(arm_obj, 3, *low)
+    pose_frame(arm_obj, wind, *low)
+    pose_frame(arm_obj, wind + 1, (-8, -2, 0), (0.25, 0.50, 0.05), (0.08, 0.55, 0.25), *hold, (16, -24, -12, -18))
+    pose_frame(arm_obj, wind + 2, (-14, 4, 0), (0.18, 0.40, 0.40), (0.05, 0.40, 0.70), *hold, (14, -22, -12, -16))
+    pose_frame(arm_obj, active_end, (-18, 6, 0), (0.12, 0.18, 0.72), (0.02, 0.12, 0.98), *hold, (12, -20, -10, -16))
+    pose_frame(arm_obj, active_end + 3, (-16, 8, 0), (0.08, 0.10, 0.78), (0.0, 0.05, 1.0), *hold, (12, -20, -10, -16))
+    guard(arm_obj, 28)
 
 # ============================================================
 # 4. 导出
@@ -981,49 +870,88 @@ def _iter_fcurves(act):
                 if bag:
                     yield from bag.fcurves
 
-def swap_arm_sides(arm_obj):
-    """骨名 .R 在 -X，面朝 +Y 时是左手；剑的网格挂在 .L。
-    动画仍按 .R=持剑 来写。这里对调左右臂通道并把 Z 欧拉取反，
-    挥砍跟着重挂到右手，盾的姿势跟到左手。贝塞尔手柄夹紧，避免欧拉绕远路把胳膊甩抽。"""
-    arm_tokens = ("UpperArm.", "LowerArm.", "Hand.")
-    swapped = 0
+def finish_curves(arm_obj):
+    """四元数走线性，欧拉夹紧。贝塞尔插值会把剑绕握把甩出去。"""
+    nq = ne = 0
     for track in arm_obj.animation_data.nla_tracks:
         for strip in track.strips:
             act = strip.action
             if act is None:
                 continue
-            curves = list(_iter_fcurves(act))
-            arm_curves = [fc for fc in curves if any(tok in fc.data_path for tok in arm_tokens)]
-            for fc in arm_curves:
-                if "rotation_euler" in fc.data_path and fc.array_index == 2:
+            for fc in _iter_fcurves(act):
+                if "quaternion" in fc.data_path:
+                    nq += 1
                     for kp in fc.keyframe_points:
-                        kp.co[1] *= -1
-                        kp.handle_left[1] *= -1
-                        kp.handle_right[1] *= -1
-                # 先改成临时名，避免 .R→.L 时和还没搬走的 .L 撞路径
-                if ".R" in fc.data_path:
-                    fc.data_path = fc.data_path.replace(".R", ".TMP")
-            for fc in arm_curves:
-                if ".L" in fc.data_path:
-                    fc.data_path = fc.data_path.replace(".L", ".R")
-            for fc in arm_curves:
-                if ".TMP" in fc.data_path:
-                    fc.data_path = fc.data_path.replace(".TMP", ".L")
-                swapped += 1
-            for fc in curves:
-                if "rotation_euler" not in fc.data_path:
-                    continue
-                for kp in fc.keyframe_points:
-                    kp.interpolation = "BEZIER"
-                    kp.handle_left_type = "AUTO_CLAMPED"
-                    kp.handle_right_type = "AUTO_CLAMPED"
-    print(f"INFERNO_SWAP arm_fcurves={swapped}")
+                        kp.interpolation = "LINEAR"
+                elif "rotation_euler" in fc.data_path:
+                    ne += 1
+                    for kp in fc.keyframe_points:
+                        kp.interpolation = "BEZIER"
+                        kp.handle_left_type = "AUTO_CLAMPED"
+                        kp.handle_right_type = "AUTO_CLAMPED"
+    print(f"INFERNO_CURVES quat={nq} euler={ne}")
+    if nq < 16:
+        raise RuntimeError(f"手臂四元数曲线没有写进去 quat={nq}")
+
+def _blade_tip():
+    bpy.context.view_layer.update()
+    return bpy.data.objects["Blade"].matrix_world @ Vector((0.0, 0.0, -0.44))
+
+def assert_attacks(arm_obj):
+    """剑尖必须在身前划过。拧到背后、指到天上的旧挥法在这里失败。"""
+    for track in arm_obj.animation_data.nla_tracks:
+        track.mute = True
+    arm_obj.animation_data.use_nla = False
+
+    def tip_at(action, frame):
+        arm_obj.animation_data.action = bpy.data.actions[action]
+        bpy.context.scene.frame_set(frame)
+        return _blade_tip()
+
+    checks = (
+        ("attack", 1, lambda t: t.y > 0.4 and 0.2 < t.z < 1.15),
+        ("attack", 6, lambda t: t.x > 0.4 and t.z > 1.8 and t.y > -0.15),
+        ("attack", 8, lambda t: t.y > 1.0 and abs(t.x) < 0.85),
+        ("attack", 12, lambda t: t.x < -0.5 and t.y > 0.3),
+        ("runAttack", 8, lambda t: t.y > 0.9),
+        ("rollAttack", 7, lambda t: t.y > 0.6),
+        ("backstepAttack", 8, lambda t: t.y > 0.8),
+        ("stancePoke", 9, lambda t: t.y > 0.9),
+        ("stanceUp", 10, lambda t: t.z > 1.6 and t.y > -0.2),
+    )
+    for name, frame, pred in checks:
+        tip = tip_at(name, frame)
+        if not pred(tip):
+            raise RuntimeError(f"{name} f{frame} 剑尖 {tuple(round(c, 2) for c in tip)}")
+    def shield_at(action, frame):
+        tip_at(action, frame)
+        shield = bpy.data.objects["Shield"]
+        loc = shield.matrix_world.translation
+        normal = shield.matrix_world.to_3x3().col[2].normalized()
+        return loc, normal
+
+    shield_checks = (
+        ("attack", 1, lambda loc, n: loc.x < -0.15 and loc.y > 0.25 and n.y > 0.8),
+        ("attack", 12, lambda loc, n: n.y > 0.45),
+        ("block_idle", 1, lambda loc, n: loc.z > 1.45 and n.y > 0.75),
+        ("parry", 4, lambda loc, n: loc.y > 0.40 and n.y > 0.65),
+        ("estus", 16, lambda loc, n: loc.x < -0.25 and loc.z > 1.55),
+        ("stance", 5, lambda loc, n: loc.x < -0.30 and n.y > 0.55),
+    )
+    for name, frame, pred in shield_checks:
+        loc, normal = shield_at(name, frame)
+        if not pred(loc, normal):
+            raise RuntimeError(
+                f"{name} f{frame} 盾 loc={tuple(round(c, 2) for c in loc)} "
+                f"n={tuple(round(c, 2) for c in normal)}"
+            )
+    print("INFERNO_SLASH_OK")
 
 def export(arm_obj):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    swap_arm_sides(arm_obj)
+    finish_curves(arm_obj)
     _fix_nla_slots(arm_obj)
-    arm_obj.animation_data.action = None   # NLA 为权威
+    arm_obj.animation_data.action = None
     # 回到静止姿态再导出：节点变换必须是 rest，动画才是相对 rest 的增量
     bpy.context.view_layer.objects.active = arm_obj
     bpy.ops.object.mode_set(mode="POSE")
@@ -1036,12 +964,12 @@ def export(arm_obj):
         filepath=str(glb),
         export_format="GLB",
         export_animation_mode="ACTIONS",
-        export_optimize_animation_size=False,   # 不做尺寸优化抽键（否则每通道被抽到 2 键）
+        export_optimize_animation_size=False,  # 不做尺寸优化抽键（否则每通道被抽到 2 键）
     )
     (OUT_DIR / "character_frames.json").write_text(
         json.dumps(FRAME_DATA, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"INFERNO_EXPORT glb={glb} size={glb.stat().st_size} json={FRAME_DATA['clips'].keys()}")
+    print(f"INFERNO_EXPORT glb={glb} size={glb.stat().st_size} json={list(FRAME_DATA['clips'].keys())}")
 
 def main():
     # 场景帧率对齐 FRAME_DATA 的 FPS=30：glTF 导出的关键帧时间 = 帧/30，
@@ -1050,6 +978,7 @@ def main():
     clear_scene()
     arm_obj = build_armature()
     build_parts(arm_obj)
+    seat_shield(arm_obj)
     anim_idle(arm_obj)
     anim_attack(arm_obj)
     anim_roll(arm_obj)
@@ -1067,6 +996,7 @@ def main():
     anim_stance(arm_obj)
     anim_stance_poke(arm_obj)
     anim_stance_up(arm_obj)
+    assert_attacks(arm_obj)
     export(arm_obj)
 
 main()
