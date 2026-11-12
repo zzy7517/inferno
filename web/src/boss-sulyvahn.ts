@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted } from "./boss-base";
-import type { BossHost } from "./boss-base";
+import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -151,6 +151,8 @@ export class Sulyvahn extends BossBase {
   private swordL!: THREE.Group;
   private tipR = new THREE.Object3D();
   private tipL = new THREE.Object3D();
+  private hiltR = new THREE.Object3D();
+  private hiltL = new THREE.Object3D();
   private eyeMat!: THREE.MeshStandardMaterial;
   private bladeFire!: THREE.MeshStandardMaterial;   // 右剑身（二阶段燃焰）
   private bladeDark!: THREE.MeshStandardMaterial;   // 左剑身（二阶段暗紫焰）
@@ -287,7 +289,9 @@ export class Sulyvahn extends BossBase {
       g.add(box(0.16, 2.08, 0.055, mat, 0, -1.4, 0));                         // 刃
       g.add(box(0.08, 0.32, 0.036, mat, 0, -2.56, 0));                        // 收锋
       tip.position.set(0, -2.74, 0);
-      g.add(tip);
+      const hilt = side === 1 ? this.hiltR : this.hiltL;
+      hilt.position.set(0, 0.02, 0);
+      g.add(tip, hilt);
       light.position.set(0, -1.35, 0);
       g.add(light);
       return g;
@@ -340,6 +344,22 @@ export class Sulyvahn extends BossBase {
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
+
+  /** 四连第 1、3 刀右火剑，第 2 刀左暗紫，第 4 刀两把一起。回旋两把都能打中。突刺用右剑。箭和月焰只算飞行物。 */
+  protected override attackVolume(m: MoveDef): AttackVolume | null {
+    const right = { hilt: this.hiltR, tip: this.tipR, pad: 0.1 };
+    const left = { hilt: this.hiltL, tip: this.tipL, pad: 0.1 };
+    const both: AttackVolume = { kind: "blade", ...right, also: [left] };
+    if (m.name === "sulyvahnSpin") return both;
+    if (m.name === "sulyvahnThrustUp") return { kind: "blade", ...right };
+    if (m.name === "sulyvahnCombo4") {
+      if (this.hitFired === 1) return { kind: "blade", ...left };
+      if (this.hitFired >= 3) return both;
+      return { kind: "blade", ...right };
+    }
+    if (m.proj) return { kind: "none" };
+    return null;
+  }
   protected override headPart(): THREE.Object3D { return this.head; }
 
   // ---------------- 姿态应用 ----------------
