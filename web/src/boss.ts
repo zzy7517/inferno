@@ -37,6 +37,14 @@ export class Boss extends BossBase {
   private pose: Pose = { ...STATUE };
   private jumpFrom = new THREE.Vector3();
   private jumpTo = new THREE.Vector3();
+  private stepFrom = new THREE.Vector3();
+  private stepTo = new THREE.Vector3();
+  private stepping = false;
+  /** 上一招名：有替代时降权，避免同一招连出两次 */
+  private lastMove = "";
+  /** 远/近距离带滞后，避免在 6m、1.7m 边界来回换招 */
+  private preferFar = false;
+  private preferClose = false;
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost) {
     super(scene, vfx, pos, host, BOSS, -Math.PI / 2);   // 面向 -X（雾门方向）
@@ -110,23 +118,32 @@ export class Boss extends BossBase {
   protected override applyPose(): void {
     const p = this.pose;
     this.root.rotation.y = this.yaw;
-    this.body.position.set(0, p.y, p.reach);
+    this.body.position.set(0, p.y - p.crouch * 0.22, p.reach);
     this.torso.rotation.set(p.lean, p.twist, 0);
     this.armR.rotation.set(-p.armLift, 0, -p.armSwing);
     this.armL.rotation.set(-p.armL, 0.2, 0);
-    // 人性的沉淀：从背后向 serpYaw 方向伸出
+    // 人性的沉淀：serpYaw 0 = 背后待机，PI = 正前突刺，两侧为横扫
+    const show = this.phase === 2 || this.state === "transform";
+    const serp = (this.phase === 2 && this.state !== "transform") ? Math.max(p.serpOut, 0.72) : p.serpOut;
     const n = this.serpent.length;
-    const outLen = p.serpOut * 3.4;
-    this.serpGlow.intensity = p.serpOut * 6;
+    const outLen = serp * 3.4;
+    this.serpGlow.intensity = show ? Math.min(6.5, 1.6 + serp * 2.4) : 0;
+    const aim = Math.PI + p.serpYaw;
+    const forward = Math.max(0, -Math.cos(p.serpYaw));
     for (let i = 0; i < n; i++) {
       const s = this.serpent[i];
-      s.visible = this.phase === 2 || this.state === "transform";
+      s.visible = show;
       const k = i / (n - 1);
-      const wobble = Math.sin(performance.now() * 0.004 + i * 0.9) * 0.22 * p.serpOut;
-      const along = -0.5 - k * outLen;                       // 局部 -Z 为背
-      const lateral = Math.sin(p.serpYaw * (1 - k * 0.4)) * k * outLen * 0.55 + wobble;
-      s.position.set(lateral, 1.7 + Math.cos(p.serpYaw) * k * outLen * 0.35 + wobble, along);
-      s.rotation.y = -p.serpYaw * (1 - k);
+      const wobble = Math.sin(performance.now() * 0.004 + i * 0.9) * 0.14 * Math.min(1, serp);
+      const reach = 0.28 + k * outLen;
+      const along = Math.cos(aim) * reach;
+      const lateral = Math.sin(aim) * reach + wobble;
+      const arch = (1 - forward * 0.7) * 0.48;
+      s.position.set(lateral, 1.22 + Math.sin(k * Math.PI) * arch, along);
+      s.rotation.set(0, aim, 0);
+      const depth = (0.34 - i * 0.025) * 1.5;
+      const step = outLen / Math.max(1, n - 1);
+      s.scale.set(1, 1, Math.min(2.2, Math.max(1, (step * 0.92) / Math.max(0.16, depth))));
     }
   }
 
@@ -137,59 +154,100 @@ export class Boss extends BossBase {
     p.armLift = a.armLift + (b.armLift - a.armLift) * k; p.armSwing = a.armSwing + (b.armSwing - a.armSwing) * k;
     p.halPitch = a.halPitch + (b.halPitch - a.halPitch) * k; p.reach = a.reach + (b.reach - a.reach) * k;
     p.crouch = a.crouch + (b.crouch - a.crouch) * k;
-    p.serpOut = a.serpOut + (b.serpOut - a.serpOut) * k; p.serpYaw = a.serpYaw + (b.serpYaw - a.serpYaw) * k;
+    p.serpOut = a.serpOut + (b.serpOut - a.serpOut) * k;
+    p.serpYaw = lerpAngle(a.serpYaw, b.serpYaw, k);
     p.armL = a.armL + (b.armL - a.armL) * k;
   }
 
-  /** 招式姿态：随阶段进度插值到目标姿态 */
+  /** 跳劈滞空高度：前摇结束时仍在空中，下砸落在判定段 */
+  private jumpArc(leap: number): number {
+    return Math.sin(clamp01(leap) * Math.PI * 0.8) * 1.35;
+  }
+
+  private heavyMove(name: string): boolean {
+    return name === "sweep" || name === "slam" || name === "jump" || name === "grab" || name === "serpSweep" || name === "serpThrust";
+  }
+
+  /** 招式姿态：随阶段进度插值到目标姿态。重招先把武器举到位并停住，再快斩。 */
   protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
-    // 跳劈专属前摇：位移弧线 + 跃起，取代通用姿态分支
+    // 跳劈：先下蹲举戟，再跃向锁定落点；高度在 lerp 之后写，避免被姿态插值清掉
     if (m.name === "jump" && sub === "tel") {
-      const k = smooth(clamp01(t / m.startup));
-      this.root.position.lerpVectors(this.jumpFrom, this.jumpTo, k);
-      this.pose.y = Math.sin(k * Math.PI) * 1.1;   // 跃起
-      this.lerpPose(STANCE, { ...STANCE, armLift: -1.6, lean: -0.1 }, smooth(k));
+      const k = clamp01(t / Math.max(0.0001, m.startup));
+      const windK = smooth(seg(k, 0, 0.42));
+      const leap = smooth(seg(k, 0.36, 1));
+      this.lerpPose(STANCE, { ...STANCE, armLift: -2.75, lean: -0.6, crouch: 0.38, armSwing: -0.12 }, windK);
+      this.root.position.lerpVectors(this.jumpFrom, this.jumpTo, leap);
+      this.pose.crouch *= (1 - leap);
+      this.pose.y = (1 - leap) * -0.05 + this.jumpArc(leap);
+      this.pose.armLift = -2.75;
+      this.pose.lean = -0.6 + 0.12 * leap;
+      return;
+    }
+    if (m.name === "jump" && sub === "act") {
+      const snap = 1 - Math.pow(1 - seg(t, 0, m.active), 3);
+      this.lerpPose(
+        { ...STANCE, armLift: -2.75, lean: -0.48, y: this.jumpArc(1) },
+        { ...STANCE, armLift: 1.35, lean: 0.78, crouch: 0.48, y: -0.32, reach: 0.15 },
+        snap,
+      );
       return;
     }
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
     switch (m.name) {
-      case "thrust": case "thrust2":
-        wind.twist = 0.45; wind.armLift = -0.35; wind.reach = 0.2;
-        strike.twist = -0.25; strike.armLift = 1.05; strike.reach = 1.0; strike.lean = 0.3;
+      case "thrust":
+        wind.twist = -0.55; wind.armLift = -1.5; wind.lean = -0.34; wind.reach = -0.18; wind.armSwing = -0.2;
+        strike.twist = 0.12; strike.armLift = 1.05; strike.reach = 0.95; strike.lean = 0.42;
+        break;
+      case "thrust2":
+        wind.twist = -0.32; wind.armLift = -0.95; wind.lean = -0.16; wind.reach = -0.05;
+        strike.twist = 0.08; strike.armLift = 1.1; strike.reach = 0.8; strike.lean = 0.36;
         break;
       case "sweep":
-        wind.twist = 0.6; wind.armSwing = -1.25; wind.armLift = 0.55;
-        strike.twist = -0.75; strike.armSwing = 1.45; strike.armLift = 0.45; strike.lean = 0.18;
+        // 侧举 + 拧身，和头顶下劈分开
+        wind.twist = 1.05; wind.armSwing = -1.45; wind.armLift = -1.35; wind.lean = -0.24;
+        strike.twist = -1.15; strike.armSwing = 1.55; strike.armLift = 0.2; strike.lean = 0.26; strike.reach = 0.4;
         break;
       case "slam":
-        wind.armLift = -2.1; wind.lean = -0.18;
-        strike.armLift = 1.0; strike.lean = 0.42; strike.crouch = 0.25; strike.y = -0.25;
+        wind.armLift = -2.85; wind.lean = -0.7; wind.armSwing = 0.06; wind.crouch = 0.12;
+        strike.armLift = 1.35; strike.lean = 0.78; strike.crouch = 0.5; strike.y = -0.34; strike.reach = 0.2;
         break;
       case "jump":
-        wind.armLift = -1.6; wind.lean = -0.1;
-        strike.armLift = 0.95; strike.lean = 0.45; strike.crouch = 0.3; strike.y = -0.2;
+        wind.armLift = -2.75; wind.lean = -0.48; wind.y = this.jumpArc(1);
+        strike.armLift = 1.35; strike.lean = 0.78; strike.crouch = 0.48; strike.y = -0.32; strike.reach = 0.15;
         break;
       case "shoulder":
-        wind.twist = 0.35; wind.lean = -0.12;
-        strike.twist = -0.25; strike.lean = 0.55; strike.reach = 1.6; strike.armL = -0.9;
+        wind.twist = 0.85; wind.lean = -0.42; wind.armL = -1.15; wind.reach = -0.12; wind.armLift = -0.45;
+        strike.twist = -0.55; strike.lean = 0.78; strike.reach = 0.85; strike.armL = 0.35; strike.y = 0.06;
         break;
       case "grab":
-        wind.lean = -0.25; wind.armL = -1.6; wind.twist = 0.2;
-        strike.lean = 0.5; strike.armL = -2.4; strike.reach = 1.3;
+        wind.lean = -0.48; wind.armL = -2.35; wind.twist = -0.4; wind.reach = -0.12; wind.crouch = 0.08;
+        strike.lean = 0.66; strike.armL = 1.15; strike.reach = 1.05; strike.twist = 0.25;
         break;
       case "serpSweep":
-        wind.serpOut = 1; wind.serpYaw = -1.3; wind.twist = 0.3;
-        strike.serpOut = 1; strike.serpYaw = 1.3; strike.twist = -0.35; strike.lean = 0.2;
+        wind.serpOut = 1.35; wind.serpYaw = Math.PI - 1.25; wind.twist = 0.55; wind.lean = -0.3; wind.armLift = -1.15;
+        strike.serpOut = 1.75; strike.serpYaw = Math.PI + 1.25; strike.twist = -0.65; strike.lean = 0.32; strike.armLift = 0.25;
         break;
       case "serpThrust":
-        wind.serpOut = 0.7; wind.serpYaw = 0; wind.lean = -0.1;
-        strike.serpOut = 1; strike.serpYaw = 0; strike.lean = 0.35; strike.reach = 0.6;
+        wind.serpOut = 1.05; wind.serpYaw = Math.PI - 0.85; wind.lean = -0.4; wind.armLift = -1.55; wind.twist = 0.3;
+        strike.serpOut = 1.95; strike.serpYaw = Math.PI; strike.lean = 0.48; strike.reach = 0.35; strike.armLift = 0.45;
         break;
     }
-    if (sub === "tel") this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.55, m.startup)));
-    else if (sub === "act") this.lerpPose(wind, strike, seg(t, 0, m.active));
-    else this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
-    if (m.name === "jump" && sub === "act") this.pose.y = 0;   // 落地压回
+    const heavy = this.heavyMove(m.name);
+    if (sub === "tel") {
+      const begin = heavy ? 0.02 : 0.08;
+      const hold = heavy ? 0.52 : 0.72;
+      this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * begin, m.startup * hold)));
+      if (this.stepping) {
+        const k = smooth(seg(t, m.startup * 0.58, m.startup));
+        this.root.position.lerpVectors(this.stepFrom, this.stepTo, k);
+      }
+    } else if (sub === "act") {
+      const k = seg(t, 0, m.active);
+      this.lerpPose(wind, strike, 1 - Math.pow(1 - k, 3));
+    } else {
+      const backAt = heavy ? 0.58 : 0.32;
+      this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * backAt, m.recovery)));
+    }
     void total;
   }
 
@@ -221,18 +279,49 @@ export class Boss extends BossBase {
     this.pose.y = Math.abs(Math.sin(performance.now() * 0.004)) * 0.06 - 0.02;
   }
 
-  /** 跳劈起跳点/落点预计算 */
+  /** 跳劈落点 / 近身迈步预计算。位移沿出手瞬间方向，前摇中不再追踪。 */
   protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
-    if (m.name !== "jump") return;
-    this.jumpFrom.copy(this.root.position);
-    const dir = toPlayer.clone().normalize();
-    this.jumpTo.copy(this.root.position).addScaledVector(dir, Math.min(m.lunge ?? 0, dist - 1.2));
+    this.lastMove = m.name;
+    this.stepping = false;
+    const dir = toPlayer.clone();
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) return;
+    dir.normalize();
+    if (m.name === "jump") {
+      this.jumpFrom.copy(this.root.position);
+      this.jumpTo.copy(this.root.position).addScaledVector(dir, Math.min(m.lunge ?? 0, Math.max(0, dist - 1.2)));
+      return;
+    }
+    // 直戳、肩撞、沉淀突刺：先亮前摇，最后一段才迈步，避免滑步追人
+    if (m.lunge && (m.name === "shoulder" || m.name === "thrust" || m.name === "thrust2" || m.name === "serpThrust")) {
+      const keep = m.name === "serpThrust" ? 2.4 : 0.9;
+      const step = Math.min(m.lunge, Math.max(0, dist - keep));
+      if (step > 0.05) {
+        this.stepping = true;
+        this.stepFrom.copy(this.root.position);
+        this.stepTo.copy(this.root.position).addScaledVector(dir, step);
+      }
+    }
   }
 
-  /** 判定段开始：挥砍轨迹（蛇招橙焰） */
+  /** 判定段开始：挥砍轨迹（蛇招橙焰）；下砸扬尘标出落点 */
   protected override onMoveActive(m: MoveDef): void {
     const chest = this.chestWorld();
     this.vfx.slash(chest, this.yaw, m.range * 0.85, m.arc > 2 || m.name === "serpSweep", m.name.startsWith("serp") ? 0xff7a30 : 0xffd9a0);
+    if (m.name === "jump" || m.name === "slam") this.vfx.dust.burst(this.root.position, 8, 3.2, 0.85);
+  }
+
+  /** 重招风声更闷，和轻戳分开 */
+  protected override activeWhooshVolume(m: MoveDef): number {
+    return this.heavyMove(m.name) ? 0.62 : 1;
+  }
+
+  /** 抓技不进连段。二连戳仍走基类 40%（直戳的教学），但不会接回同一招。 */
+  protected override pickChain(m: MoveDef, dist: number, toPlayer: THREE.Vector3): MoveDef | null {
+    if (m.grab) return null;
+    const next = super.pickChain(m, dist, toPlayer);
+    if (!next || next.grab || next.name === m.name) return null;
+    return next;
   }
 
   /** 破绽姿态：后仰蜷缩 */
@@ -262,38 +351,81 @@ export class Boss extends BossBase {
 
   /** 复位外观：胸口剑/光复位、人性沉淀收回、回石像姿态 */
   protected override resetVisuals(): void {
+    this.lastMove = "";
+    this.preferFar = false;
+    this.preferClose = false;
+    this.stepping = false;
     this.swordInChest.visible = true; this.swordLight.intensity = 3;
     this.serpGlow.intensity = 0;
     this.emberMat.emissiveIntensity = 0.9;
-    for (const s of this.serpent) s.visible = false;
+    for (const s of this.serpent) { s.visible = false; s.scale.set(1, 1, 1); }
     this.lerpPose(STANCE, STATUE, 1);
   }
 
   // ---------------- 选招（古达权重） ----------------
   protected override pickMove(dist: number): MoveDef | null {
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // 远距离：跳劈 / 蛇突刺
-    if (dist > 6) {
-      if (ready(MOVES.jump)) return MOVES.jump;
-      if (ready(MOVES.serpThrust)) return MOVES.serpThrust;
+    // 进出阈值分开：贴到 6m 外才进远距，退回 5.2m 内才离开，避免边界帧来回换招
+    if (dist > 6) this.preferFar = true;
+    else if (dist < 5.2) this.preferFar = false;
+    if (dist < 1.7) this.preferClose = true;
+    else if (dist > 2.45) this.preferClose = false;
+
+    if (this.preferFar && dist >= 5.2) {
+      const jump = MOVES.jump;
+      // 落点 = dist - min(lunge, dist-1.2)。再远跳劈够不着，空跳没有惩罚窗，先走近
+      const jumpMax = (jump.lunge ?? 0) + jump.range + 0.45;
+      const serp = MOVES.serpThrust;
+      // 突刺视觉约 6.6m + 前冲，不在射程外甩一记仍能打中的短招
+      const serpMax = Math.min(serp.range * 0.95, 6.6 + (serp.lunge ?? 0));
+      const jumpOk = dist <= jumpMax && ready(jump);
+      const serpOk = this.phase === 2 && dist <= serpMax && ready(serp);
+      if (jumpOk && !(this.lastMove === "jump" && serpOk)) return jump;
+      if (serpOk && this.lastMove !== "serpThrust") return serp;
+      if (jumpOk) return jump;
       return null;
     }
-    // 贴身：抓技(低概率)/肩撞
-    if (dist < 1.9) {
-      if (ready(MOVES.grab) && Math.random() < 0.25) return MOVES.grab;
-      if (ready(MOVES.shoulder) && Math.random() < 0.5) return MOVES.shoulder;
+
+    if (this.preferClose) {
+      const grab = MOVES.grab;
+      const shoulder = MOVES.shoulder;
+      // 抓技低概率，且不接在肩撞后面变成连段
+      if (dist < 1.65 && ready(grab) && this.lastMove !== "grab" && this.lastMove !== "shoulder" && Math.random() < 0.18) {
+        return grab;
+      }
+      if (ready(shoulder) && Math.random() < (this.lastMove === "shoulder" ? 0.2 : 0.55)) return shoulder;
     }
+
+    const p2 = this.phase === 2;
     const pool: [MoveDef, number][] = [
-      [MOVES.thrust, 3], [MOVES.sweep, 3], [MOVES.slam, 2],
-      [MOVES.shoulder, dist < 2.4 ? 2 : 0],
-      [MOVES.serpSweep, this.phase === 2 ? 2.5 : 0],
-      [MOVES.serpThrust, this.phase === 2 && dist > 3.5 ? 2 : 0],
+      [MOVES.thrust, p2 ? 1.5 : 3],
+      [MOVES.sweep, p2 ? 1.6 : 3],
+      [MOVES.slam, p2 ? 1.5 : 2.4],
+      [MOVES.shoulder, dist < 2.5 ? 2 : 0],
+      [MOVES.serpSweep, p2 ? 3.6 : 0],
+      [MOVES.serpThrust, p2 && dist > 3.1 && dist < MOVES.serpThrust.range * 0.95 ? 2.4 : 0],
     ];
     const cands = pool.filter(([m, w]) => w > 0 && ready(m) && dist < m.range * 0.95);
-    if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
-    let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    return this.choose(cands);
   }
+
+  /** 有别的招可用时，把刚用过的招权重大幅压低 */
+  private choose(cands: [MoveDef, number][]): MoveDef | null {
+    if (!cands.length) return null;
+    const hasAlt = cands.some(([m]) => m.name !== this.lastMove);
+    let sum = 0;
+    const weighted: [MoveDef, number][] = cands.map(([m, w]) => {
+      const ww = hasAlt && m.name === this.lastMove ? w * 0.18 : w;
+      sum += ww;
+      return [m, ww];
+    });
+    let r = Math.random() * sum;
+    for (const [m, w] of weighted) { r -= w; if (r <= 0) return m; }
+    return weighted[0][0];
+  }
+}
+
+function lerpAngle(a: number, b: number, k: number): number {
+  const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  return a + d * k;
 }
