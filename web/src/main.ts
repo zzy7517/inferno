@@ -1,12 +1,19 @@
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Game } from "./game";
 import { AU } from "./audio";
+import { setBossAssets } from "./boss-rig";
 
 async function boot(): Promise<void> {
-  const [gltf, frames] = await Promise.all([
-    new GLTFLoader().loadAsync("assets/character.glb"),
+  const load = (url: string) => new GLTFLoader().loadAsync(url);
+  const [gltf, frames, gundyr, vordt, watchers, sulyvahn] = await Promise.all([
+    load("assets/character.glb"),
     fetch("assets/character_frames.json").then(r => r.json()),
+    load("assets/boss-gundyr.glb"),
+    load("assets/boss-vordt.glb"),
+    load("assets/boss-watchers.glb"),
+    load("assets/boss-sulyvahn.glb"),
   ]);
+  setBossAssets({ gundyr, vordt, watchers, sulyvahn });
   AU.init();
   const game = new Game(gltf, frames.clips as Record<string, Record<string, unknown>>);
   game.start();

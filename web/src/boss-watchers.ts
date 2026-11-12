@@ -10,6 +10,7 @@ import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
+import { numbered, part, partMat, spawnBoss } from "./boss-rig";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -138,222 +139,32 @@ export class Watchers extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：瘦长剑士。量过旧网格脚底 0.07、盔脊顶 2.64（脚到盔顶 2.57），收到 2.15；兜帽尖约 2.27 ----------------
+  // ---------------- 外观：瘦长剑士。关节位置不动，网格换成 Blender 导出的兜帽与斗篷 ----------------
   protected override buildBody(): void {
-    const iron = new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.75, metalness: 0.35, flatShading: true });
-    const ironDark = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.9, metalness: 0.2, flatShading: true });
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x121014, roughness: 1, side: THREE.DoubleSide, flatShading: true });
-    this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.35, metalness: 0.7, flatShading: true, emissive: 0xff5a20, emissiveIntensity: 0 });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a0505, roughness: 0.6, emissive: 0xff3b30, emissiveIntensity: 0.8 });
-    // 脚到盔顶 2.57 → 2.15，脚踩在 0。剑、匕、兜帽、斗篷只乘这一档。肩腰另收，腿另加长。
-    const S = 2.15 / 2.57;
-    const u = (n: number) => n * S;
-
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    // 深色布、flatShading 都用上面的 cloth。面片不索引，平着切出折痕。
-    const clothMesh = (pts: readonly (readonly [number, number, number])[], faces: readonly (readonly number[])[], x = 0, y = 0, z = 0) => {
-      const pos: number[] = [];
-      for (const f of faces) for (const i of f) {
-        const p = pts[i];
-        pos.push(p[0], p[1], p[2]);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-      g.computeVertexNormals();
-      const m = new THREE.Mesh(g, cloth);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    const quad = (faces: number[][], a: number, b: number, c: number, d: number) => {
-      faces.push([a, c, b], [b, c, d]);
-    };
-    // 腿（髋枢轴 + 膝枢轴：跪地/蹲伏的弯折）。髋在 1.20，约占身长 56%，比缩过的躯干长一截。脚底贴 0。
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.085], [this.legL, this.shinL, -0.085]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.2, 0);
-      leg.add(box(0.1, 0.64, 0.12, ironDark, 0, -0.32, 0));                  // 细长大腿
-      shin.position.set(0, -0.64, 0);
-      shin.add(box(0.08, 0.5, 0.1, ironDark, 0, -0.25, 0.008));             // 小腿
-      shin.add(box(0.09, 0.26, 0.11, iron, 0, -0.2, 0.02));                 // 胫甲，薄片不是方柱
-      shin.add(box(0.11, 0.07, 0.22, ironDark, 0, -0.525, 0.05));           // 脚，底 = 1.2-0.64-0.525-0.035 = 0
-      leg.add(shin);
-      this.body.add(leg);
-    }
-    // 细腰：窄骨盆、窄腰带、短裙甲。不再用一块 0.4 宽的方骨盆。
-    this.body.add(box(0.2, 0.12, 0.14, iron, 0, 1.22, 0));
-    this.body.add(box(0.22, 0.04, 0.16, ironDark, 0, 1.15, 0));
-    for (const [fx, fz, ry] of [[0, 0.08, 0], [0.09, 0.05, 0.55], [-0.09, 0.05, -0.55]] as [number, number, number][]) {
-      const plate = box(0.12, 0.16, 0.02, iron, fx, 1.1, fz);
-      plate.rotation.set(0.4, ry, 0);
-      this.body.add(plate);
-    }
-    // 躯干。底座仍是缩过的 1.45：腹窄、胸只宽一圈、上层甲不再比胸更宽更深。
-    this.torso.position.y = u(1.45);
-    this.torso.add(box(0.18, u(0.34), 0.13, ironDark, 0, u(0.05), 0));       // 腰
-    this.torso.add(box(0.28, u(0.44), 0.17, iron, 0, u(0.4), 0));             // 胸甲，扁，不是方块
-    this.torso.add(box(0.26, u(0.3), 0.15, iron, 0, u(0.52), u(0.01)));       // 上层甲，收在胸的轮廓里
-    this.torso.add(box(0.2, u(0.4), 0.03, ironDark, 0, u(0.42), -0.105));    // 背板（斗篷锚点）
-    this.torso.add(box(0.1, u(0.12), 0.1, ironDark, 0, u(0.7), 0));           // 细颈
-    this.torso.add(box(0.05, u(0.08), 0.025, ironDark, 0, u(0.5), 0.095));   // 胸口扣
-    // 肩甲窄，斜着贴在胸外，不把肩撑成横方块。持剑肩轴在 x=±0.155，甲片包住轴但比旧的 0.38 收进一截。
-    for (const s of [-1, 1]) {
-      const p = box(0.13, 0.06, 0.14, iron, s * 0.175, u(0.66), 0);
-      p.rotation.z = -s * 0.32;
-      this.torso.add(p);
-    }
-    // 头盔：只在眼缝处露两个红点。盔脊顶 = 躯干 1.45S + 头 0.88S + 脊 0.24S = 2.15。
-    this.head.position.set(0, u(0.88), u(0.03));
-    this.head.add(box(u(0.26), u(0.32), u(0.3), iron, 0, 0, 0));
-    this.head.add(box(u(0.05), u(0.1), u(0.26), ironDark, 0, u(0.19), 0));   // 盔脊
-    this.head.add(box(u(0.24), u(0.09), u(0.05), ironDark, 0, u(0.03), u(0.15))); // 眼缝暗槽
-    for (const ex of [-0.062, 0.062]) this.head.add(box(u(0.05), u(0.032), u(0.02), this.eyeMat, u(ex), u(0.03), u(0.175)));
-    // 兜帽罩在盔外，额前开口留着眼缝。侧面是后倾的尖顶，布顺着后颈垂下来。
-    {
-      const pts: [number, number, number][] = [
-        [-0.17, 0.16, 0.11], [0, 0.23, 0.09], [0.17, 0.16, 0.11],
-        [-0.20, 0.26, -0.01], [0, 0.38, -0.06], [0.20, 0.26, -0.01],
-        [-0.17, 0.12, -0.17], [0, 0.20, -0.20], [0.17, 0.12, -0.17],
-        [-0.14, -0.02, -0.20], [0, 0.04, -0.24], [0.14, -0.02, -0.20],
-        [-0.10, -0.18, -0.18], [0, -0.08, -0.24], [0.08, -0.20, -0.15],
-        [-0.03, -0.30, -0.12], [0, -0.36, -0.16], [0.04, -0.24, -0.10],
-      ];
-      const faces: number[][] = [];
-      for (let i = 0; i < 5; i++) {
-        const a = i * 3, b = a + 3;
-        quad(faces, a, a + 1, b, b + 1);
-        quad(faces, a + 1, a + 2, b + 1, b + 2);
-      }
-      const flap = pts.length;
-      pts.push(
-        [-0.19, 0.04, 0.03], [-0.14, -0.12, -0.04], [-0.08, -0.24, -0.10],
-        [0.19, 0.04, 0.03], [0.14, -0.12, -0.04], [0.07, -0.22, -0.08],
-      );
-      quad(faces, 0, flap, 3, flap + 1);
-      faces.push([3, flap + 1, 6], [6, flap + 1, flap + 2], [6, flap + 2, 9]);
-      quad(faces, 2, 5, flap + 3, flap + 4);
-      faces.push([5, 8, flap + 4], [8, flap + 4, flap + 5], [8, 11, flap + 5]);
-      for (const p of pts) { p[0] *= S; p[1] *= S; p[2] *= S; }             // 兜帽形状不动，只随头缩。尖在头本地 y=0.38S，世界约 2.27
-      this.head.add(clothMesh(pts, faces));
-    }
-    this.torso.add(this.head);
-    // 右臂 + 大剑。长握柄露出拳头以下一截，宽剑格，厚脊薄刃，尖端逐级收窄。
-    // 刃全部用 bladeMat：二阶段整刃一起燃，点燃时机不改。不新开灯。
-    this.armR.position.set(0.155, u(0.66), 0);
-    this.armR.add(box(u(0.12), u(0.44), u(0.14), ironDark, 0, u(-0.2), 0));
-    this.armR.add(box(u(0.105), u(0.42), u(0.12), iron, 0, u(-0.58), u(0.03)));
-    this.armR.add(box(u(0.125), u(0.16), u(0.14), iron, 0, u(-0.86), u(0.05))); // 铁手套
-    const sword = new THREE.Group();
-    sword.position.set(0, u(-0.94), u(0.06));
-    sword.rotation.x = 0.3;                                                // 略后曳，身侧垂剑时尖落在地面附近
-    sword.add(box(u(0.05), u(0.5), u(0.056), ironDark, 0, u(-0.06), 0));   // 长柄：拳头以下还露出一截
-    for (const gy of [0.1, 0, -0.1, -0.2]) sword.add(box(u(0.064), u(0.026), u(0.07), iron, 0, u(gy), 0)); // 柄缠
-    sword.add(box(u(0.092), u(0.07), u(0.082), ironDark, 0, u(0.185), 0)); // 柄头
-    sword.add(box(u(0.048), u(0.04), u(0.05), iron, 0, u(0.24), 0));
-    sword.add(box(u(0.5), u(0.07), u(0.09), iron, 0, u(-0.34), 0));        // 剑格
-    sword.add(box(u(0.12), u(0.1), u(0.11), ironDark, 0, u(-0.34), 0));
-    const ql = box(u(0.06), u(0.15), u(0.065), iron, u(-0.22), u(-0.4), 0);
-    ql.rotation.z = 0.75;
-    const qr = box(u(0.06), u(0.15), u(0.065), iron, u(0.22), u(-0.4), 0);
-    qr.rotation.z = -0.75;
-    sword.add(ql, qr);                                                     // 剑格两端下垂
-    sword.add(box(u(0.13), u(0.22), u(0.06), this.bladeMat, 0, u(-0.48), 0)); // 剑根
-    sword.add(box(u(0.08), u(1.0), u(0.052), this.bladeMat, 0, u(-1.05), 0)); // 脊
-    sword.add(box(u(0.072), u(0.92), u(0.018), this.bladeMat, u(-0.07), u(-1.05), 0)); // 左刃
-    sword.add(box(u(0.072), u(0.92), u(0.018), this.bladeMat, u(0.07), u(-1.05), 0)); // 右刃
-    sword.add(box(u(0.028), u(0.7), u(0.012), ironDark, 0, u(-1.02), u(0.032))); // 血槽，刃缘仍走 bladeMat
-    sword.add(box(u(0.05), u(0.32), u(0.034), this.bladeMat, 0, u(-1.6), 0)); // 收窄
-    sword.add(box(u(0.04), u(0.26), u(0.014), this.bladeMat, u(-0.038), u(-1.6), 0));
-    sword.add(box(u(0.04), u(0.26), u(0.014), this.bladeMat, u(0.038), u(-1.6), 0));
-    sword.add(box(u(0.032), u(0.16), u(0.02), this.bladeMat, 0, u(-1.74), 0)); // 尖
-    sword.add(box(u(0.014), u(0.08), u(0.01), this.bladeMat, 0, u(-1.81), 0)); // 剑尖，末端 = -1.85S
-    this.swordHilt.position.set(0, u(-0.06), 0);                           // 仍钉在握柄中心
-    this.swordTip.position.set(0, u(-1.85), 0);                            // 仍钉在剑尖末端
+    // 形体来自 tools/blender/build_bosses.py。剑的静止倾角在模型里，招式转角仍由 applyPose 写。
+    const rig = spawnBoss("watchers", "w_body");
+    const u = (n: number) => n * (2.15 / 2.57);
+    this.body = part(rig, "w_body") as THREE.Group;
+    this.torso = part(rig, "w_torso") as THREE.Group;
+    this.head = part(rig, "w_head") as THREE.Group;
+    this.legR = part(rig, "w_legR") as THREE.Group;
+    this.legL = part(rig, "w_legL") as THREE.Group;
+    this.shinR = part(rig, "w_shinR") as THREE.Group;
+    this.shinL = part(rig, "w_shinL") as THREE.Group;
+    this.armR = part(rig, "w_armR") as THREE.Group;
+    this.armL = part(rig, "w_armL") as THREE.Group;
+    const sword = part(rig, "w_sword");
+    this.swordHilt.position.set(0, u(-0.06), 0);
+    this.swordTip.position.set(0, u(-1.85), 0);
     sword.add(this.swordHilt, this.swordTip);
     this.swordLight = new THREE.PointLight(0xff5a20, 0, 5, 2);
     this.swordLight.position.set(0, u(-1.05), 0);
     sword.add(this.swordLight);
-    this.armR.add(sword);
-    this.torso.add(this.armR);
-    // 左臂 + 短匕。小柄、小格、尖刃，整长仍明显短于大剑（柄头到尖约 0.62，大剑约 1.76，只随身体乘同一档）。
-    // 刃全部用 bladeMat：二阶段和长剑一起燃，点燃时机不改。不新开灯。
-    this.armL.position.set(-0.155, u(0.66), 0);
-    this.armL.add(box(u(0.11), u(0.42), u(0.13), ironDark, 0, u(-0.19), 0));
-    this.armL.add(box(u(0.1), u(0.4), u(0.11), iron, 0, u(-0.55), u(0.02)));
-    this.armL.add(box(u(0.12), u(0.15), u(0.13), iron, 0, u(-0.8), u(0.04)));
-    const dagger = new THREE.Group();
-    dagger.position.set(0, u(-0.88), u(0.04));
-    dagger.rotation.x = 0.35;
-    dagger.add(box(u(0.036), u(0.16), u(0.042), ironDark, 0, u(0.015), 0)); // 小柄
-    dagger.add(box(u(0.046), u(0.024), u(0.05), iron, 0, u(0.05), 0));      // 柄缠
-    dagger.add(box(u(0.046), u(0.024), u(0.05), iron, 0, u(-0.02), 0));
-    dagger.add(box(u(0.052), u(0.04), u(0.05), ironDark, 0, u(0.112), 0));  // 柄头
-    dagger.add(box(u(0.2), u(0.032), u(0.046), iron, 0, u(-0.078), 0));     // 小格
-    dagger.add(box(u(0.058), u(0.048), u(0.054), ironDark, 0, u(-0.078), 0));
-    const dl = box(u(0.024), u(0.06), u(0.03), iron, u(-0.09), u(-0.098), 0);
-    dl.rotation.z = 0.65;
-    const dr = box(u(0.024), u(0.06), u(0.03), iron, u(0.09), u(-0.098), 0);
-    dr.rotation.z = -0.65;
-    dagger.add(dl, dr);                                                     // 格端略下垂
-    dagger.add(box(u(0.09), u(0.12), u(0.036), this.bladeMat, 0, u(-0.155), 0)); // 刃根
-    dagger.add(box(u(0.046), u(0.24), u(0.03), this.bladeMat, 0, u(-0.32), 0)); // 脊
-    dagger.add(box(u(0.036), u(0.2), u(0.014), this.bladeMat, u(-0.028), u(-0.31), 0)); // 左刃
-    dagger.add(box(u(0.036), u(0.2), u(0.014), this.bladeMat, u(0.028), u(-0.31), 0)); // 右刃
-    dagger.add(box(u(0.04), u(0.12), u(0.022), this.bladeMat, 0, u(-0.47), 0)); // 收窄
-    dagger.add(box(u(0.024), u(0.1), u(0.012), this.bladeMat, u(-0.024), u(-0.47), 0));
-    dagger.add(box(u(0.024), u(0.1), u(0.012), this.bladeMat, u(0.024), u(-0.47), 0));
-    dagger.add(box(u(0.02), u(0.07), u(0.014), this.bladeMat, 0, u(-0.545), 0)); // 尖
-    dagger.add(box(u(0.01), u(0.045), u(0.008), this.bladeMat, 0, u(-0.59), 0)); // 末端约 y=-0.61S
-    this.armL.add(dagger);
-    this.torso.add(this.armL);
-    // 一条破斗篷：形状不动，只乘 S，再往前贴到收薄的背上。
-    // 右缘停在持剑肩轴（x=0.155）内侧，布不包住挥剑的肩轴；下摆让开贴背扫过的刃。
-    {
-      const cols = 4, rows = 8;
-      const tears = [0.22, 0, 0.38, 0.08, 0.3];
-      const zBias = 0.06;                                                   // 背变薄之后，把整片往前送到背板上
-      const pts: [number, number, number][] = [];
-      for (let r = 0; r <= rows; r++) {
-        const v = r / rows;
-        for (let c = 0; c <= cols; c++) {
-          const uu = c / cols;
-          const x = (-0.24 + v * 0.08) + ((0.12 - v * 0.04) - (-0.24 + v * 0.08)) * uu;
-          const yFull = 0.76 - v * 1.78;
-          const y = yFull + tears[c] * v * v * 0.7;
-          const zS = y >= -0.02 ? -0.23 - (0.76 - y) * 0.32 : -0.64 - Math.min(1, (-0.02 - y) / 0.95) * 0.38;
-          const z = zS - Math.sin(uu * Math.PI) * (0.08 + v * 0.06);
-          pts.push([x * S, y * S, z * S + zBias]);
-        }
-      }
-      const faces: number[][] = [];
-      const id = (r: number, c: number) => r * (cols + 1) + c;
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-        if (r >= rows - 2 && c === 0) continue;                            // 左下角撕开一截
-        quad(faces, id(r, c), id(r, c + 1), id(r + 1, c), id(r + 1, c + 1));
-      }
-      this.torso.add(clothMesh(pts, faces));
-    }
-    // 肩后两片短破布，仍走 cape 的摆动。短，甩不开肩轴，也扫不到刃。
-    const rag = (x0: number, x1: number, len: number) => {
-      x0 *= S; x1 *= S; len *= S;
-      const pts: [number, number, number][] = [
-        [x0, 0, 0], [(x0 + x1) / 2, 0, u(-0.04)], [x1, 0, 0],
-        [x0 + u(0.01), -len * 0.55, u(-0.02)], [(x0 + x1) / 2, -len * 0.5, u(-0.08)], [x1 - u(0.01), -len * 0.6, u(-0.02)],
-        [x0 + u(0.02), -len, 0], [(x0 + x1) / 2 + u(0.01), -len * 0.85, u(-0.05)], [x1, -len * 0.7, 0],
-      ];
-      const faces: number[][] = [];
-      quad(faces, 0, 1, 3, 4); quad(faces, 1, 2, 4, 5);
-      quad(faces, 3, 4, 6, 7); quad(faces, 4, 5, 7, 8);
-      return clothMesh(pts, faces);
-    };
-    const ragL = rag(-0.16, -0.04, 0.28); ragL.position.set(0, u(0.42), u(-0.36) + 0.06);
-    const ragR = rag(-0.02, 0.08, 0.22); ragR.position.set(0, u(0.38), u(-0.34) + 0.06);
-    this.cape.push(ragL, ragR);
-    this.torso.add(ragL, ragR);
+    this.bladeMat = partMat(rig, "w_blade");
+    this.bladeMat.emissiveIntensity = 0;
+    this.eyeMat = partMat(rig, "w_eye");
+    this.cape = numbered(rig, "w_cape");
     this.root.add(this.body);
-    this.body.add(this.torso);
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }

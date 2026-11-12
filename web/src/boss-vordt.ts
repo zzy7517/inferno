@@ -5,11 +5,12 @@
  * 冰蓝（0x9fd8e8）是本 Boss 主题色例外（m3-bosses.md 破例条款）；全局冷灰 + 火光纪律不变。
  */
 import * as THREE from "three";
-import { MOVES, FEEL, MoveDef, FeelDef, COLORS } from "./config";
+import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost, BossStats } from "./boss-base";
+import { numbered, part, partMat, spawnBoss } from "./boss-rig";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -96,7 +97,7 @@ export class Vordt extends BossBase {
   private hammerG = new THREE.Group();
   private hamHilt = new THREE.Object3D();
   private hamTip = new THREE.Object3D();
-  private head!: THREE.Mesh;
+  private head!: THREE.Object3D;
   private eyeMat!: THREE.MeshStandardMaterial;
   private eyeLight!: THREE.PointLight;
   private hammerIce: THREE.Mesh[] = [];      // 二阶段锤头结冰
@@ -122,198 +123,29 @@ export class Vordt extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观（程序化 flatShading，石色 + 冰蓝，无贴图） ----------------
-  // 站姿先量过再放大：肩甲冰钉顶 2.579、盔顶 1.450、角尖 1.851。整身按肩甲顶放到 3.8。
-  // 前倾把圆颅压到肩线下面，所以脖子从肩甲缝里另抬一截：盔顶约 4.5，角尖约 5.1，不超过 5.5。
-  // 圆顶盔、弯角、层叠肩甲、后掠冰晶形状不动，只跟身体一起变大。招式数字不在这里。
+  // ---------------- 外观：关节位置仍是原来的四足骨架，网格换成 Blender 导出的兽形 ----------------
   protected override buildBody(): void {
-    const BULK = 3.8 / 2.579;
-    const sc = (n: number) => n * BULK;
-    const plate = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.95, flatShading: true });
-    const dark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x4c5560, roughness: 0.6, metalness: 0.35, flatShading: true });
-    const trim = new THREE.MeshStandardMaterial({ color: 0x5a636e, roughness: 0.5, metalness: 0.4, flatShading: true });
-    const ice = new THREE.MeshStandardMaterial({ color: ICE, emissive: ICE_GLOW, emissiveIntensity: 0.55, roughness: 0.25, metalness: 0.1, flatShading: true, transparent: true, opacity: 0.85 });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c1014, emissive: ICE, emissiveIntensity: 0.8, roughness: 0.4 });
-
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    const tetra = (r: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.TetrahedronGeometry(r), mat);
-      m.position.set(x, y, z);
-      m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      m.castShadow = true;
-      return m;
-    };
-    // 两端半径不同的一段。+Y 朝 dir，粗的一头在 a。
-    const link = (a: THREE.Vector3, b: THREE.Vector3, rA: number, rB: number, mat: THREE.Material) => {
-      const dir = new THREE.Vector3().subVectors(b, a);
-      const len = dir.length();
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(rB, rA, Math.max(len, 1e-3), 6), mat);
-      m.position.copy(a).add(b).multiplyScalar(0.5);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-      m.castShadow = true;
-      return m;
-    };
-    const cone = (r: number, h: number, mat: THREE.Material) => {
-      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), mat);
-      m.castShadow = true;
-      return m;
-    };
-
-    // 后肢略短于前腿（髋到足底按 0.88 收，足底仍落在地面）。crouch 仍绕髋折。
-    const HIND = 0.88;
-    for (const [g, sx] of [[this.legR, 1], [this.legL, -1]] as [THREE.Group, number][]) {
-      g.position.set(sc(sx * 0.5), sc(1.32 * HIND), sc(-0.55));
-      g.add(box(sc(0.36), sc(0.85 * HIND), sc(0.5), dark, 0, sc(-0.3 * HIND), sc(0.12 * HIND)));
-      g.add(box(sc(0.28), sc(0.75 * HIND), sc(0.32), dark, 0, sc(-0.85 * HIND), sc(-0.18 * HIND)));
-      g.add(box(sc(0.34), sc(0.2 * HIND), sc(0.55), plate, 0, sc(-1.22 * HIND), sc(0.05 * HIND)));
-      this.body.add(g);
-    }
-    // 短尾
-    const tail = box(sc(0.18), sc(0.18), sc(0.6), dark, 0, sc(0.78), sc(-0.95));
-    tail.rotation.x = 0.35;
-    this.body.add(tail);
-
-    // 躯干前倾由 lean 驱动。胸腔比腰粗一圈，肩甲坐在胸廓外沿。
-    this.torso.position.set(0, sc(1.2), sc(-0.1));
-    this.torso.add(box(sc(0.96), sc(0.56), sc(0.70), dark, 0, sc(-0.06), sc(-0.42))); // 腰
-    this.torso.add(box(sc(1.52), sc(0.98), sc(1.40), plate, 0, sc(0.24), sc(0.32)));  // 胸
-    this.torso.add(box(sc(1.22), sc(0.26), sc(1.10), steel, 0, sc(0.78), sc(0.28)));  // 脊背护甲层
-    // 肩甲圆盘轴沿左右，侧面是一块圆甲，底边压在脊甲上，不和胸块合成方砖。形状照旧，只放大。
-    for (const s of [-1, 1]) {
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(sc(0.4), sc(0.36), sc(0.62), 8), steel);
-      cap.rotation.z = s * Math.PI / 2;
-      cap.position.set(s * sc(0.94), sc(1.1), sc(0.24));
-      cap.castShadow = true;
-      const beak = cone(sc(0.14), sc(0.42), trim);
-      beak.position.set(s * sc(0.94), sc(0.9), sc(0.66));
-      beak.rotation.x = Math.PI / 2 + 0.35;
-      const stud = cone(sc(0.09), sc(0.34), ice);
-      stud.position.set(s * sc(0.94), sc(1.5), sc(0.22));
-      stud.rotation.x = -0.35;
-      this.torso.add(cap, beak, stud);
-    }
-    // 脖子从两肩之间的胸甲里伸出去。头心因此抬到肩线以上，圆颅和弯角的相对形状不变。
-    const HEAD_Y = 2.02;
-    const HEAD_Z = 0.46;
-    const neckRoot = new THREE.Vector3(0, sc(0.70), sc(0.34));
-    const neckMid = new THREE.Vector3(0, sc(1.28), sc(0.40));
-    const neckTop = new THREE.Vector3(0, sc(HEAD_Y - 0.24), sc(HEAD_Z));
-    this.torso.add(
-      link(neckRoot, neckMid, sc(0.38), sc(0.30), dark),
-      link(neckMid, neckTop, sc(0.30), sc(0.22), plate),
-    );
-    // 盔：实心圆颅、短盔檐、粗吻和下颚。
-    this.headG.position.set(0, sc(HEAD_Y), sc(HEAD_Z));
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(sc(0.32), 8, 6), plate);
-    this.head.scale.set(1.02, 0.9, 1.05);
-    this.head.castShadow = true;
-    const brim = box(sc(0.42), sc(0.08), sc(0.18), trim, 0, sc(0.18), sc(0.28));
-    brim.rotation.x = 0.25;
-    const snout = new THREE.Mesh(new THREE.CylinderGeometry(sc(0.1), sc(0.18), sc(0.46), 6), dark);
-    snout.rotation.x = Math.PI / 2;
-    snout.position.set(0, sc(-0.04), sc(0.46));
-    snout.castShadow = true;
-    const nose = box(sc(0.18), sc(0.14), sc(0.1), dark, 0, sc(-0.05), sc(0.7));
-    const jaw = new THREE.Mesh(new THREE.CylinderGeometry(sc(0.045), sc(0.1), sc(0.34), 5), plate);
-    jaw.rotation.x = Math.PI / 2 + 0.55;
-    jaw.position.set(0, sc(-0.2), sc(0.44));
-    jaw.castShadow = true;
-    const gorget = box(sc(0.36), sc(0.16), sc(0.14), steel, 0, sc(-0.28), sc(0.02));
-    this.headG.add(this.head, brim, snout, nose, jaw, gorget);
-    const bez = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, n: number) => {
-      const pts: THREE.Vector3[] = [];
-      for (let i = 0; i <= n; i++) {
-        const t = i / n;
-        const u = 1 - t;
-        pts.push(new THREE.Vector3(
-          u * u * a.x + 2 * u * t * b.x + t * t * c.x,
-          u * u * a.y + 2 * u * t * b.y + t * t * c.y,
-          u * u * a.z + 2 * u * t * b.z + t * t * c.z,
-        ));
-      }
-      return pts;
-    };
-    for (const s of [-1, 1]) {
-      this.headG.add(box(sc(0.1), sc(0.05), sc(0.04), this.eyeMat, s * sc(0.13), sc(0.04), sc(0.36)));
-      // 左右角一条朝前扬、一条往后钩，侧面能看见两根，而不是叠成一根刺。形状照旧，只放大。
-      const horn = s > 0
-        ? bez(new THREE.Vector3(s * sc(0.08), sc(0.28), sc(0.04)), new THREE.Vector3(s * sc(0.16), sc(0.58), sc(0.12)), new THREE.Vector3(s * sc(0.1), sc(0.86), sc(-0.02)), 5)
-        : bez(new THREE.Vector3(s * sc(0.06), sc(0.26), sc(-0.02)), new THREE.Vector3(s * sc(0.12), sc(0.56), sc(-0.18)), new THREE.Vector3(s * sc(0.04), sc(0.48), sc(-0.46)), 5);
-      const radii = [0.14, 0.11, 0.08, 0.055, 0.035, 0.018].map(sc);
-      for (let i = 0; i < horn.length - 1; i++) this.headG.add(link(horn[i], horn[i + 1], radii[i], radii[i + 1], trim));
-    }
+    // 形体来自 tools/blender/build_bosses.py。四足关节的转角仍由 applyPose 写。
+    const rig = spawnBoss("vordt", "v_body");
+    this.body = part(rig, "v_body") as THREE.Group;
+    this.torso = part(rig, "v_torso") as THREE.Group;
+    this.legR = part(rig, "v_legR") as THREE.Group;
+    this.legL = part(rig, "v_legL") as THREE.Group;
+    this.headG = part(rig, "v_headG") as THREE.Group;
+    this.head = this.headG;
+    this.armR = part(rig, "v_armR") as THREE.Group;
+    this.armL = part(rig, "v_armL") as THREE.Group;
+    this.hammerG = part(rig, "v_hammer") as THREE.Group;
+    const sc = (n: number) => n * (3.8 / 2.579);
+    this.hamHilt.position.set(0, sc(0.1), sc(0.15));
+    this.hamTip.position.set(0, sc(0.364), sc(1.537));
+    this.hammerG.add(this.hamHilt, this.hamTip);
+    this.eyeMat = partMat(rig, "v_eye");
     this.eyeLight = new THREE.PointLight(ICE, 0, 4.5, 2);
     this.eyeLight.position.set(0, sc(0.04), sc(0.42));
     this.headG.add(this.eyeLight);
-    this.torso.add(this.headG);
-    // 冰晶排在肩甲后面的脊线上，侧面是一串后掠的锯齿。
-    const ridge: readonly (readonly [number, number, number])[] = [
-      [-0.02, 0.78, 0.58],
-      [-0.26, 0.62, 0.74],
-      [-0.48, 0.46, 0.56],
-      [-0.68, 0.34, 0.4],
-    ];
-    ridge.forEach(([z, base, h], i) => {
-      const c = cone(sc(h * 0.22), sc(h), ice);
-      c.position.set(i % 2 ? sc(0.06) : sc(-0.06), sc(base + h * 0.32), sc(z));
-      c.rotation.x = -0.48;
-      this.torso.add(c);
-    });
-
-    // 右前肢（持锤）比后腿粗。放大后掌会陷进地里，沿腿轴收回一截，锤仍长在掌上。
-    const PLANT = 0.28;
-    this.armR.position.set(sc(0.98), sc(0.42), sc(0.5));
-    this.armR.add(box(sc(0.58), sc(0.8), sc(0.58), plate, 0, sc(-0.35 + PLANT), sc(0.05)));
-    const foreR = box(sc(0.48), sc(0.75), sc(0.48), dark, 0, sc(-0.95 + PLANT), sc(0.15));
-    foreR.rotation.x = 0.3;
-    this.armR.add(foreR, box(sc(0.62), sc(0.36), sc(0.58), steel, 0, sc(-1.35 + PLANT), sc(0.32)));
-    this.hammerG.position.set(0, sc(-1.42 + PLANT), sc(0.38));
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(sc(0.075), sc(0.092), sc(2.2), 6),
-      new THREE.MeshStandardMaterial({ color: 0x2e2a24, roughness: 0.9, flatShading: true }),
-    );
-    shaft.position.set(0, sc(0.1), sc(0.74)); shaft.rotation.x = Math.PI / 2 - 0.32; shaft.castShadow = true;
-    this.hammerG.add(shaft);
-    const hx = 0, hy = sc(0.364), hz = sc(1.537);                            // 厚方头中心，套在杆端里
-    this.hammerG.add(box(sc(1.04), sc(0.82), sc(0.74), trim, hx, hy, hz));   // 宽面横扫、厚面下砸
-    this.hammerG.add(box(sc(0.4), sc(0.34), sc(0.32), steel, 0, sc(0.25), sc(1.16))); // 锤颈箍，卡住杆
-    this.hammerG.add(box(sc(1.14), sc(0.16), sc(0.82), steel, hx, hy, hz));  // 锤腰箍
-    for (const s of [-1, 1]) {                                               // 两侧打击面上的短刺
-      this.hammerG.add(box(sc(0.16), sc(0.14), sc(0.14), steel, s * sc(0.6), hy + sc(0.18), hz - sc(0.16)));
-      this.hammerG.add(box(sc(0.16), sc(0.14), sc(0.14), steel, s * sc(0.6), hy + sc(0.18), hz + sc(0.16)));
-    }
-    // 二阶段冰结在锤头顶面，露在铁面之外。标记跟锤头中心一起放大。
-    for (const [ix, iy, iz, r] of [
-      [sc(0.3), hy + sc(0.56), hz - sc(0.12), sc(0.2)],
-      [0, hy + sc(0.62), hz + sc(0.08), sc(0.24)],
-      [sc(-0.28), hy + sc(0.54), hz + sc(0.26), sc(0.18)],
-    ]) {
-      const c = tetra(r, ice, ix, iy, iz);
-      c.visible = false;
-      this.hammerIce.push(c);
-      this.hammerG.add(c);
-    }
-    // 网格放大后仍钉在握把和锤头中心（原局部坐标 0,0.1,0.15 与 0,0.364,1.537）。
-    this.hamHilt.position.set(0, sc(0.1), sc(0.15));
-    this.hamTip.position.set(hx, hy, hz);
-    this.hammerG.add(this.hamHilt, this.hamTip);
-    this.armR.add(this.hammerG);
-    this.torso.add(this.armR);
-
-    // 左前肢（兽爪，冰息时撑地后仰）。和右腿一样粗。
-    this.armL.position.set(sc(-0.98), sc(0.42), sc(0.5));
-    this.armL.add(box(sc(0.58), sc(0.8), sc(0.58), plate, 0, sc(-0.35 + PLANT), sc(0.05)));
-    const foreL = box(sc(0.48), sc(0.75), sc(0.48), dark, 0, sc(-0.95 + PLANT), sc(0.12));
-    foreL.rotation.x = 0.25;
-    this.armL.add(foreL, box(sc(0.64), sc(0.32), sc(0.62), dark, 0, sc(-1.35 + PLANT), sc(0.25)));
-    this.torso.add(this.armL);
-
-    this.body.add(this.torso);
+    this.hammerIce = numbered(rig, "v_ice");
+    for (const c of this.hammerIce) c.visible = false;
     this.root.add(this.body);
   }
 

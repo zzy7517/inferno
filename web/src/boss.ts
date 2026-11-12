@@ -9,6 +9,7 @@ import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
+import { numbered, part, partMat, spawnBoss } from "./boss-rig";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -29,7 +30,7 @@ export class Boss extends BossBase {
   private halHilt = new THREE.Object3D();
   private halTip = new THREE.Object3D();
   private armL = new THREE.Group();
-  private head!: THREE.Mesh;
+  private head!: THREE.Object3D;
   private serpent: THREE.Mesh[] = [];
   /** 每节沿脊柱的原始长度。头不参与拉长，颈用它接到头。 */
   private serpDepth: number[] = [];
@@ -59,179 +60,38 @@ export class Boss extends BossBase {
 
   // ---------------- 外观 ----------------
   protected override buildBody(): void {
-    const stone = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.95, flatShading: true });
-    const dark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
-    this.emberMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.7, emissive: COLORS.ember, emissiveIntensity: 0.9, flatShading: true });
-
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    const cyl = (rt: number, rb: number, h: number, mat: THREE.Material, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 6), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    // 腿：大腿粗、膝甲、小腿收、足平。站立时脚底在 y=0。
-    for (const sx of [0.34, -0.34]) {
-      const thigh = cyl(0.22, 0.18, 0.58, dark, sx, 0.98, 0.02);
-      thigh.name = "thigh";
-      const knee = box(0.40, 0.14, 0.36, stone, sx, 0.66, 0.05);
-      knee.name = "knee";
-      const calf = cyl(0.14, 0.11, 0.44, dark, sx, 0.42, 0.05);
-      calf.name = "calf";
-      const foot = box(0.38, 0.20, 0.66, dark, sx, 0.10, 0.16);
-      foot.name = "foot";
-      this.body.add(thigh, knee, calf, foot);
-    }
-    // 躯干：腰薄、胸厚，两块肩甲分开，盔坐在中间。局部坐标仍按旧骨架（躯干枢轴 1.35），末尾再整身放大。
-    this.torso.position.y = 1.35;
-    const waist = box(0.98, 0.40, 0.44, dark, 0, 0.00, 0);
-    waist.name = "waist";
-    const chest = box(1.30, 0.70, 0.92, stone, 0, 0.48, 0.03);
-    chest.name = "chest";
-    this.torso.add(waist, chest);
-    for (const sx of [-0.22, 0.22]) {
-      const tasset = box(0.26, 0.24, 0.06, dark, sx, -0.16, 0.20);
-      tasset.rotation.x = 0.35;
-      tasset.name = "waist";
-      this.torso.add(tasset);
-    }
-    const neck = box(0.26, 0.22, 0.22, dark, 0, 0.96, 0.04);
-    neck.name = "neck";
-    this.torso.add(neck);
-    for (const s of [-1, 1]) {
-      const plate = box(0.64, 0.50, 0.54, stone, s * 0.74, 1.07, 0.04);
-      plate.name = "pauldron";
-      const lip = box(0.36, 0.08, 0.28, dark, s * 0.78, 1.24, 0.06);
-      lip.name = "pauldron";
-      this.torso.add(plate, lip);
-    }
-    // 桶盔：下半截夹在两肩之间，矮冠脊收到盔顶。不是和肩甲焊成一块的方盒。
-    this.head = cyl(0.14, 0.21, 0.78, stone, 0, 1.26, 0.05);
-    this.head.name = "helm";
-    const visor = box(0.32, 0.07, 0.06, dark, 0, -0.06, 0.20);
-    this.head.add(visor);
-    this.head.add(box(0.26, 0.12, 0.16, dark, 0, -0.30, 0.06));
-    const crest = box(0.10, 0.22, 0.28, stone, 0, 0.46, 0);
-    crest.name = "crest";
-    this.head.add(crest);
-    for (const sx of [-0.07, 0.07]) {
-      this.head.add(box(0.07, 0.03, 0.025, this.emberMat, sx, -0.05, 0.22));
-    }
-    this.torso.add(this.head);
-    // 胸口螺旋剑：五段扁刃绕轴拧过一圈多，拔出前还嵌在胸口。单根细盒远处会收成棍子。
-    const coil = new THREE.Group();
-    coil.position.set(0.2, 0.50, 0.52);
-    coil.rotation.set(-0.22, 0.12, 0.4);
-    const coilN = 5;
-    for (let i = 0; i < coilN; i++) {
-      const k = i / (coilN - 1);
-      const ang = -0.7 + k * Math.PI * 1.85;
-      const plate = box(0.4, 0.16, 0.05, this.emberMat);
-      plate.position.set(Math.cos(ang) * 0.18, -0.4 + k * 0.82, Math.sin(ang) * 0.18);
-      plate.rotation.y = ang + Math.PI / 2;
-      coil.add(plate);
-    }
-    coil.add(box(0.48, 0.05, 0.09, this.emberMat, 0, 0.5, 0));
-    this.swordInChest = coil;
-    this.torso.add(coil);
-    this.swordLight = new THREE.PointLight(COLORS.ember, 3, 3.5, 2);
-    this.swordLight.position.set(0.25, 0.55, 0.6);
-    this.torso.add(this.swordLight);
-    // 右臂：肩粗腕细。枢轴不动，戟仍从原握点伸出。
-    this.armR.position.set(0.85, 0.95, 0);
-    this.armR.add(cyl(0.16, 0.13, 0.40, stone, 0, -0.22, 0));
-    this.armR.add(cyl(0.12, 0.10, 0.36, stone, 0, -0.58, 0));
-    this.armR.add(box(0.26, 0.22, 0.24, stone, 0, -0.88, 0.02));
-    const haftMat = new THREE.MeshStandardMaterial({ color: 0x5a626c, roughness: 0.9, metalness: 0.08, flatShading: true });
-    const steelMat = new THREE.MeshStandardMaterial({ color: COLORS.steel, roughness: 0.46, metalness: 0.4, flatShading: true });
-    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5344, roughness: 0.5, metalness: 0.2, emissive: COLORS.ember, emissiveIntensity: 0.6, flatShading: true });
-    const hal = new THREE.Group();
-    hal.position.set(0, -0.8, 0.3);
-    hal.rotation.x = Math.PI / 2 - 0.5;
+    // 形体来自 tools/blender/build_bosses.py。关节转角仍由 applyPose 写。
+    const rig = spawnBoss("gundyr", "g_body");
+    this.body = part(rig, "g_body") as THREE.Group;
+    this.torso = part(rig, "g_torso") as THREE.Group;
+    this.head = part(rig, "g_head");
+    this.armR = part(rig, "g_armR") as THREE.Group;
+    this.armL = part(rig, "g_armL") as THREE.Group;
+    const hal = part(rig, "g_hal");
     const shaftLen = 3.35;
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, shaftLen, 6), haftMat);
-    shaft.castShadow = true;
-    hal.add(shaft);
-    const headY = shaftLen * 0.5 - 0.42;
-    hal.add(box(0.26, 0.46, 0.26, steelMat, 0, headY - 0.22, 0));
-    hal.add(box(1.02, 0.14, 0.58, steelMat, 0.36, headY, 0));
-    hal.add(box(1.08, 0.05, 0.07, edgeMat, 0.38, headY + 0.02, 0.28));
-    hal.add(box(1.08, 0.05, 0.07, edgeMat, 0.38, headY + 0.02, -0.28));
-    const fluke = box(0.36, 0.09, 0.2, steelMat, -0.28, headY - 0.02, 0);
-    fluke.rotation.z = -0.5;
-    hal.add(fluke);
     const spikeY = shaftLen * 0.5 - 0.08;
-    hal.add(box(0.14, 0.44, 0.14, steelMat, 0, spikeY + 0.16, 0));
-    hal.add(box(0.08, 0.32, 0.08, steelMat, 0, spikeY + 0.48, 0));
-    hal.add(box(0.045, 0.18, 0.045, edgeMat, 0, spikeY + 0.7, 0));
     this.halHilt.position.set(0, -shaftLen * 0.5, 0);
     this.halTip.position.set(0, spikeY + 0.79, 0);
     hal.add(this.halHilt, this.halTip);
-    this.armR.add(hal);
-    this.torso.add(this.armR);
-    // 左臂：同样上粗下细，手甲仍是抓的那只手。
-    this.armL.position.set(-0.85, 0.95, 0);
-    this.armL.add(cyl(0.16, 0.13, 0.40, stone, 0, -0.22, 0));
-    this.armL.add(cyl(0.12, 0.10, 0.36, stone, 0, -0.58, 0));
-    this.armL.add(box(0.30, 0.24, 0.26, stone, 0, -0.90, 0.04));
-    this.torso.add(this.armL);
-    // 人性的沉淀：腹鼓、颈细、头比颈宽，下巴单独挂在嘴下。从背后伸出来才看得出是蛇。
-    // 首节仍靠躯干，末节是头（蛇招命中用这两节的位置，不看节数）。
-    const link = (rHead: number, rTail: number, len: number, sx: number, sy: number, mat: THREE.Material) => {
-      const g = new THREE.CylinderGeometry(rHead, rTail, len, 6);
-      g.rotateX(Math.PI / 2);
-      g.scale(sx, sy, 1);
-      const m = new THREE.Mesh(g, mat);
-      m.visible = false; m.castShadow = true;
-      this.serpDepth.push(len);
-      this.serpent.push(m);
-      this.torso.add(m);
-      return m;
-    };
-    // 靠近躯干的几节是腹，末两节收到颈。高低都收，侧面才看得出细脖子。
-    const radii = [0.26, 0.38, 0.48, 0.42, 0.28, 0.18, 0.14, 0.12];
-    const depth = [0.34, 0.36, 0.36, 0.34, 0.32, 0.30, 0.28];
-    const wide = [1.15, 1.40, 1.25, 1.05, 0.90, 0.75, 0.70];
-    const tall = [1.05, 1.35, 1.20, 0.95, 0.75, 0.62, 0.58];
-    for (let i = 0; i < depth.length; i++) {
-      const m = link(radii[i + 1], radii[i], depth[i], wide[i], tall[i], stone);
-      const r = (radii[i] + radii[i + 1]) * 0.5;
-      const yRad = r * tall[i];
-      const xRad = r * wide[i];
-      if (i >= 1 && i <= 2) {
-        m.add(box(xRad * 1.35, yRad * 0.18, depth[i] * 0.8, dark, 0, -yRad * 0.72, 0));
-        m.add(box(xRad * 0.22, yRad * 0.07, depth[i] * 0.55, this.emberMat, 0, -yRad * 0.84, 0));
-      } else if (i >= 5) {
-        m.add(box(xRad * 0.55, yRad * 0.45, depth[i] * 0.7, dark, 0, yRad * 0.85, 0));
-      }
+    this.swordInChest = part(rig, "g_coil");
+    this.emberMat = partMat(rig, "g_ember");
+    this.swordLight = new THREE.PointLight(COLORS.ember, 3, 3.5, 2);
+    this.swordLight.position.set(0.25, 0.55, 0.6);
+    this.torso.add(this.swordLight);
+    this.serpent = [];
+    this.serpDepth = [];
+    for (const s of numbered(rig, "g_serp")) {
+      s.geometry.computeBoundingBox();
+      const bb = s.geometry.boundingBox!;
+      this.serpDepth.push(bb.max.z - bb.min.z);
+      this.serpent.push(s);
     }
-    const headLen = 0.34;
-    const skull = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.30, headLen), stone);
-    skull.visible = false; skull.castShadow = true;
-    const snoutGeo = new THREE.ConeGeometry(0.18, 0.48, 5);
-    snoutGeo.rotateX(Math.PI / 2);
-    const snout = new THREE.Mesh(snoutGeo, dark);
-    snout.position.set(0, -0.02, 0.36); snout.castShadow = true;
-    skull.add(snout);
-    skull.add(box(0.74, 0.10, 0.16, stone, 0, 0.16, 0.02));
-    // 下巴：厚，并且明显低于颅骨，嘴缝里留一条余烬。
-    skull.add(box(0.50, 0.18, 0.46, stone, 0, -0.36, 0.12));
-    skull.add(box(0.30, 0.12, 0.26, dark, 0, -0.46, 0.30));
-    skull.add(box(0.24, 0.10, 0.34, this.emberMat, 0, -0.20, 0.20));
-    skull.add(box(0.12, 0.08, 0.06, this.emberMat, 0.34, 0.04, 0.04));
-    skull.add(box(0.12, 0.08, 0.06, this.emberMat, -0.34, 0.04, 0.04));
-    this.serpDepth.push(headLen);
-    this.serpent.push(skull);
-    this.torso.add(skull);
     this.serpGlow = new THREE.PointLight(COLORS.ember, 0, 6, 2);
     this.torso.add(this.serpGlow);
     this.root.add(this.body);
-    this.body.add(this.torso);
     this.body.scale.setScalar(this.formScale);
   }
+
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
 
