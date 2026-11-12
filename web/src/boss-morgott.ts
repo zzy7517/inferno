@@ -36,7 +36,7 @@ const ROBE = 0x37332d;        // 破布长袍
 const ROBE_DARK = 0x28251f;
 const CLOAK = 0x333a42;       // 褪色王披（冷灰蓝，王气层）
 const WOOD = 0x4a3d2c;        // 咒杖木色
-const STEEL = 0x565c66;       // 咒剑钝钢
+const STEEL = 0x565c66;       // 钝钢（袖中咒刃、尾刃）
 
 /** 魅影匕首投射物：速度 12.5，drop 每秒下坠 0.9 制造抛物线弹道，life 1.7s ≈ 21m 射程后自散 */
 const DAGGER_PROJ: ProjDef = { speed: 12.5, radius: 0.4, dmg: 14, feelKey: "moMagic", life: 1.7, color: GOLD, drop: 0.9 };
@@ -226,7 +226,7 @@ export class Morgott extends BossBase {
   private crownMat!: THREE.MeshStandardMaterial;  // 王冠残环 + 额前预言印记 + 杖身符环（金辉呼吸）
   private hammerMat!: THREE.MeshStandardMaterial; // 魅影金锤（显形时 emissive）
   private gswordMat!: THREE.MeshStandardMaterial; // 王之剑·黄金魅影大剑
-  private bladeMat!: THREE.MeshStandardMaterial;  // 蒙格特咒剑（血焰 emissive）
+  private bladeMat!: THREE.MeshStandardMaterial;  // 蒙格特咒剑（血色窄刃，emissive 仍是 BLOOD）
   private gold!: Particles;                       // 金尘粒子池（召唤凝聚 / 二阶段披身 / 王者之证聚气）
   private blood!: Particles;                      // 血焰粒子池（诅咒喷吐 / 血焰突斩 / 咒剑余焰）
 
@@ -264,7 +264,7 @@ export class Morgott extends BossBase {
     this.crownMat = new THREE.MeshStandardMaterial({ color: GOLD_DEEP, emissive: GOLD, emissiveIntensity: 0.5, roughness: 0.4, metalness: 0.4, flatShading: true });
     this.hammerMat = new THREE.MeshStandardMaterial({ color: 0xcbb277, emissive: GOLD, emissiveIntensity: 0, roughness: 0.35, metalness: 0.5, flatShading: true, transparent: true, opacity: 0.92 });
     this.gswordMat = new THREE.MeshStandardMaterial({ color: 0xd6bd82, emissive: GOLD, emissiveIntensity: 0, roughness: 0.3, metalness: 0.55, flatShading: true, transparent: true, opacity: 0.9 });
-    this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, emissive: BLOOD, emissiveIntensity: 0, roughness: 0.45, metalness: 0.5, flatShading: true });
+    this.bladeMat = new THREE.MeshStandardMaterial({ color: BLOOD, emissive: BLOOD, emissiveIntensity: 0, roughness: 0.45, metalness: 0.5, flatShading: true });
 
     // 顶点色盒子工厂：旋转 → 平移 → 灌色（merge 前统一带 color 属性）
     const c = new THREE.Color();
@@ -342,12 +342,22 @@ export class Morgott extends BossBase {
       rags.push(box(0.1, 0.34 + (i % 3) * 0.08, 0.03, ROBE_DARK, Math.sin(a) * 0.46, 0.34, Math.cos(a) * 0.46, 0, a, 0));
     }
     merge(rags, this.body);
-    // 尾（袍下三节，横扫尾刀时甩出）
+    // 尾：节间收细，末端换成竖刃。根面 z=0、刃尖 z=-1.16，节心压在 y=-0.082，标记仍钉在根和刃尖。
     this.tailG.position.set(0, 1.5, -0.2);
+    const tailY = -0.082;
     merge([
-      box(0.17, 0.17, 0.5, SKIN_DARK, 0, 0, -0.25),
-      box(0.14, 0.14, 0.44, SKIN_DARK, 0, -0.08, -0.64),
-      box(0.1, 0.1, 0.36, SKIN_DARK, 0, -0.2, -0.98),
+      box(0.15, 0.13, 0.18, SKIN_DARK, 0, tailY, -0.09),                       // 节
+      box(0.055, 0.05, 0.055, ROBE_DARK, 0, tailY, -0.195),                     // 节间收细
+      box(0.125, 0.11, 0.16, SKIN, 0, tailY, -0.295),
+      box(0.048, 0.044, 0.05, ROBE_DARK, 0, tailY, -0.395),
+      box(0.11, 0.095, 0.15, SKIN_DARK, 0, tailY, -0.49),
+      box(0.042, 0.038, 0.048, ROBE_DARK, 0, tailY, -0.585),
+      box(0.095, 0.082, 0.14, SKIN, 0, tailY, -0.675),
+      box(0.036, 0.032, 0.05, ROBE_DARK, 0, tailY, -0.765),
+      box(0.028, 0.10, 0.08, STEEL, 0, tailY, -0.81),                           // 刃根
+      box(0.028, 0.26, 0.18, STEEL, 0, tailY, -0.93),                           // 扁刃
+      box(0.014, 0.14, 0.10, STEEL, 0, tailY, -1.05),
+      box(0.012, 0.05, 0.08, STEEL, 0, tailY, -1.12),                           // 刃尖，端面 z=-1.16
     ], this.tailG);
     pinBlade(this.tailG, this.tailHilt, this.tailTip);
     this.body.add(this.tailG);
@@ -399,7 +409,8 @@ export class Morgott extends BossBase {
     this.head.add(this.mouth);
     this.torso.add(this.head);
 
-    // 右臂 + 咒杖（一阶段，长 2.5，顶端分叉咒枝 + 金符环）——二阶段杖隐剑出（staffG/bladeG 切换）
+    // 右臂 + 王杖（一阶段）：木杆和金杖头分开，杖头是冠球加十字，不再是玛尔基特的木叉。
+    // 外包盒锁在 y=-1.5 / y=1.247，和原来一样长；杖头比杆宽，但仍短于全长，标记留在杖头尖和杆尾。
     this.armR.position.set(0.38, 0.62, 0);
     merge([
       box(0.12, 0.52, 0.14, SKIN_DARK, 0, -0.23, 0),
@@ -409,42 +420,55 @@ export class Morgott extends BossBase {
     this.staffG.position.set(0, -1.0, 0.06);
     this.staffG.rotation.x = 0.16;                                               // 杖尾后曳
     merge([
-      box(0.06, 0.18, 0.06, ROBE_DARK, 0, 0.05, 0),                              // 握柄缠布
-      cyl(0.034, 0.05, 2.5, WOOD, 0, -0.25, 0),                                  // 杖身
-      box(0.035, 0.44, 0.035, WOOD, 0.06, 1.05, 0, 0, 0, -0.55),                 // 分叉咒枝
-      box(0.03, 0.36, 0.03, WOOD, -0.07, 1.0, 0, 0, 0, 0.6),
-      box(0.075, 0.035, 0.075, GOLD_DEEP, 0, 0.42, 0),                           // 金符环 ×2（顶点色层）
-      box(0.07, 0.03, 0.07, GOLD_DEEP, 0, 0.8, 0),
-      box(0.07, 0.09, 0.07, WOOD, 0.01, 0.12, 0.02),                             // 瘤结
+      cyl(0.024, 0.038, 2.08, WOOD, 0, -0.460, 0),                               // 木杆，底 -1.500，顶伸进金座
+      box(0.056, 0.044, 0.056, GOLD_DEEP, 0, -1.478, 0),                         // 杆尾金箍，底面仍在 -1.500
+      box(0.050, 0.18, 0.050, ROBE_DARK, 0, 0.02, 0),                            // 握柄缠布
+      box(0.062, 0.026, 0.062, GOLD_DEEP, 0, -0.86, 0),                          // 杆身金环（还在木杆上）
+      box(0.058, 0.024, 0.058, GOLD_DEEP, 0, -0.22, 0),
+      box(0.13, 0.07, 0.13, GOLD_DEEP, 0, 0.600, 0),                             // 金座，杖头从这里才开始
+      cyl(0.030, 0.040, 0.06, GOLD_DEEP, 0, 0.665, 0),                           // 颈，把球和杆断开
+      cyl(0.062, 0.034, 0.08, GOLD, 0, 0.735, 0),                                // 冠球
+      cyl(0.100, 0.062, 0.10, GOLD, 0, 0.825, 0),
+      cyl(0.048, 0.100, 0.07, GOLD, 0, 0.910, 0),
+      cyl(0, 0.022, 0.36, GOLD, 0, 1.067, 0),                                    // 十字立锋，尖在 1.247
+      box(0.26, 0.034, 0.034, GOLD, 0, 1.020, 0),                                // 十字横臂
+      box(0.034, 0.034, 0.16, GOLD_DEEP, 0, 1.020, 0),
     ], this.staffG);
     pinBlade(this.staffG, this.staffHilt, this.staffTip);
     this.armR.add(this.staffG);
-    // 蒙格特咒剑（二阶段右手常驻）：钝钢剑身三段折弯（warped blade）+ 血焰 emissive 呼吸
+    // 蒙格特咒剑（二阶段右手常驻）：窄血刃，短剑格，尖收到 y=-1.423。比左手黄金大剑窄一截，整把走 BLOOD。
     this.bladeG.position.set(0, -1.02, 0.1);
     this.bladeG.rotation.x = 0.22;
     merge([
-      box(0.05, 0.16, 0.05, ROBE_DARK, 0, 0.02, 0),                              // 柄
-      box(0.18, 0.04, 0.05, ROBE_DARK, 0, -0.09, 0),                             // 护手
-      box(0.08, 0.52, 0.024, 0x5a5048, 0, -0.38, 0),                             // 剑身（三段折弯）
-      box(0.075, 0.46, 0.022, 0x5a5048, 0.03, -0.82, 0, 0, 0, -0.07),
-      box(0.065, 0.4, 0.02, 0x5a5048, 0.08, -1.22, 0, 0, 0, -0.14),
+      box(0.034, 0.050, 0.034, BLOOD, 0, 0.075, 0),                              // 柄头，顶 0.100
+      box(0.024, 0.18, 0.024, BLOOD, 0, -0.030, 0),                              // 细柄
+      box(0.26, 0.032, 0.038, BLOOD, 0, -0.125, 0),                              // 剑格，明显宽于窄刃
+      box(0.018, 0.08, 0.018, BLOOD, 0.12, -0.165, 0, 0, 0, -0.65),              // 格端下垂
+      box(0.018, 0.08, 0.018, BLOOD, -0.12, -0.165, 0, 0, 0, 0.65),
+      box(0.036, 0.08, 0.016, BLOOD, 0, -0.180, 0),                              // 剑颈
+      box(0.064, 0.74, 0.014, BLOOD, 0, -0.580, 0),                              // 窄刃
+      box(0.020, 0.74, 0.020, BLOOD, 0, -0.580, 0),                              // 细脊
+      box(0.034, 0.22, 0.012, BLOOD, 0, -1.050, 0),                              // 收锋
+      cyl(0.014, 0, 0.32, BLOOD, 0, -1.263, 0),                                  // 尖，底 -1.423
     ], this.bladeG, this.bladeMat);
     pinBlade(this.bladeG, this.bladeHilt, this.bladeTip);
     this.bladeG.visible = false;
     this.armR.add(this.bladeG);
-    // 魅影金锤（Giant-Crusher 风味·比玛尔基特更大）：挂右手，显形度 updateVisuals 缓动（hammerShow）
+    // 魅影金锤：细柄 + 厚锤头。柄尾 y=-0.44、锤面 y=0.56。锤头的宽、厚都短于这根全长，标记才还在柄尾和锤面。
     this.hammerG.position.set(0, -1.06, 0.18);
     merge([
-      box(0.06, 0.72, 0.06, 0xcbb277, 0, -0.08, 0),                              // 柄
-      box(0.52, 0.4, 0.48, 0xcbb277, 0, 0.36, 0),                                // 金锤头
-      box(0.56, 0.1, 0.52, 0xcbb277, 0, 0.16, 0),                                // 锤颈箍
+      box(0.04, 0.50, 0.04, 0xcbb277, 0, -0.190, 0),                             // 细柄，底 -0.440
+      box(0.14, 0.09, 0.14, 0xcbb277, 0, 0.090, 0),                              // 颈
+      box(0.76, 0.42, 0.60, 0xcbb277, 0, 0.310, 0),                              // 厚锤头
+      box(0.90, 0.10, 0.74, 0xcbb277, 0, 0.300, 0),                              // 锤腰箍，把头从杆上切开
+      box(0.60, 0.08, 0.48, 0xcbb277, 0, 0.520, 0),                              // 打击面，顶 0.560
     ], this.hammerG, this.hammerMat);
     pinBlade(this.hammerG, this.hammerHilt, this.hammerTip);
     this.hammerG.visible = false;
     this.armR.add(this.hammerG);
     this.torso.add(this.armR);
 
-    // 左臂 + 枯爪 + 袖中咒刃（投掷位）+ 王之剑（黄金魅影大剑·二阶段大剑三连时凭空显形）
+    // 左臂 + 枯爪 + 袖中咒刃（投掷位）+ 王之剑（宽刃黄金大剑，剑格和尖都比右手咒剑大一圈）
     this.armL.position.set(-0.38, 0.62, 0);
     const clawGeos: THREE.BufferGeometry[] = [
       box(0.12, 0.5, 0.14, SKIN_DARK, 0, -0.22, 0),
@@ -457,10 +481,19 @@ export class Morgott extends BossBase {
     this.gswordG.position.set(0, -0.98, 0.1);
     this.gswordG.rotation.x = 0.2;
     merge([
-      box(0.06, 0.2, 0.06, 0xd6bd82, 0, 0, 0),                                   // 柄
-      box(0.32, 0.05, 0.06, 0xd6bd82, 0, -0.13, 0),                              // 护手
-      box(0.1, 1.5, 0.03, 0xd6bd82, 0, -0.9, 0),                                 // 剑身（1.5m 王之剑）
-      box(0.07, 0.26, 0.026, 0xd6bd82, 0, -1.76, 0),                             // 剑尖收锋
+      box(0.078, 0.064, 0.078, 0xd6bd82, 0, 0.068, 0),                           // 柄头，顶 0.100
+      box(0.048, 0.24, 0.048, 0xd6bd82, 0, -0.060, 0),                           // 握柄
+      box(0.76, 0.06, 0.09, 0xd6bd82, 0, -0.200, 0),                             // 宽剑格
+      box(0.14, 0.10, 0.11, 0xd6bd82, 0, -0.200, 0),                             // 格心
+      box(0.046, 0.20, 0.046, 0xd6bd82, 0.36, -0.240, 0, 0, 0, -0.55),           // 格端下垂，搭在剑格上
+      box(0.046, 0.20, 0.046, 0xd6bd82, -0.36, -0.240, 0, 0, 0, 0.55),
+      box(0.12, 0.14, 0.045, 0xd6bd82, 0, -0.300, 0),                            // 剑颈，窄于刃
+      box(0.34, 0.52, 0.038, 0xd6bd82, 0, -0.620, 0),                            // 宽刃
+      box(0.09, 0.52, 0.056, 0xd6bd82, 0, -0.620, 0),                            // 脊
+      box(0.22, 0.42, 0.032, 0xd6bd82, 0, -1.060, 0),
+      box(0.06, 0.42, 0.046, 0xd6bd82, 0, -1.060, 0),
+      box(0.11, 0.28, 0.024, 0xd6bd82, 0, -1.400, 0),                            // 收锋
+      cyl(0.048, 0, 0.42, 0xd6bd82, 0, -1.680, 0),                               // 尖，底 -1.890
     ], this.gswordG, this.gswordMat);
     pinBlade(this.gswordG, this.gswordHilt, this.gswordTip);
     this.gswordG.visible = false;
