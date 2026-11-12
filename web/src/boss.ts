@@ -37,6 +37,8 @@ export class Boss extends BossBase {
   private swordInChest!: THREE.Object3D;
   private swordLight!: THREE.PointLight;
   private emberMat!: THREE.MeshStandardMaterial;
+  /** 放大前站立盔顶量得 3.182 米。整身放大到 4.2，肩留在 3.6 以下。 */
+  private readonly formScale = 4.2 / 3.182;
 
   private pose: Pose = { ...STATUE };
   private jumpFrom = new THREE.Vector3();
@@ -66,21 +68,62 @@ export class Boss extends BossBase {
       m.position.set(x, y, z); m.castShadow = true;
       return m;
     };
-    // 腿
-    this.body.add(box(0.34, 1.15, 0.4, dark, 0.42, 0.58, 0), box(0.34, 1.15, 0.4, dark, -0.42, 0.58, 0));
-    this.body.add(box(0.4, 0.22, 0.62, dark, 0.42, 0.11, 0.1), box(0.4, 0.22, 0.62, dark, -0.42, 0.11, 0.1));
-    // 躯干
-    this.torso.position.y = 1.35;
-    this.torso.add(box(1.35, 1.15, 0.7, stone, 0, 0.45, 0));
-    this.torso.add(box(1.6, 0.3, 0.78, stone, 0, 1.05, 0));         // 肩甲层
-    this.head = box(0.46, 0.5, 0.5, stone, 0, 1.62, 0.05);
-    this.torso.add(this.head);
-    for (const sx of [-0.11, 0.11]) {
-      this.torso.add(box(0.09, 0.05, 0.03, this.emberMat, sx, 1.66, 0.31));
+    const cyl = (rt: number, rb: number, h: number, mat: THREE.Material, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 6), mat);
+      m.position.set(x, y, z); m.castShadow = true;
+      return m;
+    };
+    // 腿：大腿粗、膝甲、小腿收、足平。站立时脚底在 y=0。
+    for (const sx of [0.34, -0.34]) {
+      const thigh = cyl(0.22, 0.18, 0.58, dark, sx, 0.98, 0.02);
+      thigh.name = "thigh";
+      const knee = box(0.40, 0.14, 0.36, stone, sx, 0.66, 0.05);
+      knee.name = "knee";
+      const calf = cyl(0.14, 0.11, 0.44, dark, sx, 0.42, 0.05);
+      calf.name = "calf";
+      const foot = box(0.38, 0.20, 0.66, dark, sx, 0.10, 0.16);
+      foot.name = "foot";
+      this.body.add(thigh, knee, calf, foot);
     }
+    // 躯干：腰薄、胸厚，两块肩甲分开，盔坐在中间。局部坐标仍按旧骨架（躯干枢轴 1.35），末尾再整身放大。
+    this.torso.position.y = 1.35;
+    const waist = box(0.98, 0.40, 0.44, dark, 0, 0.00, 0);
+    waist.name = "waist";
+    const chest = box(1.30, 0.70, 0.92, stone, 0, 0.48, 0.03);
+    chest.name = "chest";
+    this.torso.add(waist, chest);
+    for (const sx of [-0.22, 0.22]) {
+      const tasset = box(0.26, 0.24, 0.06, dark, sx, -0.16, 0.20);
+      tasset.rotation.x = 0.35;
+      tasset.name = "waist";
+      this.torso.add(tasset);
+    }
+    const neck = box(0.26, 0.22, 0.22, dark, 0, 0.96, 0.04);
+    neck.name = "neck";
+    this.torso.add(neck);
+    for (const s of [-1, 1]) {
+      const plate = box(0.64, 0.50, 0.54, stone, s * 0.74, 1.07, 0.04);
+      plate.name = "pauldron";
+      const lip = box(0.36, 0.08, 0.28, dark, s * 0.78, 1.24, 0.06);
+      lip.name = "pauldron";
+      this.torso.add(plate, lip);
+    }
+    // 桶盔：下半截夹在两肩之间，矮冠脊收到盔顶。不是和肩甲焊成一块的方盒。
+    this.head = cyl(0.14, 0.21, 0.78, stone, 0, 1.26, 0.05);
+    this.head.name = "helm";
+    const visor = box(0.32, 0.07, 0.06, dark, 0, -0.06, 0.20);
+    this.head.add(visor);
+    this.head.add(box(0.26, 0.12, 0.16, dark, 0, -0.30, 0.06));
+    const crest = box(0.10, 0.22, 0.28, stone, 0, 0.46, 0);
+    crest.name = "crest";
+    this.head.add(crest);
+    for (const sx of [-0.07, 0.07]) {
+      this.head.add(box(0.07, 0.03, 0.025, this.emberMat, sx, -0.05, 0.22));
+    }
+    this.torso.add(this.head);
     // 胸口螺旋剑：五段扁刃绕轴拧过一圈多，拔出前还嵌在胸口。单根细盒远处会收成棍子。
     const coil = new THREE.Group();
-    coil.position.set(0.2, 0.5, 0.32);
+    coil.position.set(0.2, 0.50, 0.52);
     coil.rotation.set(-0.22, 0.12, 0.4);
     const coilN = 5;
     for (let i = 0; i < coilN; i++) {
@@ -97,10 +140,11 @@ export class Boss extends BossBase {
     this.swordLight = new THREE.PointLight(COLORS.ember, 3, 3.5, 2);
     this.swordLight.position.set(0.25, 0.55, 0.6);
     this.torso.add(this.swordLight);
-    // 右臂 + 长柄戟：杆、横刃、尖分开，轮廓比细杆大一号
+    // 右臂：肩粗腕细。枢轴不动，戟仍从原握点伸出。
     this.armR.position.set(0.85, 0.95, 0);
-    this.armR.add(box(0.3, 0.95, 0.3, stone, 0, -0.45, 0));
-    this.armR.add(box(0.36, 0.3, 0.36, stone, 0, -0.95, 0));
+    this.armR.add(cyl(0.16, 0.13, 0.40, stone, 0, -0.22, 0));
+    this.armR.add(cyl(0.12, 0.10, 0.36, stone, 0, -0.58, 0));
+    this.armR.add(box(0.26, 0.22, 0.24, stone, 0, -0.88, 0.02));
     const haftMat = new THREE.MeshStandardMaterial({ color: 0x5a626c, roughness: 0.9, metalness: 0.08, flatShading: true });
     const steelMat = new THREE.MeshStandardMaterial({ color: COLORS.steel, roughness: 0.46, metalness: 0.4, flatShading: true });
     const edgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5344, roughness: 0.5, metalness: 0.2, emissive: COLORS.ember, emissiveIntensity: 0.6, flatShading: true });
@@ -128,10 +172,11 @@ export class Boss extends BossBase {
     hal.add(this.halHilt, this.halTip);
     this.armR.add(hal);
     this.torso.add(this.armR);
-    // 左臂（爪）
+    // 左臂：同样上粗下细，手甲仍是抓的那只手。
     this.armL.position.set(-0.85, 0.95, 0);
-    this.armL.add(box(0.3, 0.95, 0.3, stone, 0, -0.45, 0));
-    this.armL.add(box(0.34, 0.34, 0.34, stone, 0, -0.98, 0));
+    this.armL.add(cyl(0.16, 0.13, 0.40, stone, 0, -0.22, 0));
+    this.armL.add(cyl(0.12, 0.10, 0.36, stone, 0, -0.58, 0));
+    this.armL.add(box(0.30, 0.24, 0.26, stone, 0, -0.90, 0.04));
     this.torso.add(this.armL);
     // 人性的沉淀：腹鼓、颈细、头比颈宽，下巴单独挂在嘴下。从背后伸出来才看得出是蛇。
     // 首节仍靠躯干，末节是头（蛇招命中用这两节的位置，不看节数）。
@@ -185,6 +230,7 @@ export class Boss extends BossBase {
     this.torso.add(this.serpGlow);
     this.root.add(this.body);
     this.body.add(this.torso);
+    this.body.scale.setScalar(this.formScale);
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
@@ -424,8 +470,8 @@ export class Boss extends BossBase {
     const chest = this.chestWorld();
     const serp = m.name.startsWith("serp");
     const halberd = m.name === "thrust" || m.name === "thrust2" || m.name === "sweep" || m.name === "slam" || m.name === "jump";
-    // 刀光外沿贴戟头（杆 3.35 + 尖，离胸口约 2.95）。肩撞、抓和蛇招仍用原来的视觉半径。
-    const reach = halberd ? 2.95 : m.range * 0.85;
+    // 刀光外沿贴戟头。杆和尖随身体放大，视觉半径同倍数。肩撞、抓和蛇招仍用原来的视觉半径。
+    const reach = halberd ? 2.95 * this.formScale : m.range * 0.85;
     const color = serp ? 0xff7a30 : halberd ? COLORS.ember : 0xffd9a0;
     this.vfx.slash(chest, this.yaw, reach, m.arc > 2 || m.name === "serpSweep", color);
     if (m.name === "jump" || m.name === "slam") this.vfx.dust.burst(this.root.position, 8, 3.2, 0.85);
