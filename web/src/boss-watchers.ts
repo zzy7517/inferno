@@ -91,17 +91,18 @@ interface WPose {
   nod: number;                         // 头部俯仰（正=低头）
   spin: number;                        // 整体附加旋转（火焰旋风转体）
 }
-const STANCE: WPose = { y: 0, lean: 0.08, twist: -0.12, crouch: 0, reach: 0, armLift: 0.28, armSwing: 0.1, armL: -0.25, nod: 0.06, spin: 0 };
-const STATUE_W: WPose = { ...STANCE, lean: 0.1, twist: 0, armLift: 0.15, armSwing: 0, armL: 0.05, nod: 0.5 };  // 垂剑而立、低头（监视者是站像）
-const KNEEL: WPose = { ...STANCE, y: -0.62, lean: 0.5, crouch: 0.55, nod: 0.75, armLift: 0.3, armSwing: 0.25, armL: 0.3 };  // 单膝跪地 + 剑拄地
-const RISE: WPose = { ...STANCE, lean: -0.12, armLift: -0.55, armSwing: -0.2, nod: -0.12, twist: 0.1 };                     // 红焰站起挺剑
+const STANCE: WPose = { y: 0, lean: 0.08, twist: -0.12, crouch: 0, reach: 0, armLift: 0.28, armSwing: -0.62, armL: -0.25, nod: 0.06, spin: 0 }; // 大剑垂在身侧，尖落在地面附近
+const STATUE_W: WPose = { ...STANCE, lean: 0.1, twist: 0, armLift: 0.15, armSwing: -0.64, armL: 0.05, nod: 0.5 };  // 垂剑而立、低头（监视者是站像）
+const KNEEL: WPose = { ...STANCE, y: -0.62, lean: 0.5, crouch: 0.55, nod: 0.75, armLift: 1.7, armSwing: -0.5, armL: 0.3 };  // 单膝跪地，大剑向前拄地
+const RISE: WPose = { ...STANCE, lean: -0.12, armLift: -1.15, armSwing: -0.45, nod: -0.12, twist: 0.1 };                   // 红焰站起，把长剑挑起来
 // 三连斩三刀姿态（1 右→左斜劈 / 2 左→右回斩 / 3 躯干连剑一起扔开——轮廓必须比前两刀宽一档）
-const C1W: WPose = { ...STANCE, twist: 0.55, armLift: -0.9, armSwing: -0.75 };
-const C1K: WPose = { ...STANCE, twist: -0.5, armLift: 0.55, armSwing: 0.9, lean: 0.18 };
-const C2W: WPose = { ...STANCE, twist: -0.45, armLift: -0.6, armSwing: 0.8 };
-const C2K: WPose = { ...STANCE, twist: 0.5, armLift: 0.5, armSwing: -0.95, lean: 0.14 };
-const C3W: WPose = { ...STANCE, twist: 1.2, armLift: -0.55, armSwing: -1.6, lean: -0.16, crouch: 0.24, reach: -0.06, nod: 0.22, armL: 0.5 };
-const C3K: WPose = { ...STANCE, twist: -1.22, armLift: 0.2, armSwing: 1.85, lean: 0.48, crouch: 0.02, reach: 0.5, nod: -0.1, armL: -0.45, y: 0.03 };
+// 手臂行程比旧姿态大，判定拍上的挥幅才盖得住这把剑；时间比例不改。
+const C1W: WPose = { ...STANCE, twist: 0.55, armLift: -1.2, armSwing: -1.15 };
+const C1K: WPose = { ...STANCE, twist: -0.5, armLift: 1.0, armSwing: 1.35, lean: 0.18 };
+const C2W: WPose = { ...STANCE, twist: -0.45, armLift: -1.0, armSwing: 1.2 };
+const C2K: WPose = { ...STANCE, twist: 0.5, armLift: 0.9, armSwing: -1.4, lean: 0.14 };
+const C3W: WPose = { ...STANCE, twist: 1.2, armLift: -0.8, armSwing: -1.9, lean: -0.16, crouch: 0.24, reach: -0.06, nod: 0.22, armL: 0.5 };
+const C3K: WPose = { ...STANCE, twist: -1.22, armLift: 0.4, armSwing: 2.05, lean: 0.48, crouch: 0.02, reach: 0.5, nod: -0.1, armL: -0.45, y: 0.03 };
 
 export class Watchers extends BossBase {
   private body = new THREE.Group();
@@ -188,20 +189,38 @@ export class Watchers extends BossBase {
     this.head.add(box(0.24, 0.09, 0.05, ironDark, 0, 0.03, 0.15));         // 眼缝暗槽
     for (const ex of [-0.062, 0.062]) this.head.add(box(0.05, 0.032, 0.02, this.eyeMat, ex, 0.03, 0.175));
     this.torso.add(this.head);
-    // 右臂 + 细长直剑（0.06×1.4 扁条 + 护手）——肩枢轴 y 0.66
+    // 右臂 + 大剑。长握柄露出拳头以下一截，宽剑格，厚脊薄刃，尖端逐级收窄。
+    // 刃全部用 bladeMat：二阶段整刃一起燃，点燃时机不改。不新开灯。
     this.armR.position.set(0.33, 0.66, 0);
     this.armR.add(box(0.12, 0.44, 0.14, ironDark, 0, -0.2, 0));
     this.armR.add(box(0.105, 0.42, 0.12, iron, 0, -0.58, 0.03));
     this.armR.add(box(0.125, 0.16, 0.14, iron, 0, -0.86, 0.05));           // 铁手套
     const sword = new THREE.Group();
     sword.position.set(0, -0.94, 0.06);
-    sword.rotation.x = 0.28;                                               // 剑尖后曳，垂剑时恰好拄地
-    sword.add(box(0.045, 0.2, 0.05, ironDark, 0, 0, 0));                   // 柄
-    sword.add(box(0.06, 0.05, 0.06, ironDark, 0, 0.12, 0));                // 柄头
-    sword.add(box(0.24, 0.035, 0.06, iron, 0, -0.12, 0));                  // 护手
-    sword.add(box(0.06, 1.4, 0.02, this.bladeMat, 0, -0.85, 0));           // 剑身（二阶段燃焰 emissive）
+    sword.rotation.x = 0.3;                                                // 略后曳，身侧垂剑时尖落在地面附近
+    sword.add(box(0.05, 0.5, 0.056, ironDark, 0, -0.06, 0));               // 长柄：拳头以下还露出一截
+    for (const gy of [0.1, 0, -0.1, -0.2]) sword.add(box(0.064, 0.026, 0.07, iron, 0, gy, 0)); // 柄缠
+    sword.add(box(0.092, 0.07, 0.082, ironDark, 0, 0.185, 0));             // 柄头
+    sword.add(box(0.048, 0.04, 0.05, iron, 0, 0.24, 0));
+    sword.add(box(0.5, 0.07, 0.09, iron, 0, -0.34, 0));                    // 剑格
+    sword.add(box(0.12, 0.1, 0.11, ironDark, 0, -0.34, 0));
+    const ql = box(0.06, 0.15, 0.065, iron, -0.22, -0.4, 0);
+    ql.rotation.z = 0.75;
+    const qr = box(0.06, 0.15, 0.065, iron, 0.22, -0.4, 0);
+    qr.rotation.z = -0.75;
+    sword.add(ql, qr);                                                     // 剑格两端下垂
+    sword.add(box(0.13, 0.22, 0.06, this.bladeMat, 0, -0.48, 0));          // 剑根
+    sword.add(box(0.08, 1.0, 0.052, this.bladeMat, 0, -1.05, 0));          // 脊
+    sword.add(box(0.072, 0.92, 0.018, this.bladeMat, -0.07, -1.05, 0));    // 左刃
+    sword.add(box(0.072, 0.92, 0.018, this.bladeMat, 0.07, -1.05, 0));     // 右刃
+    sword.add(box(0.028, 0.7, 0.012, ironDark, 0, -1.02, 0.032));          // 血槽，刃缘仍走 bladeMat
+    sword.add(box(0.05, 0.32, 0.034, this.bladeMat, 0, -1.6, 0));          // 收窄
+    sword.add(box(0.04, 0.26, 0.014, this.bladeMat, -0.038, -1.6, 0));
+    sword.add(box(0.04, 0.26, 0.014, this.bladeMat, 0.038, -1.6, 0));
+    sword.add(box(0.032, 0.16, 0.02, this.bladeMat, 0, -1.74, 0));         // 尖
+    sword.add(box(0.014, 0.08, 0.01, this.bladeMat, 0, -1.81, 0));         // 剑尖，末端 y=-1.85
     this.swordLight = new THREE.PointLight(0xff5a20, 0, 5, 2);
-    this.swordLight.position.set(0, -0.7, 0);
+    this.swordLight.position.set(0, -1.05, 0);
     sword.add(this.swordLight);
     this.armR.add(sword);
     this.torso.add(this.armR);
@@ -277,21 +296,21 @@ export class Watchers extends BossBase {
         Object.assign(wind, C3W); Object.assign(strike, C3K);
         break;
       case "watcherDash":
-        wind.twist = 0.55; wind.armLift = -0.4; wind.armSwing = -0.5; wind.crouch = 0.18; wind.reach = 0.1;
-        strike.twist = -0.2; strike.armLift = 1.05; strike.armSwing = 0.15; strike.lean = 0.4; strike.reach = 0.45;
+        wind.twist = 0.55; wind.armLift = -0.9; wind.armSwing = -0.85; wind.crouch = 0.18; wind.reach = 0.1;
+        strike.twist = -0.2; strike.armLift = 1.35; strike.armSwing = 0.35; strike.lean = 0.4; strike.reach = 0.45;
         break;
       case "watcherRiser":
-        wind.twist = 0.3; wind.armLift = 0.75; wind.armSwing = -0.45; wind.crouch = 0.3; wind.lean = 0.3;
-        strike.armLift = -2.25; strike.armSwing = 0.1; strike.lean = -0.18; strike.y = 0.14;   // 剑走立圆，人随势拔起
+        wind.twist = 0.3; wind.armLift = 1.15; wind.armSwing = -0.65; wind.crouch = 0.3; wind.lean = 0.3;
+        strike.armLift = -2.5; strike.armSwing = 0.2; strike.lean = -0.18; strike.y = 0.14;   // 剑走立圆，人随势拔起
         break;
       case "watcherBackslash":
-        wind.twist = -0.6; wind.armLift = -0.5; wind.armSwing = 0.85; wind.crouch = 0.22;
-        strike.twist = 0.7; strike.armLift = 0.35; strike.armSwing = -1.15; strike.lean = 0.15;
+        wind.twist = -0.6; wind.armLift = -0.7; wind.armSwing = 1.2; wind.crouch = 0.22;
+        strike.twist = 0.7; strike.armLift = 0.55; strike.armSwing = -1.55; strike.lean = 0.15;
         break;
       case "watcherFirenova":
         // 剑竖直举起（和横扫的侧向拉开分开），后半段前摇停在这个姿势上
-        wind.armLift = -2.45; wind.armSwing = 0; wind.crouch = 0.22; wind.lean = -0.2; wind.twist = 0.12; wind.nod = -0.28;
-        strike.armLift = 0.35; strike.armSwing = 1.35; strike.lean = 0.12; strike.crouch = 0.06;
+        wind.armLift = -2.55; wind.armSwing = -0.15; wind.crouch = 0.22; wind.lean = -0.2; wind.twist = 0.12; wind.nod = -0.28;
+        strike.armLift = 0.4; strike.armSwing = 1.75; strike.lean = 0.12; strike.crouch = 0.06;
         break;
     }
     if (sub === "tel") {
@@ -335,7 +354,9 @@ export class Watchers extends BossBase {
     void total;
   }
 
-  /** 刀光与基类多段时刻同一公式，画在 act 内、命中判定之前 */
+  /** 刀光与基类多段时刻同一公式，画在 act 内、命中判定之前。
+   *  半径是这一拍剑尖离胸口的距离，弧内缘落在剑身上；不跟 m.range 走（二阶段加长的是判定，不是剑）。
+   *  颜色仍是钢色 / 余烬暖色。 */
   private emitSlash(m: MoveDef, t: number): void {
     const hits = m.hits ?? 1;
     const firstAt = m.active * 0.4;
@@ -343,8 +364,22 @@ export class Watchers extends BossBase {
     const burn = this.phase === 2;
     while (this.slashFired < hits && t >= Math.min(firstAt + this.slashFired * interval, m.active)) {
       this.slashFired++;
-      this.vfx.slash(this.chestWorld(), this.yaw, m.range * 0.85,
+      this.vfx.slash(this.chestWorld(), this.yaw, this.slashReach(m.name),
         m.arc > 2 || m.name === "watcherFirenova", burn ? 0xff5a20 : 0xd7e3ec);
+    }
+  }
+
+  /** 判定拍上剑尖到胸口的距离（剑尖本地 y=-1.85，与挥砍姿态一起量的） */
+  private slashReach(name: string): number {
+    switch (name) {
+      case "watcherCombo": return 2.24;
+      case "watcherCombo2": return 2.41;
+      case "watcherSweep": return 2.61;
+      case "watcherDash": return 2.48;
+      case "watcherRiser": return 2.5;
+      case "watcherBackslash": return 2.31;
+      case "watcherFirenova": return 2.72;
+      default: return 2.45;
     }
   }
 

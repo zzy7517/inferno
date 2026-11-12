@@ -80,8 +80,8 @@ interface Pose {
   armLift: number; armSwing: number; halPitch: number;
   headPitch: number; crouch: number; armL: number;
 }
-/** 兽形战斗站姿：躯干大前倾、锤头低垂、四肢着地 */
-const STANCE: Pose = { y: 0, lean: 0.5, twist: 0, reach: 0, armLift: 0.35, armSwing: 0, halPitch: 0.5, headPitch: 0.15, crouch: 0, armL: 0 };
+/** 兽形战斗站姿：躯干大前倾、锤头低垂贴地、四肢着地。halPitch 负到锤底落在地面上，厚锤头才看得见。 */
+const STANCE: Pose = { y: 0, lean: 0.5, twist: 0, reach: 0, armLift: 0.35, armSwing: 0, halPitch: -0.74, headPitch: 0.15, crouch: 0, armL: 0 };
 /** 趴伏石化：跪姿 y-0.5 / 前倾 0.9（唤醒演出起点） */
 const STATUE: Pose = { ...STANCE, y: -0.5, lean: 0.9, crouch: 0.5, armLift: 0.7, halPitch: 1.3, headPitch: 0.35, armL: 0.3 };
 
@@ -120,7 +120,7 @@ export class Vordt extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观（程序化 flatShading，~42 mesh，横向 1.8 / 站高 ~2.2） ----------------
+  // ---------------- 外观（程序化 flatShading，~46 mesh，横向 1.8 / 站高 ~2.2） ----------------
   protected override buildBody(): void {
     const plate = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.95, flatShading: true });
     const dark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
@@ -191,19 +191,33 @@ export class Vordt extends BossBase {
       this.torso.add(tetra(0.09, ice, s * 0.7, 0.78, 0.62));
     }
 
-    // 右前肢（持锤）+ 大锤（长柄方头）
+    // 右前肢（持锤）+ 方头重锤。杆仍是一根；重量在厚锤头、颈箍和短刺上。
     this.armR.position.set(0.8, 0.42, 0.5);
     this.armR.add(box(0.36, 0.8, 0.4, plate, 0, -0.35, 0.05));
     const foreR = box(0.3, 0.75, 0.34, dark, 0, -0.95, 0.15);
     foreR.rotation.x = 0.3;
     this.armR.add(foreR, box(0.4, 0.36, 0.42, steel, 0, -1.35, 0.32));
     this.hammerG.position.set(0, -1.42, 0.38);
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.3, 6), new THREE.MeshStandardMaterial({ color: 0x2e2a24, roughness: 0.9, flatShading: true }));
-    shaft.position.set(0, 0.15, 0.85); shaft.rotation.x = Math.PI / 2 - 0.32; shaft.castShadow = true;
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.075, 0.092, 2.2, 6),
+      new THREE.MeshStandardMaterial({ color: 0x2e2a24, roughness: 0.9, flatShading: true }),
+    );
+    shaft.position.set(0, 0.1, 0.74); shaft.rotation.x = Math.PI / 2 - 0.32; shaft.castShadow = true;
     this.hammerG.add(shaft);
-    this.hammerG.add(box(0.4, 0.4, 0.42, trim, 0, 0.62, 1.75));             // 方形锤头
-    this.hammerG.add(box(0.12, 0.5, 0.5, steel, 0.26, 0.62, 1.75), box(0.12, 0.5, 0.5, steel, -0.26, 0.62, 1.75));
-    for (const [ix, iy, iz, r] of [[0.3, 0.85, 1.7, 0.16], [0, 0.95, 1.85, 0.2], [-0.3, 0.8, 1.65, 0.14]] as const) {
+    const hx = 0, hy = 0.364, hz = 1.537;                                    // 厚方头中心，套在杆端里
+    this.hammerG.add(box(1.04, 0.82, 0.74, trim, hx, hy, hz));               // 宽面横扫、厚面下砸
+    this.hammerG.add(box(0.4, 0.34, 0.32, steel, 0, 0.25, 1.16));            // 锤颈箍，卡住杆
+    this.hammerG.add(box(1.14, 0.16, 0.82, steel, hx, hy, hz));              // 锤腰箍
+    for (const s of [-1, 1]) {                                               // 两侧打击面上的短刺
+      this.hammerG.add(box(0.16, 0.14, 0.14, steel, s * 0.6, hy + 0.18, hz - 0.16));
+      this.hammerG.add(box(0.16, 0.14, 0.14, steel, s * 0.6, hy + 0.18, hz + 0.16));
+    }
+    // 二阶段冰结在新锤头顶面，露在铁面之外（顶面约 y=0.77）
+    for (const [ix, iy, iz, r] of [
+      [0.3, hy + 0.56, hz - 0.12, 0.2],
+      [0, hy + 0.62, hz + 0.08, 0.24],
+      [-0.28, hy + 0.54, hz + 0.26, 0.18],
+    ] as const) {
       const c = tetra(r, ice, ix, iy, iz);
       c.visible = false;
       this.hammerIce.push(c);
@@ -254,12 +268,12 @@ export class Vordt extends BossBase {
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
     switch (m.name) {
       case "vordtSweep":
-        wind.twist = 0.6; wind.armSwing = -1.35; wind.armLift = 0.15; wind.lean = 0.55;
-        strike.twist = -0.85; strike.armSwing = 1.5; strike.armLift = 0.25; strike.lean = 0.7; strike.reach = 0.35;
+        wind.twist = 0.72; wind.armSwing = -1.55; wind.armLift = 0.3; wind.lean = 0.36;
+        strike.twist = -1.02; strike.armSwing = 1.7; strike.armLift = 0.28; strike.lean = 0.5; strike.reach = 0.35;
         break;
-      case "vordtSlam":   // 前半举锤，后半才砸下
-        wind.armLift = -2.25; wind.halPitch = -1.05; wind.lean = 0.02; wind.y = 0.34; wind.crouch = -0.32; wind.headPitch = -0.28;
-        strike.armLift = 1.15; strike.halPitch = 1.4; strike.lean = 1.08; strike.y = -0.42; strike.crouch = 0.5; strike.reach = 0.62; strike.headPitch = 0.4;
+      case "vordtSlam":   // 前半把锤举过背，后半砸到地面上（锤头停在地面，不钻进去）
+        wind.armLift = -2.4; wind.halPitch = -2.35; wind.lean = -0.28; wind.y = 0.56; wind.crouch = -0.4; wind.headPitch = -0.48;
+        strike.armLift = 1.6; strike.halPitch = -0.62; strike.lean = 1.28; strike.y = -0.28; strike.crouch = 0.62; strike.reach = 0.68; strike.headPitch = 0.5;
         break;
       case "vordtStomp":   // 前半抬身，后半砸落——贴身看得见再撤
         wind.y = 0.58; wind.crouch = -0.42; wind.lean = 0.12; wind.armL = -0.95; wind.armLift = -0.2; wind.headPitch = -0.2;
@@ -434,7 +448,12 @@ export class Vordt extends BossBase {
 
   /** 判定段开始：锤横扫冷色轨迹 */
   protected override onMoveActive(m: MoveDef): void {
-    if (m.name === "vordtSweep") this.vfx.slash(this.chestWorld(), this.yaw, m.range * 0.85, true, ICE_SLASH);
+    if (m.name === "vordtSweep") {
+      // 环带外缘贴锤头最远扫到的位置（约 0.82×射程），高度落在锤头而不是胸口。时机仍是这一下。
+      const at = this.chestWorld();
+      at.y = 1.0;
+      this.vfx.slash(at, this.yaw, m.range * 0.82, true, ICE_SLASH);
+    }
   }
 
   /** 重招风声更闷 */
