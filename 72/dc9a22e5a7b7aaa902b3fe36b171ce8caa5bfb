@@ -1,0 +1,47 @@
+web/src/boss-watchers.ts
+  s_a98a0b34b732af::t_1863a1274e1bab 22
+web/public/assets/character_frames.json
+  s_a98a0b34b732af::t_ee865ff0eb04bd 33-34
+web/src/boss-sulyvahn.ts
+  s_a98a0b34b732af::t_590b10007c5c8c 39
+web/src/boss-base.ts
+  s_a98a0b34b732af::t_7153a32fd1636b 319,326-327
+  s_a98a0b34b732af::t_232e043bc6e90b 174-182,184
+tools/blender/build_character.py
+  s_ae715748fecf72::t_15c7a9a418b8cb 902,905
+  s_8477778c9e25c7::t_afc5899d235d10 352-354
+  s_ae715748fecf72::t_e785e8e148c85c 345-349,351,356-358
+  s_ae715748fecf72::t_d746bb17a2387e 904,906
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "72dc9a22e5a7b7aaa902b3fe36b171ce8caa5bfb",
+  "prompts": {},
+  "sessions": {
+    "s_8477778c9e25c7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a31a34e3-fa9b-4641-89c2-36161b382322",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_a98a0b34b732af": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e663793b-df9f-4fc7-8a02-0762adbf823a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    },
+    "s_ae715748fecf72": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8de0a075-a9c5-4ec7-8dc2-bbb46c1b4c9b",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
