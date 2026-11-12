@@ -88,7 +88,8 @@ class AudioSys {
   // ---- Boss / 流程 ----
   roar(): void { this.tone(90, 48, 0.8, "sawtooth", 0.5); this.noise(0.7, 240, 0.4); }
   rise(): void { this.noise(1.6, 120, 0.5); this.tone(50, 80, 1.4, "sine", 0.35); }
-  telegraph(): void { this.noise(0.2, 2200, 0.1, "highpass"); this.tone(500, 700, 0.1, "triangle", 0.06); }
+  // 出招警告：两声极短上扬，无噪声。高于命中正弦（约 55–170Hz），轻于命中（0.4–0.55），也不是 whoosh 的带通噪声。
+  telegraph(): void { this.tone(1040, 1120, 0.04, "square", 0.12); this.tone(1380, 1460, 0.042, "triangle", 0.09, 0.05); }
   transform(): void { this.roar(); this.noise(0.9, 900, 0.4, "bandpass", 0.2, 1.5); }
   slamShock(): void { this.tone(70, 30, 0.35, "sine", 0.6); this.noise(0.3, 300, 0.5); }
   estus(): void { this.tone(480, 660, 0.12, "sine", 0.2); this.tone(520, 720, 0.12, "sine", 0.2, 0.14); }
