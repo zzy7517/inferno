@@ -252,7 +252,7 @@ export class Sulyvahn extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：高瘦术士剑士（肩宽 1.2 / 高 ~2.6，长袍层叠 + 教宗冠 + 冠下无脸紫眼 + 双细长巨剑） ----------------
+  // ---------------- 外观：高瘦术士（脚到头顶 2.80 / 冠尖 3.10，肩窄、腰更窄、长腿、袍垂到脚面） ----------------
   protected override buildBody(): void {
     const cloth = new THREE.MeshStandardMaterial({ color: 0x211c2a, roughness: 1, metalness: 0.05, flatShading: true });
     const clothDark = new THREE.MeshStandardMaterial({ color: 0x16131e, roughness: 1, flatShading: true });
@@ -261,98 +261,128 @@ export class Sulyvahn extends BossBase {
     // 一阶段就用火 / 暗紫本体色，远处能分开；二阶段点燃仍只抬 emissiveIntensity（见 updateVisuals）。
     this.bladeFire = new THREE.MeshStandardMaterial({ color: FIRE, roughness: 0.46, metalness: 0.22, flatShading: true, emissive: FIRE, emissiveIntensity: 0 });
     this.bladeDark = new THREE.MeshStandardMaterial({ color: DARKFLAME, roughness: 0.5, metalness: 0.22, flatShading: true, emissive: DARKFLAME, emissiveIntensity: 0 });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x0a0710, roughness: 0.5, emissive: GHOST_COLOR, emissiveIntensity: 0.9 });
+    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x0a0710, roughness: 0.5, emissive: GHOST_COLOR, emissiveIntensity: 0.9, flatShading: true });
 
     const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z); m.castShadow = true;
       return m;
     };
+    const cyl = (rt: number, rb: number, h: number, seg: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+      m.position.set(x, y, z); m.castShadow = true;
+      return m;
+    };
+    // 袍从腰带挂下去：几何上沿是枢轴，摆动时下摆才动（updateVisuals 改 rotation）。
+    const hang = (topR: number, botR: number, h: number, seg: number, mat: THREE.Material, y: number, theta0 = 0, thetaLen = Math.PI * 2) => {
+      const geo = new THREE.CylinderGeometry(topR, botR, h, seg, 1, false, theta0, thetaLen);
+      geo.translate(0, -h / 2, 0);
+      const m = new THREE.Mesh(geo, mat);
+      m.position.y = y; m.castShadow = true;
+      return m;
+    };
+    const robeMat = cloth.clone();
+    robeMat.side = THREE.DoubleSide;
+    const robeDark = clothDark.clone();
+    robeDark.side = THREE.DoubleSide;
 
-    // 腿（长袍下若隐若现）——髋枢轴 + 膝枢轴（crouch 弯折）——腿根 y 1.38
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.13], [this.legL, this.shinL, -0.13]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.38, 0);
-      leg.add(box(0.16, 0.64, 0.19, clothDark, 0, -0.32, 0));                 // 大腿
-      shin.position.set(0, -0.64, 0);
-      shin.add(box(0.13, 0.58, 0.15, clothDark, 0, -0.29, 0.01));             // 小腿
-      shin.add(box(0.15, 0.09, 0.28, clothDark, 0, -0.58, 0.06));             // 足
+    // 旧网格（肩甲焊在头下）：脚 0.115 → 脸顶 2.440（2.33），冠尖 2.910（2.80），肩宽 1.55。
+    // 不整身同比放大——冠会冲到 3.37。腿拉长、颈从肩里抽出来，头顶 2.80，冠尖单独收到 3.10。
+    // 腿（细，长袍里）——髋 1.58、膝 0.72、脚底 0。枢轴仍是髋 / 膝，蹲伏弯折不变。
+    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.09], [this.legL, this.shinL, -0.09]] as [THREE.Group, THREE.Group, number][]) {
+      leg.position.set(sx, 1.58, 0.02);
+      leg.add(cyl(0.055, 0.042, 0.86, 6, clothDark, 0, -0.43, 0));            // 大腿
+      shin.position.set(0, -0.86, 0);
+      shin.add(cyl(0.040, 0.032, 0.68, 6, clothDark, 0, -0.34, 0.01));        // 小腿
+      const foot = box(0.08, 0.04, 0.24, clothDark, 0, -0.70, 0.07);         // 脚底 y=0
+      foot.name = "sulFoot";
+      shin.add(foot);
       leg.add(shin);
       this.body.add(leg);
     }
-    // 长袍下摆：阶梯三层 box（随步态摆动，见 updateVisuals）
+    // 袍：腰窄、下摆放开，前开缝，从腰带垂到脚面。两层尺寸不同，不是三节同样的方块。
+    const slit = 0.95;
     this.skirt.push(
-      box(0.56, 0.36, 0.4, cloth, 0, 1.34, 0),
-      box(0.68, 0.34, 0.46, cloth, 0, 1.03, 0),
-      box(0.8, 0.34, 0.52, clothDark, 0, 0.72, 0),
+      hang(0.16, 0.28, 1.42, 7, robeDark, 1.60, slit * 0.65, Math.PI * 2 - slit * 1.3),
+      hang(0.175, 0.40, 1.56, 8, robeMat, 1.62, slit * 0.5, Math.PI * 2 - slit),
     );
     for (const s of this.skirt) this.body.add(s);
-    const slit = box(0.05, 0.62, 0.02, clothDark, 0, 1.02, 0.27);             // 袍正中开缝
-    this.body.add(slit);
-    this.body.add(box(0.46, 0.1, 0.34, steel, 0, 1.46, 0));                   // 腰带
+    this.body.add(box(0.34, 0.05, 0.20, steel, 0, 1.64, 0.02));               // 腰带
 
-    // 躯干（层叠）——底座 y 1.52
-    this.torso.position.y = 1.52;
-    this.torso.add(box(0.4, 0.34, 0.26, clothDark, 0, 0.05, 0));              // 腹甲
-    this.torso.add(box(0.5, 0.42, 0.3, cloth, 0, 0.38, 0));                   // 胸甲
-    this.torso.add(box(0.54, 0.26, 0.34, clothDark, 0, 0.62, 0.01));          // 上层
-    this.torso.add(box(0.42, 0.34, 0.06, clothDark, 0, 0.36, -0.17));         // 背板
-    // 肩宽 1.2：肩甲 ±0.62 双层
-    for (const s of [-1, 1]) {
-      const p1 = box(0.3, 0.16, 0.34, steel, s * 0.55, 0.68, 0);
-      p1.rotation.z = -s * 0.3;
-      const p2 = box(0.2, 0.12, 0.28, clothDark, s * 0.66, 0.56, 0);
-      p2.rotation.z = -s * 0.5;
-      this.torso.add(p1, p2);
-    }
-    // 锁链垂饰：胸前三节链 + 旭日徽章
-    this.torso.add(box(0.05, 0.05, 0.05, steel, 0.1, 0.6, 0.16));
-    this.torso.add(box(0.05, 0.05, 0.05, steel, -0.1, 0.6, 0.16));
-    this.torso.add(box(0.04, 0.04, 0.04, steel, 0, 0.5, 0.17));
-    const medal = box(0.16, 0.16, 0.04, gold, 0, 0.36, 0.18);
+    // 躯干：腰 0.30 → 胸 0.36，底座 y 1.65。肩不再用横宽的甲片。
+    this.torso.position.y = 1.65;
+    this.torso.add(cyl(0.18, 0.15, 0.64, 7, cloth, 0, 0.34, 0));
+    this.torso.add(box(0.20, 0.28, 0.035, clothDark, 0, 0.36, -0.16));        // 背脊
+    const medal = box(0.11, 0.11, 0.025, gold, 0, 0.40, 0.20);
     medal.rotation.z = Math.PI / 4;
     this.torso.add(medal);
+    this.torso.add(box(0.035, 0.035, 0.03, steel, 0.07, 0.54, 0.19));         // 锁链，三节不一样大
+    this.torso.add(box(0.028, 0.05, 0.028, steel, -0.05, 0.50, 0.185));
+    this.torso.add(box(0.022, 0.022, 0.02, steel, 0.01, 0.46, 0.19));
+    // 锁骨接到臂根（臂枢轴仍在 ±0.44，剑的水平落点不动），肩甲只盖关节，不向两边铺。
+    for (const s of [-1, 1]) {
+      const clav = cyl(0.026, 0.032, 0.28, 5, clothDark, s * 0.28, 0.64, 0);
+      clav.rotation.z = Math.PI / 2;
+      const pad = box(0.11, 0.04, 0.13, steel, s * 0.40, 0.69, 0);
+      pad.rotation.z = -s * 0.35;
+      this.torso.add(clav, pad);
+    }
+    this.torso.add(cyl(0.042, 0.048, 0.26, 6, clothDark, 0, 0.77, 0));        // 颈，把头从肩里拔出来
 
-    // 头：冠下无脸（黑域）+ 两点紫眼光 + 教宗冠（四棱锥高冠 + 金带 + 冠翼）
-    this.head.position.set(0, 0.8, 0.02);
-    this.head.add(box(0.22, 0.24, 0.22, clothDark, 0, 0, 0));                 // 面部黑域
-    for (const ex of [-0.055, 0.055]) {
-      const eye = box(0.045, 0.03, 0.02, this.eyeMat, ex, 0.02, 0.115);
+    // 头：六棱，不是方盒。冠是另一截锥，金带隔开，冠尖在头顶之上 0.30。
+    this.head.position.set(0, 1.02, 0.02);
+    const skull = cyl(0.088, 0.098, 0.26, 6, clothDark);
+    skull.name = "sulSkull";
+    this.head.add(skull);
+    for (const ex of [-0.038, 0.038]) {
+      const eye = box(0.036, 0.022, 0.018, this.eyeMat, ex, 0.02, 0.108);
       eye.name = "sulEye";
       this.head.add(eye);
     }
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.19, 0.46, 4), cloth);
-    crown.position.y = 0.36; crown.rotation.y = Math.PI / 4; crown.castShadow = true;
-    this.head.add(crown);
-    this.head.add(box(0.26, 0.06, 0.26, gold, 0, 0.16, 0));                   // 冠带
+    const band = cyl(0.112, 0.118, 0.028, 6, gold, 0, 0.09, 0);
+    const crown = cyl(0, 0.125, 0.36, 5, cloth, 0, 0.25, 0);
+    crown.name = "sulCrown";
+    this.head.add(band, crown);
     for (const s of [-1, 1]) {
-      const wing = box(0.035, 0.3, 0.13, clothDark, s * 0.17, 0.4, 0);
-      wing.rotation.z = -s * 0.35;
+      const wing = box(0.028, 0.30, 0.07, clothDark, s * 0.13, 0.22, 0);
+      wing.rotation.z = -s * 0.48;
+      wing.name = "sulWing";
       this.head.add(wing);
     }
     this.torso.add(this.head);
 
-    // 双臂 + 细长巨剑。刃比原来长一截，剑格用钢和金，和着色的刃断开；右火左暗紫。
+    // 双臂是细圆柱。剑组、握柄锚、剑尖锚、灯的位置不动；刃改成往尖收，剑格仍宽出一截。
     const buildSword = (mat: THREE.MeshStandardMaterial, side: 1 | -1, light: THREE.PointLight, tip: THREE.Object3D) => {
       const g = new THREE.Group();
       g.position.set(0, -0.88, 0.04);
       g.rotation.x = 0.22;
       g.rotation.z = side * 0.12;                // 外撇，两尖不要叠成一根
-      g.add(box(0.05, 0.26, 0.055, clothDark, 0, 0.02, 0));                   // 握柄
-      g.add(box(0.09, 0.07, 0.09, gold, 0, 0.18, 0));                         // 柄头
-      g.add(box(0.68, 0.09, 0.12, steel, 0, -0.15, 0));                       // 剑格：比刃宽出一截
-      g.add(box(0.1, 0.14, 0.14, gold, 0.32, -0.15, 0));
-      g.add(box(0.1, 0.14, 0.14, gold, -0.32, -0.15, 0));
-      const quillonR = box(0.26, 0.045, 0.07, steel, 0.2, -0.22, 0);
+      const grip = box(0.046, 0.26, 0.05, clothDark, 0, 0.02, 0);
+      grip.name = "sulGrip";
+      g.add(grip);                                                                // 握柄，hilt 钉在正中
+      g.add(box(0.08, 0.06, 0.07, gold, 0, 0.18, 0));                            // 柄头
+      g.add(box(0.64, 0.07, 0.09, steel, 0, -0.15, 0));                          // 剑格：比刃宽出一截，中心仍在 -0.15
+      g.add(box(0.09, 0.12, 0.11, gold, 0.30, -0.15, 0));
+      g.add(box(0.09, 0.12, 0.11, gold, -0.30, -0.15, 0));
+      const quillonR = box(0.24, 0.04, 0.06, steel, 0.18, -0.22, 0);
       quillonR.rotation.z = 0.6;
-      const quillonL = box(0.26, 0.045, 0.07, steel, -0.2, -0.22, 0);
+      const quillonL = box(0.24, 0.04, 0.06, steel, -0.18, -0.22, 0);
       quillonL.rotation.z = -0.6;
-      g.add(quillonR, quillonL);                                              // 下斜护翼，和直刃断开
-      g.add(box(0.1, 0.14, 0.05, steel, 0, -0.28, 0));                        // 茎：钢，刃色从下面才开始
-      g.add(box(0.16, 2.08, 0.055, mat, 0, -1.4, 0));                         // 刃
-      g.add(box(0.08, 0.32, 0.036, mat, 0, -2.56, 0));                        // 收锋
+      g.add(quillonR, quillonL);                                                 // 下斜护翼，和直刃断开
+      g.add(box(0.07, 0.12, 0.04, steel, 0, -0.28, 0));                          // 茎：钢，刃色从下面才开始
+      g.add(box(0.12, 0.40, 0.042, mat, 0, -0.54, 0));                           // 刃根
+      g.add(box(0.082, 1.30, 0.032, mat, 0, -1.39, 0));                          // 刃身，往下收
+      g.add(box(0.046, 0.44, 0.022, mat, 0, -2.26, 0));                          // 近尖
+      const point = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0, 0.26, 4), mat);
+      point.position.y = -2.61;                                                  // 底端正好 y=-2.74
+      point.castShadow = true;
+      point.name = "sulPoint";
+      g.add(point);
       tip.position.set(0, -2.74, 0);
       const hilt = side === 1 ? this.hiltR : this.hiltL;
       hilt.position.set(0, 0.02, 0);
+      hilt.name = side === 1 ? "sulHiltR" : "sulHiltL";
+      tip.name = side === 1 ? "sulTipR" : "sulTipL";
       g.add(tip, hilt);
       light.position.set(0, -1.35, 0);
       g.add(light);
@@ -361,16 +391,16 @@ export class Sulyvahn extends BossBase {
     this.fireLight = new THREE.PointLight(FIRE, 0, 5, 2);
     this.darkLight = new THREE.PointLight(DARKFLAME, 0, 5, 2);
     this.armR.position.set(0.44, 0.68, 0);
-    this.armR.add(box(0.12, 0.42, 0.13, clothDark, 0, -0.19, 0));
-    this.armR.add(box(0.105, 0.4, 0.115, cloth, 0, -0.54, 0.02));
-    this.armR.add(box(0.125, 0.15, 0.135, steel, 0, -0.82, 0.04));            // 铁手套
+    this.armR.add(cyl(0.040, 0.034, 0.46, 6, clothDark, 0, -0.23, 0));         // 上臂
+    this.armR.add(cyl(0.032, 0.028, 0.36, 6, cloth, 0, -0.62, 0.012));         // 前臂
+    this.armR.add(cyl(0.040, 0.036, 0.10, 5, steel, 0, -0.83, 0.028));         // 铁手套
     this.swordR = buildSword(this.bladeFire, 1, this.fireLight, this.tipR);
     this.armR.add(this.swordR);
     this.torso.add(this.armR);
     this.armL.position.set(-0.44, 0.68, 0);
-    this.armL.add(box(0.12, 0.42, 0.13, clothDark, 0, -0.19, 0));
-    this.armL.add(box(0.105, 0.4, 0.115, cloth, 0, -0.54, 0.02));
-    this.armL.add(box(0.125, 0.15, 0.135, steel, 0, -0.82, 0.04));
+    this.armL.add(cyl(0.040, 0.034, 0.46, 6, clothDark, 0, -0.23, 0));
+    this.armL.add(cyl(0.032, 0.028, 0.36, 6, cloth, 0, -0.62, 0.012));
+    this.armL.add(cyl(0.040, 0.036, 0.10, 5, steel, 0, -0.83, 0.028));
     this.swordL = buildSword(this.bladeDark, -1, this.darkLight, this.tipL);
     this.armL.add(this.swordL);
     this.torso.add(this.armL);
