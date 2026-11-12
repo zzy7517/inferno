@@ -93,6 +93,8 @@ export class Game {
   private camDist = 5.6;
   private shakeAmp = 0;
   private shakeT = 0;                     // 震屏相位（正弦叠加，避免逐帧随机噪声）
+  private readonly camRay = new THREE.Raycaster();
+  private readonly camDir = new THREE.Vector3();
   private hitstop = 0;
   private slowT = 0; private slowScale = 1;
   private elapsed = 0;
@@ -844,6 +846,7 @@ export class Game {
       lookAt.y + Math.sin(this.camPitch) * dist,
       lookAt.z + Math.cos(this.camYaw) * Math.cos(this.camPitch) * dist,
     );
+    this.occludeCamera(lookAt);
     if (this.shakeAmp > 0.001) {
       // 手感档案的振幅直接驱动互质正弦；顿帧期间仍走真实时间，衰减完回到原位
       this.shakeT += rdt * 28;
@@ -856,6 +859,31 @@ export class Game {
       this.shakeT = 0;
     }
     this.camera.lookAt(lookAt);
+  }
+
+  /** 镜头钻进墙里时拉回到墙前。只打场景根上的实心网格，跳过天穹、雾和地面贴片。 */
+  private occludeCamera(lookAt: THREE.Vector3): void {
+    const root = this.scene.getObjectByName(this.sceneId);
+    if (!root) return;
+    this.camDir.copy(this.camera.position).sub(lookAt);
+    const len = this.camDir.length();
+    if (len < 0.45) return;
+    this.camDir.multiplyScalar(1 / len);
+    this.camRay.set(lookAt, this.camDir);
+    this.camRay.near = 0.12;
+    this.camRay.far = len;
+    const hits = this.camRay.intersectObject(root, true);
+    for (const hit of hits) {
+      const mesh = hit.object as THREE.Mesh;
+      if (!mesh.isMesh) continue;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      if (mats.some(m => !m || m.transparent || m.side === THREE.BackSide || m.opacity < 0.99)) continue;
+      let inset = hit.distance - 0.22;
+      if (inset < 0.3) inset = Math.max(0.12, hit.distance * 0.65);
+      inset = Math.min(inset, Math.max(0.12, hit.distance - 0.08));
+      if (inset < len - 0.03) this.camera.position.copy(lookAt).addScaledVector(this.camDir, inset);
+      return;
+    }
   }
 
   private updateHud(): void {
