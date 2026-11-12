@@ -40,6 +40,8 @@ const ROCK_PROJ: ProjDef = { speed: 9, radius: 0.55, dmg: 18, feelKey: "rMagic",
 const ARROW_PROJ: ProjDef = { speed: 17, radius: 0.35, dmg: 20, feelKey: "rMagic", life: 2.0, color: GRAVITY_GLOW };            // 碎星巨箭：平飞高速
 const RAIN_PROJ: ProjDef = { speed: 8.5, radius: 0.4, dmg: 12, feelKey: "rMagic", life: 1.4, color: GRAVITY_GLOW, drop: 2.8 };  // 自 3.0m 高坠落：威胁带 ~5–8.5m
 const WAVE_PROJ: ProjDef = { speed: 7.5, radius: 0.85, dmg: 18, feelKey: "rWave", life: 2.4, color: GRAVITY };                  // 地面行波：0.7m 平推全场
+/** 箭雨扇面：步距 0.32rad，入带（约 8–9m）圆心距 ≈2.7m，大于命中直径 1.7m，缝里能走 */
+const RAIN_SPREAD = [-0.64, -0.32, 0, 0.32, 0.64];
 
 // ---------------- 帧数据（键名 radahn 前缀 / 手感键 r 开头；fextralife wiki 对照，全程不可弹反） ----------------
 export const MOVES_RADAHN: Record<string, MoveDef> = {
@@ -83,22 +85,24 @@ export const MOVES_RADAHN: Record<string, MoveDef> = {
     parryable: false, cd: 6.5, feel: "rMagic",
   },
   // ---- 二阶段（phase2Only） ----
-  // 陨石回归（Meteor Crash）：升空压顶 → 坠砸玩家位（lunge 12 全场射程；落点在出手时锁定，跑位可躲）
+  // 陨石回归（Meteor Crash）：出手即锁定落点并铺紫尘 → 升空 → 判定帧贴地砸在同一点（lunge 12；跑位可躲）
   // + 紫色巨冲击波 + 击飞（knockUp 3）；落地大硬直 1.6s＝最大惩罚窗口
   radahnMeteor: {
-    name: "radahnMeteor", label: "陨石回归", startup: 1.0, active: 0.22, recovery: 1.6,
+    name: "radahnMeteor", label: "陨石回归", startup: 1.15, active: 0.22, recovery: 1.6,
     dmg: 34, range: 4.8, arc: 2.6, lunge: 12, knockUp: 3,
     parryable: false, cd: 9.0, phase2Only: true, feel: "rHeavy",
   },
-  // 碎星箭雨（Arrow Rain·扇形射弹）：5 矢扇面 ±0.32rad 自高处抛落（威胁带 5–8.5m——中距压制喝药/站桩）
+  // 碎星箭雨（Arrow Rain·扇形射弹）：5 矢扇面 ±0.64rad、步距 0.32（入带处圆心距 > 命中直径，缝可走）
+  // 前摇举臂停住再撒矢——伤害是飞行物，不是前摇本身
   radahnArrowRain: {
-    name: "radahnArrowRain", label: "碎星箭雨", startup: 0.75, active: 0.2, recovery: 1.1,
+    name: "radahnArrowRain", label: "碎星箭雨", startup: 1.05, active: 0.2, recovery: 1.1,
     dmg: 12, range: 0.2, arc: 0.9, proj: { speed: 8.5, radius: 0.4, life: 1.4 },
     parryable: false, cd: 8.0, phase2Only: true, feel: "rMagic",
   },
-  // 重力波（Gravity Wave·地面行波）：双剑砸地放出行波（大半径慢速平推投射物，0.7m 高全程在命中带）
+  // 重力波（Gravity Wave·地面行波）：双剑砸地放出一行波（大半径慢速平推，0.7m 高全程在命中带）
+  // 前摇先在地面铺出路径紫尘，砸地帧才发射
   radahnGravityWave: {
-    name: "radahnGravityWave", label: "重力波", startup: 0.7, active: 0.25, recovery: 1.0,
+    name: "radahnGravityWave", label: "重力波", startup: 1.05, active: 0.25, recovery: 1.0,
     dmg: 18, range: 0.2, arc: 0.9, proj: { speed: 7.5, radius: 0.85, life: 2.4 },
     parryable: false, cd: 7.0, phase2Only: true, feel: "rWave",
   },
@@ -124,9 +128,9 @@ export const RADAHN_STATS: BossStats & { name: string; radius: number } = {
   walkSpeed: 3.0, turnRate: 2.5,        // 大步横移的巨躯：直行不慢、转向钝
 };
 
-/** 阶段数值基线快照（多实例/reset 往返安全，仿 margit/sulyvahn）；濒死狂暴（≤18%）在 P2 buff 之上再叠 */
+/** 阶段数值基线快照（含二阶段专属招——还原时整表写回，避免只还了一阶段招、专属招的运行时改动留下） */
 const P1_BASE: Record<string, { startup: number; dmg: number }> = {};
-for (const m of Object.values(MOVES_RADAHN)) if (!m.phase2Only) P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg };
+for (const m of Object.values(MOVES_RADAHN)) P1_BASE[m.name] = { startup: m.startup, dmg: m.dmg };
 const BASE_WALK = RADAHN_STATS.walkSpeed;
 const BASE_TURN = RADAHN_STATS.turnRate;
 const ENRAGE_AT = 0.18;                 // 濒死狂暴线（wiki：低血量显著加速）
@@ -251,6 +255,11 @@ export class Radahn extends BossBase {
   private tfDrift = false;                         // 变身高空横移段已锁定落点
   private tfTarget = new THREE.Vector3();          // 陨石坠落落点（锁定玩家位——跑位可躲）
   private tfStep = 0;                              // 变身落地帧步进
+  private aimYaw = 0;                              // 出手时锁定的瞄准（飞行物不再跟到出手帧）
+  private impact = new THREE.Vector3();            // 战斗内陨石落点（与 root / 冲击环同一点）
+  private impactLive = false;
+  private volleyFired = false;                     // 箭雨/重力波/巨箭：一招只发射一次
+  private lastPick = "";                           // 同招连续降权（权重仍 > 0，远档不会选空）
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost, facing = -Math.PI / 2) {
     super(scene, vfx, pos, host, RADAHN_STATS, facing);
@@ -412,35 +421,58 @@ export class Radahn extends BossBase {
 
   protected override movePose(m: MoveDef, sub: string, t: number, total: number): void {
     // 岩石第二发补发：act 起点 +0.55s（active 0.25 ⇒ 落在 rec 段 t≈0.3；与战斗时间同源，暂停不脱钩）
+    // 硬顶 2 发：movePose 每帧都会进来，计数器是唯一闸门
     if (m.name === "radahnRocks" && sub !== "tel") {
       const ta = sub === "act" ? t : t + m.active;
       while (this.rockFired < 2 && ta >= this.rockFired * 0.55) this.fireRock(this.rockFired);
     }
     // 重力拽引（wiki Gravity Pull）：tel 段缓吸 / act 段猛拽——直接写回玩家位置（update 传入活引用），顿帧 dt=0 冻结
+    // 方向：玩家 → Boss（toB = boss - player）。不要改成推开。
     if (m.name === "radahnPull") {
       if (sub === "tel" && t > m.startup * 0.35) this.pullPlayer(2.2, 3.2);
       else if (sub === "act") this.pullPlayer(6.0, 2.7);
     }
     // 拖剑旋风：tel 段持续吸引（自身为心的重力井）
     if (m.name === "radahnVortex" && sub === "tel" && t > 0.25) this.pullPlayer(3.2, 3.4);
-    // 陨石回归（战斗内复用）：深蹲 → 升空压顶（位移+欺诈悬停）→ 坠砸 → 落地跪伏
+    // 陨石回归（战斗内复用）：落点紫尘贯穿前摇 → 升空压顶 → 判定帧贴地（与命中同一点）→ 落地跪伏
     if (m.name === "radahnMeteor") {
+      if (sub === "tel" && this.impactLive) this.markPoint(this.impact, 0.85);
       if (sub === "tel") {
         if (t < m.startup * 0.35) { this.lerpPose(STANCE, MW, smooth(t / (m.startup * 0.35))); return; }
         const k = clamp01((t - m.startup * 0.35) / (m.startup * 0.65));
-        this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * smooth(k));
+        const posK = t >= m.startup ? 1 : smooth(k);
+        this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * posK);
+        this.root.position.y = 0;
         this.lerpPose(MW, MUP, smooth(k));
         this.pose.y = Math.sin(Math.min(1, k) * Math.PI / 2) * 5.5;                   // 升至顶点后悬停（须在 lerp 之后）
-        if (Math.random() < 0.7) this.gravDust.burst(this.root.position.clone().setY(0.5 + Math.random() * 2), 2, 2.2, 0.8, 0.3);
+        if (Math.random() < 0.55) this.gravDust.burst(this.root.position.clone().setY(0.5 + Math.random() * 2), 2, 2.2, 0.8, 0.3);
+        if (this.impactLive) this.orbitMark(this.impact, 3.2);
         return;
       }
       if (sub === "act") {
-        this.lerpPose(MUP, MDIVE, seg(t, 0, m.active));
-        this.pose.y = 5.5 * Math.max(0, 1 - t / m.active);                             // 陨星直坠钉地（须在 lerp 之后）
-        this.meteorFx(t, m);
+        // 基类首段判定在 active*0.4。坠落必须在这一帧贴地，冲击环打在同一个 root 上
+        const hitAt = Math.max(0.04, m.active * 0.4);
+        const k = clamp01(t / hitAt);
+        const fall = k * k;
+        this.lerpPose(MUP, MDIVE, k);
+        this.pose.y = 5.5 * (1 - fall);
+        if (k >= 1) {
+          const land = clamp01((t - hitAt) / Math.max(0.01, m.active - hitAt));
+          this.lerpPose(MDIVE, MLAND, land);
+          this.pose.y = MLAND.y * land;
+        }
+        if (this.impactLive) {
+          this.root.position.copy(this.impact);
+          this.root.position.y = 0;
+        }
+        this.meteorFx(t, hitAt);
         return;
       }
       this.lerpPose(MLAND, STANCE, smooth(seg(t, m.recovery * 0.25, m.recovery)));     // 落地大硬直（惩罚窗口）
+      return;
+    }
+    if (m.name === "radahnArrowRain" || m.name === "radahnGravityWave") {
+      this.rangedTellPose(m, sub, t, m.name === "radahnArrowRain" ? AW : WW, m.name === "radahnArrowRain" ? AK : WK);
       return;
     }
     const wind: Pose = { ...STANCE }, strike: Pose = { ...STANCE };
@@ -449,11 +481,13 @@ export class Radahn extends BossBase {
       case "radahnPull":   Object.assign(wind, PW); Object.assign(strike, PK); break;
       case "radahnRocks":  Object.assign(wind, RW); Object.assign(strike, RK); break;
       case "radahnSnipe":  Object.assign(wind, SW); Object.assign(strike, SK); break;
-      case "radahnArrowRain": Object.assign(wind, AW); Object.assign(strike, AK); break;
-      case "radahnGravityWave": Object.assign(wind, WW); Object.assign(strike, WK); break;
     }
     if (sub === "tel") {
-      this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
+      // 岩石/巨箭从第一帧就进入举臂，不再把前摇的前半段留在待机姿态
+      const hold = m.name === "radahnRocks" || m.name === "radahnSnipe";
+      const k = hold ? smooth(clamp01(t / (m.startup * 0.62))) : smooth(seg(t, m.startup * 0.45, m.startup));
+      this.lerpPose(STANCE, wind, k);
+      if (hold) this.previewAimLine(t, m.name === "radahnSnipe" ? 1.6 : 1.3);
     } else if (sub === "act") {
       if (m.name === "radahnCross") this.crossPose(t, m);
       else if (m.name === "radahnTriple") this.triplePose(t, m);
@@ -489,6 +523,66 @@ export class Radahn extends BossBase {
     this.lerpPose(w, k, s);
   }
 
+  /** 箭雨/重力波：前 70% 把姿态收到蓄力并停住，出手帧才切到挥出。紫尘只预告，不发射 */
+  private rangedTellPose(m: MoveDef, sub: string, t: number, wind: Pose, strike: Pose): void {
+    if (sub === "tel") {
+      const k = clamp01(t / (m.startup * 0.7));
+      this.lerpPose(STANCE, wind, k * k);                                          // ease-in：蓄力先慢后实
+      if (m.name === "radahnArrowRain") this.previewRain(t);
+      else this.previewWave(t);
+      return;
+    }
+    if (sub === "act") {
+      this.lerpPose(wind, strike, seg(t, 0, m.active));
+      return;
+    }
+    this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
+  }
+
+  /** 落点紫尘（概率闸，避免每帧灌满粒子池）。不新建网格 */
+  private markPoint(p: THREE.Vector3, chance: number): void {
+    if (Math.random() > chance) return;
+    this.gravDust.burst(MARK_TMP.copy(p).setY(0.18), 2, 1.5, 0.42, 0.18);
+  }
+
+  /** 箭雨车道：与发射扇面同一组偏航，先看见缝再看见箭 */
+  private previewRain(t: number): void {
+    const step = Math.floor(t * 7) % RAIN_SPREAD.length;
+    const off = RAIN_SPREAD[step];
+    const d = 5.5;
+    MARK_TMP.set(
+      this.root.position.x + Math.sin(this.aimYaw + off) * d,
+      2.2,
+      this.root.position.z + Math.cos(this.aimYaw + off) * d,
+    );
+    this.gravDust.burst(MARK_TMP, 2, 0.45, 0.32, 0.12);
+    if (Math.random() < 0.45) this.gravDust.burst(this.chestWorld().setY(2.8), 1, 0.7, 0.3, 0.4);
+  }
+
+  /** 重力波路径：沿锁定朝向在地面点出一条线 */
+  private previewWave(t: number): void {
+    const step = Math.floor(t * 6) % 5;
+    const d = 1.8 + step * 1.35;
+    MARK_TMP.set(
+      this.root.position.x + Math.sin(this.aimYaw) * d,
+      0.2,
+      this.root.position.z + Math.cos(this.aimYaw) * d,
+    );
+    this.gravDust.burst(MARK_TMP, 2, 0.55, 0.34, 0.12);
+  }
+
+  /** 巨箭瞄准线：弓前一串紫尘，方向与锁定 yaw 相同 */
+  private previewAimLine(t: number, y: number): void {
+    const step = Math.floor(t * 8) % 4;
+    const d = 1.2 + step * 1.1;
+    MARK_TMP.set(
+      this.root.position.x + Math.sin(this.aimYaw) * d,
+      y,
+      this.root.position.z + Math.cos(this.aimYaw) * d,
+    );
+    this.gravDust.burst(MARK_TMP, 1, 0.35, 0.28, 0.1);
+  }
+
   /** 重力拽引：把玩家沿 Boss 方向拖近（rate m/s，至 stop m 止）——update 传入的 playerPos 是玩家位置活引用，直接写回 */
   private pullPlayer(rate: number, stop: number): void {
     const toB = PULL_TMP.subVectors(this.root.position, this.playerLive);
@@ -500,14 +594,15 @@ export class Radahn extends BossBase {
     if (Math.random() < 0.5) this.gravDust.burst(this.playerLive.clone().setY(0.6), 2, 1.1, 0.5, 0.2);   // 拽引尘涡
   }
 
-  /** 陨石落点表现：紫色巨冲击环 + 焦斑 + 尘爆（与命中判定解耦——打中/躲开都应砸出陨坑） */
-  private meteorFx(t: number, m: MoveDef): void {
-    if (this.fxStep !== 0 || t < m.active * 0.45) return;
+  /** 陨石落点表现：冲击环/焦斑打在锁定落点（与 root 重合），时刻对齐判定帧。打中或躲开都砸坑 */
+  private meteorFx(t: number, hitAt: number): void {
+    if (this.fxStep !== 0 || t < hitAt) return;
     this.fxStep = 1;
-    this.vfx.ring(this.root.position, 6.0, GRAVITY);
-    this.vfx.scorch(this.root.position.clone().addScaledVector(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)), 1.2), 3.0, GRAVITY_DEEP);
-    this.vfx.dust.burst(this.root.position.clone().setY(0.3), 16, 3.4, 0.8);
-    this.gravDust.burst(this.root.position.clone().setY(1.2), 22, 4.2, 1.2, 0.6);
+    const at = this.impactLive ? this.impact : this.root.position;
+    this.vfx.ring(at, 6.0, GRAVITY);
+    this.vfx.scorch(at, 3.0, GRAVITY_DEEP);
+    this.vfx.dust.burst(MARK_TMP.copy(at).setY(0.3), 16, 3.4, 0.8);
+    this.gravDust.burst(MARK_TMP.copy(at).setY(1.2), 22, 4.2, 1.2, 0.6);
     AU.slamShock();
     this.host.shake(0.75);
   }
@@ -566,6 +661,10 @@ export class Radahn extends BossBase {
     if (this.enraged) eye += 0.8;                                                      // 濒死狂暴：瞳灼
     this.eyeMat.opacity = Math.min(1, Math.max(0, eye * 0.5));
     this.swordMat.emissiveIntensity = (p2 ? 1.5 : 0.3) * (this.enraged ? 1.5 : 1) * flick;
+    if (this.state === "combat" && this.sub === "tel" && this.move &&
+      (this.move.name === "radahnArrowRain" || this.move.name === "radahnGravityWave" || this.move.name === "radahnMeteor" || this.move.name === "radahnSnipe")) {
+      this.swordMat.emissiveIntensity += 0.9 * clamp01(this.t / Math.max(0.01, this.move.startup));
+    }
     // 剑光：交叉斩/三连每段一道（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）
     if (this.state === "combat" && this.sub === "act" && this.move &&
       (this.move.name === "radahnCross" || this.move.name === "radahnTriple")) {
@@ -582,8 +681,10 @@ export class Radahn extends BossBase {
         this.vfx.slash(this.chestWorld().setY(1.1), this.yaw + (this.slashFired - 1) * 0.3, this.move.range * 0.9, true, GRAVITY_GLOW);
       }
     }
-    if (p2 && !this.p2Applied) this.applyPhase2Moves();
-    if (p2 && !this.enraged && this.hp <= this.maxHp * ENRAGE_AT) this.applyEnrage();
+    // 相位回到 1 却还带着二阶段/狂暴改写（只改了 phase 字段、死亡重开漏走 reset）时，把共享表还回去
+    if (this.phase < 2 && (this.p2Applied || this.enraged)) this.restorePhase1Moves();
+    if (p2 && this.state !== "dead" && !this.p2Applied) this.applyPhase2Moves();
+    if (p2 && this.state !== "dead" && !this.enraged && this.hp > 0 && this.hp <= this.maxHp * ENRAGE_AT) this.applyEnrage();
   }
 
   /** 二阶段：原有招式前摇 ×0.88 / 伤害 ×1.12（狂暴化前奏——wiki：重力魔力全开） */
@@ -612,9 +713,10 @@ export class Radahn extends BossBase {
     this.p2Applied = false;
     this.enraged = false;
     for (const m of Object.values(MOVES_RADAHN)) {
-      if (m.phase2Only) continue;
-      m.startup = P1_BASE[m.name].startup;
-      m.dmg = P1_BASE[m.name].dmg;
+      const b = P1_BASE[m.name];
+      if (!b) continue;
+      m.startup = b.startup;
+      m.dmg = b.dmg;
     }
     this.cfg.walkSpeed = BASE_WALK;
     this.cfg.turnRate = BASE_TURN;
@@ -628,16 +730,26 @@ export class Radahn extends BossBase {
     this.pose.twist = -0.06 + Math.sin(w) * 0.05;
   }
 
-  /** 位移基准与段计数复位：陨石朝玩家位前压（不越过） */
+  /** 位移基准与段计数复位：陨石朝玩家位前压（不越过），瞄准在出手帧锁定 */
   protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
     this.moveFrom.copy(this.root.position);
     this.slashFired = 0;
     this.rockFired = 0;
+    this.volleyFired = false;
     this.fxStep = 0;
     this.moveLen = 0;
+    this.impactLive = false;
+    const face = toPlayer.lengthSq() > 1e-4 ? Math.atan2(toPlayer.x, toPlayer.z) : this.yaw;
+    if (m.name === "radahnMeteor" || m.proj) {
+      this.yaw = face;
+      this.aimYaw = face;
+    }
     if (m.name === "radahnMeteor") {
-      this.moveDir.copy(toPlayer).setY(0).normalize();
+      this.moveDir.set(Math.sin(face), 0, Math.cos(face));
       this.moveLen = Math.min(m.lunge ?? 0, Math.max(0, dist - 1.5));
+      this.impact.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen);
+      this.impact.y = 0;
+      this.impactLive = true;
     }
   }
 
@@ -653,49 +765,55 @@ export class Radahn extends BossBase {
     }
   }
 
-  /** 岩石投掷（抛物线：自 2.2m 高、drop 1.4——第二发 +0.35m 高与 ±0.12 偏航变奏） */
+  /** 每发独立坐标：五矢若共用一个 Vector3，池子只要保留引用就会叠成一发并跟着最后一次改写飞走 */
+  private spawnAt(y: number): THREE.Vector3 {
+    const o = this.chestWorld();
+    o.y = y;
+    return o;
+  }
+
+  /** 岩石投掷（抛物线：自 2.2m 高、drop 1.4——第二发 +0.35m 高与 +0.12 偏航；瞄准锁在出手） */
   private fireRock(i: number): void {
+    if (this.rockFired >= 2) return;
     this.rockFired++;
-    const toP = new THREE.Vector3().subVectors(this.playerLive, this.root.position);
-    toP.y = 0;
-    const yaw = toP.length() > 0.01 ? Math.atan2(toP.x, toP.z) : this.yaw;
-    const origin = this.chestWorld().setY(2.2 + i * 0.35);
-    this.host.fireProjectile?.(origin, yaw + (i ? 0.12 : 0), ROCK_PROJ);
+    const origin = this.spawnAt(2.2 + i * 0.35);
+    this.host.fireProjectile?.(origin, this.aimYaw + (i ? 0.12 : 0), ROCK_PROJ);
     this.gravDust.burst(origin, 6, 1.8, 0.6, 0.4);
     AU.whoosh(0.8);
   }
 
-  /** 碎星之矢：大弓满弦释放——高速巨箭平飞（1.8m 全程在命中带），箭出同帧弓光 */
+  /** 碎星之矢：大弓满弦释放——高速巨箭沿锁定朝向平飞（1.8m 全程在命中带） */
   private fireSnipe(): void {
-    const toP = new THREE.Vector3().subVectors(this.playerLive, this.root.position);
-    toP.y = 0;
-    const yaw = toP.length() > 0.01 ? Math.atan2(toP.x, toP.z) : this.yaw;
-    const origin = this.chestWorld().setY(1.8);
-    this.host.fireProjectile?.(origin, yaw, ARROW_PROJ);
-    this.vfx.slash(origin, yaw, 1.6, false, GRAVITY_GLOW);
+    if (this.volleyFired) return;
+    this.volleyFired = true;
+    const origin = this.spawnAt(1.8);
+    this.host.fireProjectile?.(origin, this.aimYaw, ARROW_PROJ);
+    this.vfx.slash(origin, this.aimYaw, 1.6, false, GRAVITY_GLOW);
     this.gravDust.burst(origin, 8, 2, 0.5, 0.3);
   }
 
-  /** 碎星箭雨：5 矢扇面 ±0.32rad 自 3.0m 高抛落（扇形射弹——横滚穿缝隙） */
+  /** 碎星箭雨：5 矢扇面，每发单独原点，沿前摇预告过的偏航飞出 */
   private fireRain(): void {
-    const toP = new THREE.Vector3().subVectors(this.playerLive, this.root.position);
-    toP.y = 0;
-    const yaw = toP.length() > 0.01 ? Math.atan2(toP.x, toP.z) : this.yaw;
-    const origin = this.chestWorld().setY(3.0);
-    for (const off of [-0.32, -0.16, 0, 0.16, 0.32]) {
-      this.host.fireProjectile?.(origin, yaw + off, RAIN_PROJ);
+    if (this.volleyFired) return;
+    this.volleyFired = true;
+    for (const off of RAIN_SPREAD) {
+      const origin = this.spawnAt(3.0);
+      origin.x += Math.sin(this.aimYaw + off) * 0.15;
+      origin.z += Math.cos(this.aimYaw + off) * 0.15;
+      this.host.fireProjectile?.(origin, this.aimYaw + off, RAIN_PROJ);
     }
-    this.vfx.slash(origin, yaw, 1.8, true, GRAVITY_GLOW);
+    const flash = this.spawnAt(3.0);
+    this.vfx.slash(flash, this.aimYaw, 1.8, true, GRAVITY_GLOW);
   }
 
-  /** 重力波：双剑砸地放出行波（大半径慢速平推）+ 地面紫痕 */
+  /** 重力波：沿前摇铺过的地面方向放出一行波（不是扇形弹幕） */
   private fireWave(): void {
-    const toP = new THREE.Vector3().subVectors(this.playerLive, this.root.position);
-    toP.y = 0;
-    const yaw = toP.length() > 0.01 ? Math.atan2(toP.x, toP.z) : this.yaw;
-    this.host.fireProjectile?.(this.chestWorld().setY(0.7), yaw, WAVE_PROJ);
+    if (this.volleyFired) return;
+    this.volleyFired = true;
+    const origin = this.spawnAt(0.7);
+    this.host.fireProjectile?.(origin, this.aimYaw, WAVE_PROJ);
     this.vfx.ring(this.root.position, 2.2, GRAVITY);
-    const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const fwd = new THREE.Vector3(Math.sin(this.aimYaw), 0, Math.cos(this.aimYaw));
     this.vfx.scorch(this.root.position.clone().addScaledVector(fwd, 2.5), 1.8, GRAVITY);
     AU.slamShock();
     this.host.shake(0.4);
@@ -732,19 +850,28 @@ export class Radahn extends BossBase {
       this.pose.y = seg(this.t, 0.55, 1.1) * 9;                                          // 升空高度须在 lerp 之后
       if (Math.random() < 0.8) this.gravDust.burst(this.root.position.clone().setY(0.5 + Math.random() * 2), 3, 2.6, 0.8, 0.3);   // 喷射尾迹
     } else if (this.t < 1.75) {
-      if (!this.tfDrift) {                                    // 锁定落点（=此刻玩家位）——此后跑位即躲
-        this.tfDrift = true;
-        this.moveFrom.copy(this.root.position);
-        this.tfTarget.copy(this.playerLive).setY(0);
-      }
-      this.root.position.lerpVectors(this.moveFrom, this.tfTarget, smooth(seg(this.t, 1.1, 1.75)));
-      this.lerpPose(TF_RISE, TF_FALL, seg(this.t, 1.55, 1.75));
+      this.lockCrash();                                          // 高空横移；俯冲姿态等到达后再开始，避免人还在滑、坑已经在别处
+      const k = smooth(seg(this.t, 1.1, 1.75));
+      this.root.position.lerpVectors(this.moveFrom, this.tfTarget, k);
+      this.root.position.y = 0;
+      this.lerpPose(TF_RISE, TF_RISE, 1);
       this.pose.y = 9;
+      this.markPoint(this.tfTarget, 0.75);
+      this.orbitMark(this.tfTarget, 3.1);
     } else if (this.t < HIT) {
-      this.lerpPose(TF_RISE, TF_FALL, 1);
-      this.pose.y = 9 * (1 - smooth(seg(this.t, 1.75, HIT)));                            // 陨星直坠
-      if (Math.random() < 0.9) this.gravDust.burst(this.chestWorld(), 3, 3, 0.6, 0.4);   // 坠落尾焰
+      this.lockCrash();
+      this.root.position.x = this.tfTarget.x;
+      this.root.position.z = this.tfTarget.z;
+      this.root.position.y = 0;                                   // 直坠钉在锁定点，不再边掉边滑
+      this.lerpPose(TF_RISE, TF_FALL, smooth(seg(this.t, 1.75, HIT)));
+      this.pose.y = 9 * (1 - smooth(seg(this.t, 1.75, HIT)));
+      this.markPoint(this.tfTarget, 0.5);
+      if (Math.random() < 0.9) this.gravDust.burst(this.chestWorld(), 3, 3, 0.6, 0.4);
     } else {
+      if (!this.tfDrift) this.lockCrash();
+      this.root.position.x = this.tfTarget.x;
+      this.root.position.z = this.tfTarget.z;
+      this.root.position.y = 0;                                   // 冲击波与坑都用这一帧的 root
       if (this.tfStep === 0) {                                 // 砸地帧：phase=2 + 陨坑紫爆（基类同帧出冲击环/震屏/震波回调）
         this.tfStep = 1;
         this.phase = 2;
@@ -759,6 +886,23 @@ export class Radahn extends BossBase {
     }
   }
 
+  /** 变身陨石落点：只锁一次。水平坐标单独写回，避免把 root.y 带离地面 */
+  private lockCrash(): void {
+    if (this.tfDrift) return;
+    this.tfDrift = true;
+    this.moveFrom.copy(this.root.position);
+    this.moveFrom.y = 0;
+    this.tfTarget.copy(this.playerLive);
+    this.tfTarget.y = 0;
+  }
+
+  /** 落点周围转一圈紫尘，标出砸击范围，不另加网格 */
+  private orbitMark(p: THREE.Vector3, radius: number): void {
+    const a = this.t * 2.6;
+    MARK_TMP.set(p.x + Math.cos(a) * radius, 0.16, p.z + Math.sin(a) * radius);
+    if (Math.random() < 0.65) this.gravDust.burst(MARK_TMP, 1, 0.35, 0.28, 0.08);
+  }
+
   /** 死亡：巨躯前倾跪倒 + 余烬 + 重力散逸（最后一缕紫尘） */
   protected override updateDeath(dt: number): void {
     this.lerpPose(this.pose, { ...STANCE, lean: 1.15, y: -0.8, crouch: 0.55, nod: 0.5, rLift: 0.25, rSwing: 0.5, lLift: 0.25, lSwing: -0.5 }, dt * 2.6);
@@ -770,7 +914,10 @@ export class Radahn extends BossBase {
     this.restorePhase1Moves();
     this.slashFired = 0;
     this.rockFired = 0;
+    this.volleyFired = false;
     this.fxStep = 0;
+    this.impactLive = false;
+    this.lastPick = "";
     this.tfDrift = false;
     this.tfStep = 0;
     this.bowShow = 0;
@@ -797,51 +944,59 @@ export class Radahn extends BossBase {
   protected override pickMove(dist: number): MoveDef | null {
     const M = MOVES_RADAHN;
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // 超远（>9m）：开战远程压制——箭狙优先（标志）/ 岩石块次之；都未好则巨躯缓行逼近
+    const w = (m: MoveDef, weight: number) => (weight > 0 && ready(m) ? (m.name === this.lastPick ? weight * 0.32 : weight) : 0);
+    // 超远（>9m）：只有箭狙/岩石。重复降权但不归零——只剩其中一招时仍然打得出
     if (dist > 9) {
-      if (ready(M.radahnSnipe)) return M.radahnSnipe;
-      if (ready(M.radahnRocks)) return M.radahnRocks;
-      return null;
+      return this.pickWeighted([
+        [M.radahnSnipe, w(M.radahnSnipe, 3)],
+        [M.radahnRocks, w(M.radahnRocks, 2)],
+      ]);
     }
     // 中远（5.2–9m）：抛物线岩 / P2 箭雨扇面+行波+陨石 / 旋风拽入
     if (dist > 5.2) {
-      const far: [MoveDef, number][] = [
-        [M.radahnRocks, 3],
-        [M.radahnSnipe, 1.5],
-        [M.radahnArrowRain, this.phase === 2 ? 3.5 : 0],
-        [M.radahnGravityWave, this.phase === 2 ? 3 : 0],
-        [M.radahnMeteor, this.phase === 2 ? 2.5 : 0],
-        [M.radahnVortex, dist <= 7 ? 1.5 : 0],                                          // 拽引令中距也不安全
-      ];
-      return this.pickWeighted(far.filter(([m, w]) => w > 0 && ready(m)));
+      return this.pickWeighted([
+        [M.radahnRocks, w(M.radahnRocks, 3)],
+        [M.radahnSnipe, w(M.radahnSnipe, 1.5)],
+        [M.radahnArrowRain, w(M.radahnArrowRain, this.phase === 2 ? 3.5 : 0)],
+        [M.radahnGravityWave, w(M.radahnGravityWave, this.phase === 2 ? 3 : 0)],
+        [M.radahnMeteor, w(M.radahnMeteor, this.phase === 2 ? 2.5 : 0)],
+        [M.radahnVortex, w(M.radahnVortex, dist <= 7 ? 1.5 : 0)],                       // 拽引令中距也不安全
+      ]);
     }
-    // 中近 / 贴身
+    // 中近 / 贴身。重近战后摇都 ≥0.8s，打完站得住脚
     const pool: [MoveDef, number][] = dist < 3.0 ? [
-      [M.radahnVortex, 4.5],                                                            // 贴身解围：吸引+全周旋斩
-      [M.radahnCross, 3.5],
-      [M.radahnPull, 2.5],                                                              // 拽近设定技
-      [M.radahnTriple, 2],
+      [M.radahnVortex, w(M.radahnVortex, 4.5)],                                         // 贴身解围：吸引+全周旋斩
+      [M.radahnCross, w(M.radahnCross, 3.5)],
+      [M.radahnPull, w(M.radahnPull, 2.5)],
+      [M.radahnTriple, w(M.radahnTriple, 2)],
     ] : [
-      [M.radahnCross, 3],
-      [M.radahnTriple, 3],
-      [M.radahnVortex, 2.5],
-      [M.radahnMeteor, this.phase === 2 ? 2 : 0],
-      [M.radahnGravityWave, this.phase === 2 ? 1.5 : 0],
+      [M.radahnCross, w(M.radahnCross, 3)],
+      [M.radahnTriple, w(M.radahnTriple, 3)],
+      [M.radahnVortex, w(M.radahnVortex, 2.5)],
+      [M.radahnMeteor, w(M.radahnMeteor, this.phase === 2 ? 2 : 0)],
+      [M.radahnGravityWave, w(M.radahnGravityWave, this.phase === 2 ? 1.5 : 0)],
     ];
     // 投射物招（proj 字段）不吃近战 range 闸——其距离带已在权重里
-    const cands = pool.filter(([m, w]) => w > 0 && ready(m) && (m.proj || dist < m.range * 0.95));
+    const cands = pool.filter(([m, weight]) => weight > 0 && (m.proj || dist < m.range * 0.95));
     return this.pickWeighted(cands);
   }
 
   private pickWeighted(cands: [MoveDef, number][]): MoveDef | null {
-    if (!cands.length) return null;
-    const sum = cands.reduce((s, [, w]) => s + w, 0);
+    const live = cands.filter(([, weight]) => weight > 0);
+    if (!live.length) return null;
+    const sum = live.reduce((s, [, weight]) => s + weight, 0);
     let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    let chosen = live[0][0];
+    for (const [m, weight] of live) {
+      r -= weight;
+      if (r <= 0) { chosen = m; break; }
+    }
+    this.lastPick = chosen.name;
+    return chosen;
   }
 }
 
 /** 拽引/取位临时量（避免每帧分配） */
 const PULL_TMP = new THREE.Vector3();
 const AURA_TMP = new THREE.Vector3();
+const MARK_TMP = new THREE.Vector3();
