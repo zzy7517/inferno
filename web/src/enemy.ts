@@ -6,6 +6,7 @@
  */
 import * as THREE from "three";
 import { MOVES, MoveDef, P } from "./config";
+import { Strike, strikeContact } from "./weapon-hit";
 import { ENEMY_STATS, MOVES_ENEMY, EnemyStats, EnemyKind, EnemySpawnSpec } from "./enemies-config";
 import type { Vfx } from "./vfx";
 import { AU } from "./audio";
@@ -903,20 +904,21 @@ export class EnemyManager {
     }
   }
 
-  /** 玩家攻击扇面命中（几何同 player.tryHitBoss：距离+±63° 夹角）。
-   *  对每个命中的敌人结算 takeHit（含盾挡弹开），返回命中/弹开数——接线侧据此给玩家格挡硬直等。
-   *  def 只把 isKick / launcher 交给 takeHit。Boss 不走这条。 */
-  tryHit(pos: THREE.Vector3, yaw: number, dmg: number, poise = 0, feelKey = "pR1a", def?: { isKick?: boolean; launcher?: boolean }): { hits: number; blocked: number } {
+  private swing = -1;
+  private struck = new Set<EnemyBase>();
+
+  /** 剑身（或靴子）扫到的敌人。同一挥（swing）里每个只结算一次。Boss 不走这条。 */
+  tryHit(swing: number, pos: THREE.Vector3, strike: Strike, dmg: number, poise = 0, feelKey = "pR1a", opts?: { isKick?: boolean; launcher?: boolean }): { hits: number; blocked: number } {
+    if (swing !== this.swing) { this.swing = swing; this.struck.clear(); }
     let hits = 0, blocked = 0;
     for (const e of this.enemies) {
-      if (e.state === "dead" || e.gone) continue;
+      if (e.state === "dead" || e.gone || this.struck.has(e)) continue;
+      const contact = strikeContact(e.root.position.x, e.root.position.z, e.stats.radius, strike);
+      if (!contact) continue;
+      this.struck.add(e);
       const to = new THREE.Vector3().subVectors(e.root.position, pos);
       to.y = 0;
-      if (to.length() > 2.4 + e.stats.radius) continue;
-      let diff = Math.atan2(to.x, to.z) - yaw;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      if (Math.abs(diff) > 1.1) continue;
-      const r = e.takeHit(dmg, poise, feelKey, to.normalize(), { isKick: def?.isKick, launcher: def?.launcher });
+      const r = e.takeHit(dmg, poise, feelKey, to.normalize(), opts);
       if (r.blocked) blocked++;
       else hits++;
     }

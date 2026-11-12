@@ -28,9 +28,6 @@ function flatMat(color: number, opacity: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
 }
 
-/** 玩家攻击判定参数（与 player.tryHitBoss 保持一致） */
-const P_ATK_RANGE = 3.0, P_ATK_ARC = 2.2;
-
 class Sector {
   readonly mesh: THREE.Mesh;
   private arc = -1;
@@ -58,6 +55,7 @@ export class DebugViz {
   on = true;
   showBoss = true; showPlayer = true; showIframes = true; showParry = true;
   private bossTel: Sector; private bossAct: Sector; private player: Sector;
+  private blade: THREE.Line;
   private shock: THREE.Mesh;
   private iframe: THREE.Mesh;
   private parry: THREE.Mesh;
@@ -66,6 +64,11 @@ export class DebugViz {
     this.bossTel = new Sector(scene, flatMat(0xe6c37a, 0.16));
     this.bossAct = new Sector(scene, flatMat(0xff5040, 0.22));
     this.player = new Sector(scene, flatMat(0x66d9e8, 0.18));
+    const bladeGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    this.blade = new THREE.Line(bladeGeo, new THREE.LineBasicMaterial({ color: 0x66d9e8 }));
+    this.blade.visible = false;
+    this.blade.renderOrder = 6;
+    scene.add(this.blade);
     this.shock = new THREE.Mesh(ringGeo(), flatMat(0xff5040, 0.3));
     this.iframe = new THREE.Mesh(ringGeo(), flatMat(0x7a8f4a, 0.55));
     this.parry = new THREE.Mesh(ringGeo(), flatMat(0xe6c37a, 0.5));
@@ -91,10 +94,17 @@ export class DebugViz {
       this.shock.visible = true;
     } else this.shock.visible = false;
 
-    // 玩家攻击扇面
-    if (this.on && this.showPlayer && (player.state === "attack" || player.state === "heavy")) {
-      this.player.show(player.pos, player.yaw, P_ATK_RANGE, P_ATK_ARC);
-    } else this.player.hide();
+    // 玩家这一帧的刃。判定贴着模型走，不再画脚底扇形。
+    const line = player.strikeLine;
+    if (this.on && this.showPlayer && line) {
+      const pos = this.blade.geometry.getAttribute("position") as THREE.BufferAttribute;
+      pos.setXYZ(0, line.ax, 0.08, line.az);
+      pos.setXYZ(1, line.bx, 0.08, line.bz);
+      pos.needsUpdate = true;
+      this.blade.geometry.computeBoundingSphere();
+      this.blade.visible = true;
+      this.player.hide();
+    } else { this.blade.visible = false; this.player.hide(); }
 
     // 翻滚无敌帧
     if (this.on && this.showIframes && player.state === "roll") {

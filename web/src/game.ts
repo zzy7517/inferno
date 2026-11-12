@@ -157,7 +157,7 @@ export class Game {
 
     this.player = new Player(gltf.scene, frames, {
       hitBoss: (dmg, poise, feelKey, point, opts) => { void opts; this.hitBoss(dmg, poise, feelKey, point); },
-      hitEnemies: (dmg, poise, feelKey, def) => { this.enemies.tryHit(this.player.pos, this.player.yaw, dmg, poise, feelKey, def); },
+      hitEnemies: (dmg, poise, feelKey, strike, swing, opts) => { this.enemies.tryHit(swing, this.player.pos, strike, dmg, poise, feelKey, opts); },
       onPlayerHurt: (dmg, point, feelKey) => this.onPlayerHurt(dmg, point, feelKey),
       onParrySuccess: point => this.onParry(point),
       onDeath: () => this.onPlayerDeath(),

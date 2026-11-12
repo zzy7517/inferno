@@ -1,9 +1,10 @@
 /** 玩家「不死人」：GLB 动画 + 战斗状态机（DS3 式精力制，ADR-0008）
  *  DS3 直剑完全表：R1 三连 / R2 蓄力分级 / 翻滚 / 后撤步 / 格挡 / 弹反 / 处决 / 原素瓶
- *  + 跑攻 / 翻滚攻 / 后撤攻 / 踢击(破盾) / 战技架势(两段派生)。时序权威在帧数据 json（ADR-0004）。 */
+ *  + 跑攻 / 翻滚攻 / 后撤攻 / 战技架势(两段派生)。时序权威在帧数据 json（ADR-0004）。 */
 import * as THREE from "three";
-import { P, FEEL, PMOVES, PMoveDef, MoveDef } from "./config";
+import { P, BOSS, FEEL, PMOVES, PMoveDef, MoveDef } from "./config";
 import { AU } from "./audio";
+import { Seg, Strike, strikeContact } from "./weapon-hit";
 
 export type PState = "idle" | "attack" | "heavyCharge" | "heavy" | "roll" | "backstep" | "moveAtk" | "stance" | "block" | "parry" | "estus" | "hurt" | "guardbreak" | "riposte" | "dead";
 
@@ -12,8 +13,8 @@ export interface HitOpts { isKick?: boolean; launcher?: boolean }
 
 export interface PlayerHost {
   hitBoss: (dmg: number, poise: number, feelKey: string, point: THREE.Vector3, opts?: HitOpts) => void;
-  /** 攻击判定帧的敌人扇面（每挥一次；M3 小怪系统，几何在 EnemyManager 内；def 携带 isKick/launcher 供 T8 布点消费） */
-  hitEnemies?: (dmg: number, poise: number, feelKey: string, def?: PMoveDef) => void;
+  /** 这一挥里，剑身（或靴子）扫到的敌人。同一挥里每个敌人只结算一次。 */
+  hitEnemies?: (dmg: number, poise: number, feelKey: string, strike: Strike, swing: number, opts?: HitOpts) => void;
   onPlayerHurt: (dmg: number, point: THREE.Vector3, feelKey: string) => void;
   onParrySuccess: (point: THREE.Vector3) => void;
   onDeath: () => void;
@@ -74,6 +75,7 @@ export class Player {
     this.root.add(model);
     model.rotation.y = Math.PI;   // M0 调好的朝向
     this.mixer = new THREE.AnimationMixer(model);
+    this.bindWeapon(model);
     const atk = frames.attack as Record<string, number>;
     const estus = frames.estus as Record<string, number>;
     const rollIframes = (frames.roll as Record<string, unknown>).iframes as [number, number];
@@ -154,7 +156,7 @@ export class Player {
     this.state = s; this.t = 0;
     switch (s) {
       case "attack": {
-        this.hitApplied = false;
+        this.hitApplied = false; this.swing++; this.prevSeg = null;
         const spd = [1, 1.12, 0.85][this.combo] ?? 1;
         this.play("attack", 0.08);
         this.actions.attack.timeScale = spd;
@@ -162,17 +164,17 @@ export class Player {
         break;
       }
       case "heavyCharge": this.charge = 0; this.play("attack", 0.15); this.actions.attack.timeScale = 0.35; break;
-      case "heavy": this.play("attack", 0.05); this.actions.attack.timeScale = 0.6; AU.swingHeavy(); break;
+      case "heavy": this.hitApplied = false; this.swing++; this.prevSeg = null; this.play("attack", 0.05); this.actions.attack.timeScale = 0.6; AU.swingHeavy(); break;
       case "roll": this.play("roll", 0.06); this.spend(P.rollCost); AU.whoosh(0.8); break;
       case "backstep": this.play("backstep", 0.06); this.spend(P.backstepCost); AU.whoosh(0.9); break;
-      case "moveAtk": this.hitApplied = false; this.play(this.curMove?.clip ?? "attack", 0.08); AU.whoosh(this.curMoveKey === "kick" ? 1.5 : 1.1); break;
+      case "moveAtk": this.hitApplied = false; this.swing++; this.prevSeg = null; this.play(this.curMove?.clip ?? "attack", 0.08); AU.whoosh(this.curMoveKey === "kick" ? 1.5 : 1.1); break;
       case "stance": this.play("stance", 0.1); this.spend(P.stanceCost); AU.whoosh(0.6); break;
       case "block": this.play("block_idle", 0.12, true); break;
       case "parry": this.play("parry", 0.04); this.spend(P.parryCost); AU.whoosh(1.4); break;
       case "estus": this.play("estus", 0.1); this.healApplied = false; this.estus--; break;
       case "hurt": this.play("hurt", 0.05); AU.hurt(); break;
       case "guardbreak": this.play("hurt", 0.05); AU.guardBreak(); break;
-      case "riposte": this.play("attack", 0.05); this.actions.attack.timeScale = 0.55; this.riposteApplied = false; break;
+      case "riposte": this.hitApplied = false; this.swing++; this.prevSeg = null; this.play("attack", 0.05); this.actions.attack.timeScale = 0.55; this.riposteApplied = false; break;
       case "dead": this.play("death", 0.1); AU.deathSting(); break;
       case "idle": this.play("idle", 0.15, true); break;
     }
@@ -335,9 +337,6 @@ export class Player {
           if (b.kind === "r1") {
             const sprinting = moving && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"));
             if (sprinting && this.canSpend(P.r1Cost)) { this.buffered = null; this.startMove("runAttack", inputDir); break; }
-            if (this.keys.has("KeyW") && b.tapDur < 0.15 && this.canSpend(P.kickCost)) {
-              this.buffered = null; this.faceBoss(aim, dt, true); this.startMove("kick"); break;
-            }
             if (this.canSpend(P.r1Cost)) { this.buffered = null; this.spend(P.r1Cost); this.combo = 0; this.faceBoss(aim, dt, true); this.enter("attack"); break; }
           } else if (b.kind === "roll") {
             if (!moving && this.canSpend(P.backstepCost)) {
@@ -379,11 +378,6 @@ export class Player {
       case "attack": {
         const m = this.meta;
         const tt = this.currentAction?.time ?? this.t;
-        // 判定中段命中
-        if (!this.hitApplied && tt >= m.startup + m.active * 0.4) {
-          this.hitApplied = true;
-          this.tryHitBoss(P.r1Dmg[this.combo] ?? 12, P.r1Poise[this.combo] ?? 12, ["pR1a", "pR1b", "pR1c"][this.combo] ?? "pR1a");
-        }
         // 后摇 55% 后可翻滚取消 / 接下一刀
         const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
         if (tt >= cancelAt && this.buffered) {
@@ -411,16 +405,6 @@ export class Player {
       }
       case "heavy": {
         const tt = this.currentAction?.time ?? 0;
-        if (!this.hitApplied && tt >= (this.meta.startup + this.meta.active * 0.4) / this.heavySpeed) {
-          this.hitApplied = true;
-          // R2 分级：蓄力 ≥P.r2FullCharge 满蓄（+35% 伤害 / 破韧翻倍），否则普通 R2
-          const full = this.charge >= P.r2FullCharge;
-          this.tryHitBoss(
-            P.r2DmgBase * (full ? P.r2FullDmgMul : 1),
-            P.r2Poise * (full ? P.r2FullPoiseMul : 1),
-            "pR2",
-          );
-        }
         // 后摇 cancelFrom 之后可翻滚取消；精力不够则留下预输入
         const m = this.meta;
         const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
@@ -479,10 +463,6 @@ export class Player {
           const span = m.startup + m.active;
           this.pos.addScaledVector(this.lungeDir, (2 * def.lunge / span) * (1 - tt / span) * dt);
         }
-        if (!this.hitApplied && tt >= m.startup + m.active * 0.4) {
-          this.hitApplied = true;
-          this.tryHitBoss(def.dmg, def.poise, def.feel, def);
-        }
         // 后摇取消：翻滚（预输入缓冲一致）
         const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
         if (tt >= cancelAt && this.buffered?.kind === "roll" && this.canSpend(P.rollCost)) {
@@ -526,10 +506,6 @@ export class Player {
       case "hurt": if (this.t >= 0.4) this.enter("idle"); this.t += dt; break;
       case "guardbreak": if (this.t >= 1.2) this.enter("idle"); this.t += dt; break;
       case "riposte": {
-        if (!this.riposteApplied && this.t >= 0.4) {
-          this.riposteApplied = true;
-          this.tryHitBoss(P.riposteDmg, 0, "pRip");   // 六通道反馈（顿帧/震屏/音画）走 FEEL.pRip
-        }
         if (this.t >= 1.0) this.enter("idle");
         this.t += dt; break;
       }
@@ -537,6 +513,7 @@ export class Player {
 
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
+    this.resolveStrike();
     this.mixer.update(dt);
   }
 
@@ -547,6 +524,37 @@ export class Player {
   }
 
   private hitApplied = false;
+  /** 这一挥的编号。小怪用它把「已经打过的」清掉，换一刀就重新算。 */
+  swing = 0;
+  /** 判定窗里的刃，给调校台画出来。不在判定窗时是 null。 */
+  strikeLine: Seg | null = null;
+  private prevSeg: Seg | null = null;
+  private blade: THREE.Object3D | null = null;
+  private foot: THREE.Object3D | null = null;
+  private bladeLo = new THREE.Vector3();
+  private bladeHi = new THREE.Vector3();
+
+  /** 刃的两端记在网格局部坐标里。尖是离手更远的那一头，换模型也不用改轴。 */
+  private bindWeapon(model: THREE.Object3D): void {
+    let found: THREE.Object3D | null = null;
+    model.traverse(o => {
+      if (o.name === "Blade") found = o;
+      if (o.name === "FootR") this.foot = o;
+    });
+    const blade = found as THREE.Mesh | null;
+    if (!blade?.isMesh || !blade.geometry) return;
+    this.blade = blade;
+    const geo = blade.geometry;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    if (!bb) return;
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+    const axis = (["x", "y", "z"] as const).reduce((a, b) => size[a] >= size[b] ? a : b);
+    this.bladeLo[axis] = bb.min[axis];
+    this.bladeHi[axis] = bb.max[axis];
+  }
+
   enterAttackFromHold(): void {
     this.spend(P.r2Cost); this.faceBoss(this.aimAt(), 0.016, true);
     this.enter("heavy"); this.hitApplied = false;
@@ -568,18 +576,79 @@ export class Player {
     return false;
   }
 
-  private tryHitBoss(dmg: number, poise: number, feelKey: string, def?: PMoveDef): void {
-    this.host.hitEnemies?.(dmg, poise, feelKey, def);   // 小怪扇面与 Boss 判定同拍（每挥一次）
-    const bossPos = this.host.bossPos();
-    const to = bossPos.clone().sub(this.pos); to.y = 0;
-    const dYaw = Math.atan2(to.x, to.z);
-    let diff = dYaw - this.yaw;
-    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    const range = def?.range !== undefined ? def.range + 0.2 : 2.8 + 0.2;
-    if (to.length() < range && Math.abs(diff) < 1.1) {
-      const opts: HitOpts | undefined = def ? { isKick: def.isKick, launcher: def.launcher } : undefined;
-      this.host.hitBoss(dmg, poise, feelKey, bossPos.clone().setY(1.5), opts);
+  /** 剪辑时间落在前摇结束到判定结束之间。action.time 已经乘过 timeScale，这里用剪辑秒。 */
+  private inBladeWindow(): boolean {
+    const act = this.currentAction;
+    if (!act) return false;
+    const t = act.time;
+    if (this.state === "attack" || this.state === "heavy" || this.state === "riposte") {
+      return t >= this.meta.startup && t <= this.meta.startup + this.meta.active + 1e-4;
     }
+    if (this.state === "moveAtk") {
+      return t >= this.moveMeta.startup && t <= this.moveMeta.startup + this.moveMeta.active + 1e-4;
+    }
+    return false;
+  }
+
+  /** 读这一帧的刃或靴子。根节点要先放到当前坐标，剑才跟得上前冲。 */
+  private readWeapon(): Seg | null {
+    const kick = this.state === "moveAtk" && !!this.curMove?.isKick;
+    const obj = kick ? this.foot : this.blade;
+    if (!obj) return null;
+    this.root.updateWorldMatrix(true, true);
+    if (kick) {
+      const p = obj.getWorldPosition(new THREE.Vector3());
+      return { ax: p.x, ay: p.y, az: p.z, bx: p.x, by: p.y, bz: p.z };
+    }
+    const lo = obj.localToWorld(this.bladeLo.clone());
+    const hi = obj.localToWorld(this.bladeHi.clone());
+    const parent = new THREE.Vector3();
+    obj.parent?.getWorldPosition(parent);
+    const tip = lo.distanceToSquared(parent) >= hi.distanceToSquared(parent) ? lo : hi;
+    const base = tip === lo ? hi : lo;
+    return { ax: base.x, ay: base.y, az: base.z, bx: tip.x, by: tip.y, bz: tip.z };
+  }
+
+  private strikePayload(): { dmg: number; poise: number; feel: string; opts?: HitOpts } | null {
+    if (this.state === "attack") {
+      const i = this.combo;
+      return { dmg: P.r1Dmg[i] ?? 12, poise: P.r1Poise[i] ?? 12, feel: ["pR1a", "pR1b", "pR1c"][i] ?? "pR1a" };
+    }
+    if (this.state === "heavy") {
+      const full = this.charge >= P.r2FullCharge;
+      return {
+        dmg: P.r2DmgBase * (full ? P.r2FullDmgMul : 1),
+        poise: P.r2Poise * (full ? P.r2FullPoiseMul : 1),
+        feel: "pR2",
+      };
+    }
+    if (this.state === "moveAtk" && this.curMove) {
+      const m = this.curMove;
+      return { dmg: m.dmg, poise: m.poise, feel: m.feel, opts: { isKick: m.isKick, launcher: m.launcher } };
+    }
+    if (this.state === "riposte") return { dmg: P.riposteDmg, poise: 0, feel: "pRip" };
+    return null;
+  }
+
+  /** 判定窗内每帧用当前刃去碰。扫过谁算谁，同一刀里 Boss 只中一次。 */
+  private resolveStrike(): void {
+    if (!this.inBladeWindow()) { this.prevSeg = null; this.strikeLine = null; return; }
+    const now = this.readWeapon();
+    const payload = this.strikePayload();
+    if (!now || !payload) return;
+    this.strikeLine = now;
+    const strike: Strike = { now, prev: this.prevSeg, pad: payload.opts?.isKick ? 0.16 : 0.05 };
+    this.prevSeg = now;
+    const boss = this.host.bossPos();
+    if (!this.hitApplied) {
+      const contact = strikeContact(boss.x, boss.z, BOSS.radius, strike);
+      if (contact) {
+        this.hitApplied = true;
+        if (this.state === "riposte") this.riposteApplied = true;
+        this.host.hitBoss(payload.dmg, payload.poise, payload.feel, new THREE.Vector3(contact.x, contact.y, contact.z), payload.opts);
+      }
+    }
+    this.host.hitEnemies?.(payload.dmg, payload.poise, payload.feel, strike, this.swing, payload.opts);
   }
 
   /** 锁定目标优先，否则由宿主给出的近战软吸附点。宿主未提供时退回 Boss。 */
