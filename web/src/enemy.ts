@@ -500,6 +500,8 @@ export class Hollow extends EnemyBase {
     this.torso.add(this.armL);
     this.body.add(this.torso);
     this.root.add(this.body);
+    // 站姿脚到兜帽顶 1.49m，矮于角色头顶（约 1.8m）。整身收到约 1.70m，不超过 1.85m。只缩放网格。
+    this.body.scale.setScalar(1.7 / 1.49);
   }
 
   protected override updateVisuals(dt: number): void {
@@ -641,6 +643,8 @@ export class Squire extends EnemyBase {
     this.torso.add(this.armL);
     this.body.add(this.torso);
     this.root.add(this.body);
+    // 站姿脚到盔顶 1.744m。收到约 1.70m，不超过 1.85m。只缩放网格。
+    this.body.scale.setScalar(1.7 / 1.744);
   }
 
   protected override updateVisuals(dt: number): void {
