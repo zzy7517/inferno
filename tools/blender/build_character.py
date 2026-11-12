@@ -2,9 +2,10 @@
 """
 Inferno — 剑盾不死人生成脚本（ADR-0003：脚本即事实源）
 
-形体 v2：从方块堆升级为真形体（球/锥/环组合 + 平滑着色）——
-  头盔球冠、渐细四肢、胸甲圆壳、曲面前盾、带护手宝剑、肩后披风。
-  骨架 / 动画 / 导出契约与 v1 完全一致（玩家代码零改动）。
+形体：球/锥/环低多边形（平面着色，和场景里的方块敌人同一套语言）。
+  部件先在世界坐标里拼成人形，再按骨骼父矩阵挂回去——漏掉骨骼矩阵的话，
+  剑、盾、四肢会在运行时被再变换一次，整个人散开。
+  待机是垂臂持剑、盾在身前，不是水平 T 字。
 
 产出:
   web/public/assets/character.glb          骨骼+九动画 clip
@@ -84,7 +85,7 @@ def clear_scene():
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
 
-def make_mat(name, color, rough=0.85):
+def make_mat(name, color, rough=0.85, metal=0.0):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
@@ -92,11 +93,15 @@ def make_mat(name, color, rough=0.85):
     color_in.default_value = (*color, 1.0)
     rough_in = next(i for i in bsdf.inputs if "Roughness" in i.name)
     rough_in.default_value = rough
+    metal_in = next((i for i in bsdf.inputs if i.name.startswith("Metallic")), None)
+    if metal_in is not None:
+        metal_in.default_value = metal
     return mat
 
-def _smooth(obj):
+def _shade(obj):
+    """平面着色。平滑法线在雾夜里会把分件糊成一块泥。"""
     for p in obj.data.polygons:
-        p.use_smooth = True
+        p.use_smooth = False
     return obj
 
 def _add(obj, name, loc, mat, rot=(0, 0, 0), scale=(1, 1, 1)):
@@ -114,26 +119,26 @@ def make_sphere(name, loc, mat, r, seg=16, ring=12, rot=(0, 0, 0), scale=(1, 1, 
     """UV 球（平滑着色）：头盔/肩甲/拳/髋等圆润件。"""
     bpy.ops.mesh.primitive_uv_sphere_add(segments=seg, ring_count=ring, radius=r,
                                          location=(0, 0, 0), rotation=rot)
-    return _smooth(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
+    return _shade(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
 
 def make_cone(name, loc, mat, r1, r2, depth, seg=12, rot=(0, 0, 0), scale=(1, 1, 1)):
     """圆台（平滑着色）：渐细四肢/躯干/剑刃（r2=0 即锥尖）。"""
     bpy.ops.mesh.primitive_cone_add(vertices=seg, radius1=r1, radius2=r2, depth=depth,
                                     location=(0, 0, 0), rotation=rot)
-    return _smooth(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
+    return _shade(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
 
 def make_cyl(name, loc, mat, r, depth, seg=12, rot=(0, 0, 0), scale=(1, 1, 1)):
     """圆柱（平滑着色）：剑柄/脖颈等。"""
     bpy.ops.mesh.primitive_cylinder_add(vertices=seg, radius=r, depth=depth,
                                         location=(0, 0, 0), rotation=rot)
-    return _smooth(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
+    return _shade(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
 
 def make_torus(name, loc, mat, r, tube, seg=20, rot=(0, 0, 0), scale=(1, 1, 1)):
     """环（平滑着色）：盾缘/盔沿。"""
     bpy.ops.mesh.primitive_torus_add(major_segments=seg, minor_segments=8,
                                      major_radius=r, minor_radius=tube,
                                      location=(0, 0, 0), rotation=rot)
-    return _smooth(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
+    return _shade(_add(bpy.context.active_object, name, loc, mat, rot=rot, scale=scale))
 
 def make_box(name, size, loc, mat):
     """轴对齐盒子（平直着色）：眼缝等小件。"""
@@ -156,11 +161,24 @@ def make_box(name, size, loc, mat):
     return obj
 
 def attach_to_bone(obj, arm_obj, bone_name):
-    """父子绑定到骨骼；matrix_parent_inverse 使 obj 保持世界坐标创作。"""
-    obj.parent = arm_obj
-    obj.parent_type = "BONE"
-    obj.parent_bone = bone_name
-    obj.matrix_parent_inverse = arm_obj.matrix_world.inverted()
+    """挂到骨骼并保持当前世界变换。
+
+    Blender 的骨骼父级原点在骨尖，父矩阵是「骨架世界 × 骨骼姿态 × 骨长」，
+    不是骨架世界。只写 armature.matrix_world.inverted() 时，网格局部坐标仍是
+    创作时的世界坐标；glTF 里骨骼再乘一次，剑、盾、四肢就飞离躯干。
+    parent_set(keep_transform=True) 会把这段父矩阵收进 parent inverse。
+    """
+    world = obj.matrix_world.copy()
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = arm_obj
+    arm_obj.data.bones.active = arm_obj.data.bones[bone_name]
+    bpy.ops.object.parent_set(type="BONE", keep_transform=True)
+    bpy.context.view_layer.update()
+    got = obj.matrix_world
+    drift = max(abs(got[i][j] - world[i][j]) for i in range(4) for j in range(4))
+    if drift > 1e-4:
+        raise RuntimeError(f"{obj.name} -> {bone_name} 绑定后世界矩阵漂移 {drift:.6f}")
 
 # ============================================================
 # 1. 骨架（names 带 .L/.R，glTF 原样导出）—— 与 v1 完全一致
@@ -216,96 +234,120 @@ def build_armature():
     return arm_obj
 
 # ============================================================
-# 2. 部件（世界坐标创作，绑定到骨骼）—— 不死人剑盾侠，灰锈基调
-#    v2：球/锥/环真形体，平滑着色；绑定骨骼与质心位置沿用 v1，动画轮廓不变
+# 2. 部件（世界坐标创作，再挂到骨骼）
+#    轮廓优先：巨盔、肩甲留在肩上、披风从肩垂到小腿、关节互相咬合。
+#    面朝 +Y 时右手在 +X（骨名 .L）。
 # ============================================================
-M_BODY  = make_mat("body",  (0.29, 0.27, 0.25))
-M_LIMB  = make_mat("limb",  (0.23, 0.215, 0.20))
-M_METAL = make_mat("metal", (0.35, 0.33, 0.29), 0.7)
-M_STEEL = make_mat("steel", (0.56, 0.60, 0.64), 0.4)
-M_RUST  = make_mat("rust",  (0.43, 0.23, 0.18))
-M_DARK  = make_mat("dark",  (0.10, 0.10, 0.12), 0.6)
-M_CLOTH = make_mat("cloth", (0.16, 0.14, 0.13), 0.95)
+M_CLOTH = make_mat("cloth", (0.09, 0.08, 0.075), 0.95)
+M_LIMB  = make_mat("limb",  (0.14, 0.13, 0.12), 0.9)
+M_BODY  = make_mat("body",  (0.20, 0.19, 0.17), 0.75, metal=0.25)
+M_METAL = make_mat("metal", (0.34, 0.33, 0.30), 0.48, metal=0.62)
+M_STEEL = make_mat("steel", (0.70, 0.72, 0.74), 0.28, metal=0.85)
+M_RUST  = make_mat("rust",  (0.36, 0.16, 0.11), 0.62, metal=0.28)
+M_DARK  = make_mat("dark",  (0.05, 0.05, 0.055), 0.7)
+M_CLOTH.use_backface_culling = False
 
-RX90 = (math.radians(90), 0, 0)        # Z 轴几何体躺平成 X 轴（手臂方向）
 RY90 = (0, math.radians(90), 0)
 
+def make_cape():
+    """从肩后垂到小腿的斗篷。上窄下宽，两侧微微向前包，下摆后掠。不是一块竖板。"""
+    cols, rows = 7, 11
+    verts = []
+    for j in range(rows):
+        t = j / (rows - 1)
+        z = 1.64 - t * 0.72                 # 上沿埋进盔底，下摆停在大腿
+        y = -0.14 - 0.07 * t - 0.04 * t * t
+        half = 0.12 + 0.10 * t              # 肩甲之间收窄，下摆再打开
+        for i in range(cols):
+            u = (i / (cols - 1)) * 2.0 - 1.0          # -1..1
+            x = u * half
+            wrap = (abs(u) ** 1.6) * (0.05 + 0.04 * t)
+            sag = (1.0 - u * u) * 0.045 * t
+            verts.append((x, y + wrap, z - sag))
+    faces = []
+    for j in range(rows - 1):
+        for i in range(cols - 1):
+            a = j * cols + i
+            faces.append((a, a + 1, a + cols + 1, a + cols))
+    mesh = bpy.data.meshes.new("Cape")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new("Cape", mesh)
+    bpy.context.collection.objects.link(obj)
+    _shade(obj)
+    obj.data.materials.append(M_CLOTH)
+    return obj
+
 def build_parts(arm_obj):
-    # —— 躯干：圆台腰身 + 球形胸甲 ——
-    make_sphere("Pelvis",   (0, 0, 0.98), M_BODY, 0.125, scale=(1.15, 0.92, 0.85))
-    make_cone("TorsoLower", (0, 0, 1.10), M_BODY, 0.155, 0.145, 0.20)
-    make_cone("Chest",      (0, 0, 1.31), M_BODY, 0.175, 0.150, 0.24)   # 肩宽腰窄
-    make_sphere("ChestPlate", (0, 0.045, 1.30), M_METAL, 0.155, seg=14, ring=10, scale=(1.0, 0.72, 1.05))
-    make_cyl("Neck",        (0, 0, 1.50), M_LIMB, 0.045, 0.10)
+    # —— 躯干：肩宽、胸甲是一块板，不是一颗球 ——
+    make_sphere("Pelvis", (0, 0, 0.97), M_BODY, 0.13, seg=10, ring=8, scale=(1.35, 0.82, 0.72))
+    make_cone("TorsoLower", (0, 0, 1.10), M_BODY, 0.145, 0.165, 0.22, seg=8)
+    make_cone("Chest", (0, 0, 1.32), M_BODY, 0.155, 0.205, 0.28, seg=8)
+    make_sphere("ChestPlate", (0, 0.07, 1.33), M_METAL, 0.15, seg=10, ring=8, scale=(1.15, 0.38, 0.82))
+    make_torus("Belt", (0, 0, 1.015), M_DARK, 0.155, 0.018, seg=14)
+    make_cone("TassetL", (0.13, 0.04, 0.90), M_METAL, 0.075, 0.04, 0.18, seg=6)
+    make_cone("TassetR", (-0.13, 0.04, 0.90), M_METAL, 0.075, 0.04, 0.18, seg=6)
+    make_cyl("Neck", (0, 0, 1.52), M_LIMB, 0.05, 0.12, seg=8)
+    make_cone("Gorget", (0, 0.015, 1.56), M_METAL, 0.085, 0.11, 0.16, seg=8)
 
-    # —— 头：球头 + 鼻护盔（球冠 + 盔沿环 + 眼缝）——
-    make_sphere("Head",     (0, 0.01, 1.70), M_BODY, 0.095)
-    make_sphere("Helm",     (0, 0, 1.715), M_METAL, 0.105, seg=16, ring=10, scale=(1.0, 0.95, 1.02))
-    make_torus("HelmBrim",  (0, 0.035, 1.70), M_METAL, 0.098, 0.014, rot=RY90, scale=(1.0, 1.0, 0.55))
-    make_box("EyeSlit",     (0.15, 0.026, 0.045), (0, 0.098, 1.705), M_DARK)
+    # —— 巨盔坐进领甲，别飘在肩上。眼缝嵌在盔的前脸 ——
+    make_sphere("Head", (0, 0.02, 1.66), M_DARK, 0.09, seg=8, ring=6)
+    make_sphere("Helm", (0, 0.02, 1.67), M_METAL, 0.125, seg=10, ring=8, scale=(1.04, 0.92, 1.02))
+    make_box("Brow", (0.16, 0.03, 0.022), (0, 0.10, 1.72), M_METAL)
+    make_box("EyeSlit", (0.13, 0.02, 0.028), (0, 0.112, 1.685), M_DARK)
 
-    # —— 肩甲：半球壳扣肩 ——
-    make_sphere("PauldronL", (0.215, 0, 1.455), M_METAL, 0.085, seg=12, ring=8, scale=(1.1, 1.05, 0.72))
-    make_sphere("PauldronR", (-0.215, 0, 1.455), M_METAL, 0.085, seg=12, ring=8, scale=(1.1, 1.05, 0.72))
+    # —— 肩甲扣在胸上，上沿抵住盔沿 ——
+    make_sphere("PauldronL", (0.24, 0.015, 1.52), M_METAL, 0.11, seg=8, ring=6, scale=(1.15, 1.05, 0.58))
+    make_sphere("PauldronR", (-0.24, 0.015, 1.52), M_METAL, 0.11, seg=8, ring=6, scale=(1.15, 1.05, 0.58))
 
-    # —— 手臂：渐细圆台沿 X 轴，拳为球 ——
-    make_cone("UArmL", (0.31, 0, 1.435), M_LIMB, 0.058, 0.048, 0.24, rot=RY90)
-    make_cone("UArmR", (-0.31, 0, 1.435), M_LIMB, 0.058, 0.048, 0.24, rot=RY90)
-    make_cone("LArmL", (0.51, 0, 1.435), M_LIMB, 0.046, 0.038, 0.20, rot=RY90)
-    make_cone("LArmR", (-0.51, 0, 1.435), M_LIMB, 0.046, 0.038, 0.20, rot=RY90)
-    make_sphere("HandL", (0.635, 0, 1.43), M_LIMB, 0.048, seg=10, ring=8, scale=(0.95, 0.9, 1.15))
-    make_sphere("HandR", (-0.635, 0, 1.43), M_LIMB, 0.048, seg=10, ring=8, scale=(0.95, 0.9, 1.15))
+    # —— 手臂：钻进肩甲和手腕，别在关节处断开 ——
+    make_cone("UArmL", (0.32, 0, 1.44), M_LIMB, 0.062, 0.05, 0.28, seg=7, rot=RY90)
+    make_cone("UArmR", (-0.32, 0, 1.44), M_LIMB, 0.062, 0.05, 0.28, seg=7, rot=RY90)
+    make_cone("LArmL", (0.51, 0, 1.43), M_LIMB, 0.048, 0.04, 0.22, seg=7, rot=RY90)
+    make_cone("LArmR", (-0.51, 0, 1.43), M_LIMB, 0.048, 0.04, 0.22, seg=7, rot=RY90)
+    make_sphere("HandL", (0.64, 0.01, 1.43), M_LIMB, 0.05, seg=8, ring=6, scale=(0.9, 0.85, 1.2))
+    make_sphere("HandR", (-0.64, 0.01, 1.43), M_LIMB, 0.05, seg=8, ring=6, scale=(0.9, 0.85, 1.2))
 
-    # —— 腿：渐细圆台沿 Z 轴，靴为拉长球 ——
-    make_cone("ThighL", (0.11, 0, 0.72), M_LIMB, 0.075, 0.058, 0.42)
-    make_cone("ThighR", (-0.11, 0, 0.72), M_LIMB, 0.075, 0.058, 0.42)
-    make_cone("ShinL",  (0.11, 0, 0.31), M_LIMB, 0.056, 0.042, 0.40)
-    make_cone("ShinR",  (-0.11, 0, 0.31), M_LIMB, 0.056, 0.042, 0.40)
-    make_sphere("FootL", (0.11, 0.055, 0.055), M_DARK, 0.058, seg=10, ring=8, scale=(0.72, 1.55, 0.55))
-    make_sphere("FootR", (-0.11, 0.055, 0.055), M_DARK, 0.058, seg=10, ring=8, scale=(0.72, 1.55, 0.55))
+    # —— 腿：大腿咬进骨盆，靴子接住小腿 ——
+    make_cone("ThighL", (0.11, 0, 0.72), M_LIMB, 0.088, 0.068, 0.44, seg=7)
+    make_cone("ThighR", (-0.11, 0, 0.72), M_LIMB, 0.088, 0.068, 0.44, seg=7)
+    make_cone("ShinL", (0.11, 0, 0.32), M_LIMB, 0.064, 0.048, 0.42, seg=7)
+    make_cone("ShinR", (-0.11, 0, 0.32), M_LIMB, 0.064, 0.048, 0.42, seg=7)
+    make_sphere("KneeL", (0.11, 0.035, 0.52), M_METAL, 0.055, seg=8, ring=6, scale=(0.85, 0.7, 0.85))
+    make_sphere("KneeR", (-0.11, 0.035, 0.52), M_METAL, 0.055, seg=8, ring=6, scale=(0.85, 0.7, 0.85))
+    make_sphere("FootL", (0.11, 0.09, 0.07), M_DARK, 0.078, seg=8, ring=6, scale=(0.75, 1.9, 0.58))
+    make_sphere("FootR", (-0.11, 0.09, 0.07), M_DARK, 0.078, seg=8, ring=6, scale=(0.75, 1.9, 0.58))
 
-    # —— 披风：细分网格带弧度（挂胸骨，身后垂坠）——
-    bpy.ops.mesh.primitive_grid_add(x_subdivisions=4, y_subdivisions=6, size=0.42, location=(0, 0, 0))
-    cape = bpy.context.active_object
-    cape.name = "Cape"
-    cape.rotation_euler = RX90                       # 竖起贴背
-    cape.location = (0, -0.135, 1.36)
-    cape.scale = (0.82, 1.6, 1.0)
-    # 沿高度弯出弧度：下摆向后飘
-    for v in cape.data.vertices:
-        vz = v.co.y                                  # RX90 后平面局部 y 即世界高度方向
-        v.co.z += (vz ** 2) * 0.55                   # 下摆后掠
-        v.co.x *= 1.0 - max(0.0, -vz) * 0.12         # 下摆略收
-    _smooth(cape)
-    if not cape.users_collection:                    # grid 原语已自动挂 collection
-        bpy.context.collection.objects.link(cape)
-    cape.data.materials.append(M_CLOTH)
+    make_cape()
 
-    # —— 剑（绑右手）：柄/护手/刃（压扁圆台出剑尖）/配重球 ——
-    make_cyl("Grip",   (-0.645, 0, 1.62), M_DARK, 0.016, 0.15)
-    make_box("Guard",  (0.15, 0.035, 0.045), (-0.645, 0, 1.535), M_METAL)
-    make_sphere("Pommel", (-0.645, 0, 1.695), M_METAL, 0.026, seg=10, ring=8)
-    make_cone("Blade", (-0.645, 0, 1.14), M_STEEL, 0.030, 0.003, 0.80, seg=8, scale=(1.0, 0.24, 1.0))
+    # —— 剑在右手（+X / Hand.L）。握点不动，只把刃做长、护手做宽，远看认得出 ——
+    make_cyl("Grip", (0.645, 0, 1.62), M_DARK, 0.016, 0.15, seg=8)
+    make_box("Guard", (0.22, 0.028, 0.038), (0.645, 0, 1.535), M_METAL)
+    make_sphere("Pommel", (0.645, 0, 1.705), M_METAL, 0.028, seg=8, ring=6)
+    make_cone("Blade", (0.645, 0, 1.10), M_STEEL, 0.003, 0.036, 0.88, seg=6, scale=(1.0, 0.20, 1.0))
 
-    # —— 盾（绑左前臂）：曲面圆盾 + 盾缘 + 盾心 ——
-    make_cyl("Shield",     (0.545, 0.075, 1.36), M_RUST, 0.175, 0.035, seg=20, rot=(math.radians(75), 0, 0))
-    make_torus("ShieldRim", (0.556, 0.095, 1.36), M_METAL, 0.172, 0.011, rot=(math.radians(75), 0, 0))
-    make_sphere("ShieldBoss", (0.525, 0.105, 1.36), M_METAL, 0.045, seg=10, ring=8, scale=(0.55, 1, 1))
+    # —— 圆盾在左手 ——
+    shield_rot = (math.radians(72), 0, 0)
+    make_cyl("Shield", (-0.545, 0.08, 1.36), M_RUST, 0.20, 0.032, seg=16, rot=shield_rot)
+    make_torus("ShieldRim", (-0.558, 0.10, 1.36), M_METAL, 0.198, 0.012, seg=16, rot=shield_rot)
+    make_sphere("ShieldBoss", (-0.52, 0.11, 1.36), M_METAL, 0.048, seg=8, ring=6, scale=(0.5, 1, 1))
 
-    # —— 绑骨（沿用 v1 映射）——
     BONE_OF = {
         "Pelvis": "Hips", "TorsoLower": "Spine", "Chest": "Chest", "ChestPlate": "Chest",
-        "Neck": "Neck", "Head": "Head", "Helm": "Head", "HelmBrim": "Head", "EyeSlit": "Head",
-        "PauldronL": "UpperArm.L", "PauldronR": "UpperArm.R",
+        "Belt": "Hips", "TassetL": "Hips", "TassetR": "Hips",
+        "Neck": "Neck", "Gorget": "Neck",
+        "Head": "Head", "Helm": "Head", "Brow": "Head", "EyeSlit": "Head",
+        "PauldronL": "Chest", "PauldronR": "Chest",
         "UArmL": "UpperArm.L", "UArmR": "UpperArm.R",
         "LArmL": "LowerArm.L", "LArmR": "LowerArm.R",
         "HandL": "Hand.L", "HandR": "Hand.R",
         "ThighL": "UpperLeg.L", "ThighR": "UpperLeg.R",
         "ShinL": "LowerLeg.L", "ShinR": "LowerLeg.R",
+        "KneeL": "LowerLeg.L", "KneeR": "LowerLeg.R",
         "FootL": "Foot.L", "FootR": "Foot.R",
         "Cape": "Chest",
-        "Grip": "Hand.R", "Guard": "Hand.R", "Pommel": "Hand.R", "Blade": "Hand.R",
-        "Shield": "LowerArm.L", "ShieldRim": "LowerArm.L", "ShieldBoss": "LowerArm.L",
+        "Grip": "Hand.L", "Guard": "Hand.L", "Pommel": "Hand.L", "Blade": "Hand.L",
+        "Shield": "LowerArm.R", "ShieldRim": "LowerArm.R", "ShieldBoss": "LowerArm.R",
     }
     for name, bone in BONE_OF.items():
         attach_to_bone(bpy.data.objects[name], arm_obj, bone)
@@ -341,13 +383,17 @@ def begin_action(arm_obj, name, start):
     arm_obj.animation_data.action = action
     return action
 
-STANCE = {  # 待机基准姿态（各动画的 f1 与收尾都回到这里）
-    "Chest":      {"rot": (RAD(6), 0, 0)},
+# 书写约定：这里的 .R 仍当「持剑臂」来摆（历史关键帧都写在 .R 上）。
+# 导出前 swap_arm_sides 会把左右臂通道对调、Z 欧拉取反，
+# 挥砍才落到真正拿剑的那只手（骨名 .L，+X，面朝 +Y 时的右手）。
+STANCE = {  # 待机：剑垂在身侧，盾收在身前。f1 / 收尾都回到这里
+    "Chest":      {"rot": (RAD(8), 0, 0)},
     "Spine":      {"rot": (RAD(4), 0, 0)},
     "Head":       {"rot": (RAD(-6), 0, 0)},
-    "UpperArm.R": {"rot": (0, 0, RAD(18))},   # 右臂微收，剑贴腿
-    "UpperArm.L": {"rot": (0, 0, RAD(-24))},  # 左臂持盾微抬
-    "LowerArm.L": {"rot": (RAD(-20), 0, 0)},
+    "UpperArm.R": {"rot": (RAD(-42), 0, RAD(-22))},  # 持剑臂下垂，剑尖朝下
+    "LowerArm.R": {"rot": (RAD(-8), 0, 0)},
+    "UpperArm.L": {"rot": (RAD(-34), 0, RAD(36))},   # 持盾臂前收
+    "LowerArm.L": {"rot": (RAD(-68), 0, RAD(-12))},
 }
 
 def apply_stance(pbs, frame):
@@ -365,24 +411,30 @@ def anim_idle(arm_obj, start=1):
         key(pbs["Hips"], frame, loc=(0, 0, 0.96 - 0.008 * breathe))
 
 def anim_attack(arm_obj, start=200):
-    """27f=0.9s：前摇f1-6 蓄势右转，判定f7-9 横斩，后摇f10-27 收势"""
+    """27f=0.9s 右手横斩。前摇 f1-6 收剑到肩后，判定 f7-9 贴着 f8 的横扫，f13 送过身，f27 回待机。
+    角度写在 .R 上，swap_arm_sides 之后落到持剑的 .L。胸腔 Z+ 把持剑肩拧到身后。"""
     begin_action(arm_obj, "attack", start)
     pbs = pose_bones(arm_obj)
     apply_stance(pbs, 1)
-    # —— 前摇结束 f6：拧腰向后拉剑
-    key(pbs["Chest"], 6, rot=(RAD(8), 0, RAD(28)))
-    key(pbs["UpperArm.R"], 6, rot=(RAD(-30), 0, RAD(60)))   # 举剑后引
-    key(pbs["LowerArm.R"], 6, rot=(RAD(-35), 0, 0))
-    key(pbs["Hips"], 6, loc=(0, 0, 0.945))
-    # —— 判定帧 f9：腰拧到左侧，剑横扫过去
-    key(pbs["Chest"], 9, rot=(RAD(10), 0, RAD(-38)))
-    key(pbs["UpperArm.R"], 9, rot=(RAD(25), 0, RAD(-40)))
-    key(pbs["LowerArm.R"], 9, rot=(RAD(-10), 0, 0))
-    key(pbs["Hips"], 9, loc=(0, 0, 0.94))                    # 重心下沉=重量感
-    # —— 后摇 f12 过冲 → f27 回到待机
-    key(pbs["Chest"], 12, rot=(RAD(9), 0, RAD(-30)))
-    key(pbs["UpperArm.R"], 12, rot=(RAD(18), 0, RAD(-28)))
+    # f6 前摇结束：剑收到右后方，肘折叠。胸腔只轻轻拧，别把人折下去。
+    key(pbs["Hips"], 6, loc=(0, 0, 0.95))
+    key(pbs["Chest"], 6, rot=(RAD(8), 0, RAD(16)))
+    key(pbs["Head"], 6, rot=(RAD(-4), 0, RAD(8)))
+    key(pbs["UpperArm.R"], 6, rot=(RAD(0), 0, RAD(-40)))
+    key(pbs["LowerArm.R"], 6, rot=(RAD(-90), 0, 0))
+    # f8 判定：剑横在胸前，从右扫到左（几乎水平）
+    key(pbs["Hips"], 8, loc=(0, 0, 0.95))
+    key(pbs["Chest"], 8, rot=(RAD(8), 0, RAD(-12)))
+    key(pbs["Head"], 8, rot=(RAD(-2), 0, RAD(-6)))
+    key(pbs["UpperArm.R"], 8, rot=(RAD(-60), 0, RAD(15)))
+    key(pbs["LowerArm.R"], 8, rot=(RAD(-20), 0, 0))
+    # f13 剑送到左侧，再回到待机
+    key(pbs["Hips"], 13, loc=(0, 0, 0.955))
+    key(pbs["Chest"], 13, rot=(RAD(6), 0, RAD(-18)))
+    key(pbs["UpperArm.R"], 13, rot=(RAD(-48), 0, RAD(42)))
+    key(pbs["LowerArm.R"], 13, rot=(RAD(-8), 0, 0))
     apply_stance(pbs, 27)
+    key(pbs["Hips"], 27, loc=(0, 0, 0.96))
 
 def anim_roll(arm_obj, start=400):
     """21f=0.7s：前滚翻，原地滚（M0 无位移系统）"""
@@ -726,10 +778,69 @@ def _fix_nla_slots(arm_obj):
             strip.frame_start = 1
             strip.frame_end = max(2.0, fmax - fmin + 1.0)
 
+def _iter_fcurves(act):
+    """Blender 4.4+ 的槽位 action 把曲线放在 channelbag 里，旧的 act.fcurves 可能是空的。"""
+    legacy = getattr(act, "fcurves", None)
+    if legacy and len(legacy):
+        yield from legacy
+        return
+    for layer in getattr(act, "layers", []) or []:
+        for strip in layer.strips:
+            for slot in act.slots:
+                bag = strip.channelbag(slot)
+                if bag:
+                    yield from bag.fcurves
+
+def swap_arm_sides(arm_obj):
+    """骨名 .R 在 -X，面朝 +Y 时是左手；剑的网格挂在 .L。
+    动画仍按 .R=持剑 来写。这里对调左右臂通道并把 Z 欧拉取反，
+    挥砍跟着重挂到右手，盾的姿势跟到左手。贝塞尔手柄夹紧，避免欧拉绕远路把胳膊甩抽。"""
+    arm_tokens = ("UpperArm.", "LowerArm.", "Hand.")
+    swapped = 0
+    for track in arm_obj.animation_data.nla_tracks:
+        for strip in track.strips:
+            act = strip.action
+            if act is None:
+                continue
+            curves = list(_iter_fcurves(act))
+            arm_curves = [fc for fc in curves if any(tok in fc.data_path for tok in arm_tokens)]
+            for fc in arm_curves:
+                if "rotation_euler" in fc.data_path and fc.array_index == 2:
+                    for kp in fc.keyframe_points:
+                        kp.co[1] *= -1
+                        kp.handle_left[1] *= -1
+                        kp.handle_right[1] *= -1
+                # 先改成临时名，避免 .R→.L 时和还没搬走的 .L 撞路径
+                if ".R" in fc.data_path:
+                    fc.data_path = fc.data_path.replace(".R", ".TMP")
+            for fc in arm_curves:
+                if ".L" in fc.data_path:
+                    fc.data_path = fc.data_path.replace(".L", ".R")
+            for fc in arm_curves:
+                if ".TMP" in fc.data_path:
+                    fc.data_path = fc.data_path.replace(".TMP", ".L")
+                swapped += 1
+            for fc in curves:
+                if "rotation_euler" not in fc.data_path:
+                    continue
+                for kp in fc.keyframe_points:
+                    kp.interpolation = "BEZIER"
+                    kp.handle_left_type = "AUTO_CLAMPED"
+                    kp.handle_right_type = "AUTO_CLAMPED"
+    print(f"INFERNO_SWAP arm_fcurves={swapped}")
+
 def export(arm_obj):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    swap_arm_sides(arm_obj)
     _fix_nla_slots(arm_obj)
     arm_obj.animation_data.action = None   # NLA 为权威
+    # 回到静止姿态再导出：节点变换必须是 rest，动画才是相对 rest 的增量
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode="POSE")
+    bpy.ops.pose.select_all(action="SELECT")
+    bpy.ops.pose.transforms_clear()
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.context.view_layer.update()
     glb = OUT_DIR / "character.glb"
     bpy.ops.export_scene.gltf(
         filepath=str(glb),
