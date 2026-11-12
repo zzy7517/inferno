@@ -30,7 +30,7 @@ export class Boss extends BossBase {
   private head!: THREE.Mesh;
   private serpent: THREE.Mesh[] = [];
   private serpGlow!: THREE.PointLight;
-  private swordInChest!: THREE.Mesh;
+  private swordInChest!: THREE.Object3D;
   private swordLight!: THREE.PointLight;
   private emberMat!: THREE.MeshStandardMaterial;
 
@@ -55,7 +55,7 @@ export class Boss extends BossBase {
   protected override buildBody(): void {
     const stone = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.95, flatShading: true });
     const dark = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1, flatShading: true });
-    this.emberMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.7, emissive: COLORS.ember, emissiveIntensity: 0.9 });
+    this.emberMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.7, emissive: COLORS.ember, emissiveIntensity: 0.9, flatShading: true });
 
     const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -74,23 +74,52 @@ export class Boss extends BossBase {
     for (const sx of [-0.11, 0.11]) {
       this.torso.add(box(0.09, 0.05, 0.03, this.emberMat, sx, 1.66, 0.31));
     }
-    // 胸口螺旋剑（拔出前可见）
-    this.swordInChest = box(0.07, 0.85, 0.05, this.emberMat, 0.25, 0.55, 0.38);
-    this.swordInChest.rotation.z = 0.35;
-    this.torso.add(this.swordInChest);
+    // 胸口螺旋剑：五段扁刃绕轴拧过一圈多，拔出前还嵌在胸口。单根细盒远处会收成棍子。
+    const coil = new THREE.Group();
+    coil.position.set(0.2, 0.5, 0.32);
+    coil.rotation.set(-0.22, 0.12, 0.4);
+    const coilN = 5;
+    for (let i = 0; i < coilN; i++) {
+      const k = i / (coilN - 1);
+      const ang = -0.7 + k * Math.PI * 1.85;
+      const plate = box(0.4, 0.16, 0.05, this.emberMat);
+      plate.position.set(Math.cos(ang) * 0.18, -0.4 + k * 0.82, Math.sin(ang) * 0.18);
+      plate.rotation.y = ang + Math.PI / 2;
+      coil.add(plate);
+    }
+    coil.add(box(0.48, 0.05, 0.09, this.emberMat, 0, 0.5, 0));
+    this.swordInChest = coil;
+    this.torso.add(coil);
     this.swordLight = new THREE.PointLight(COLORS.ember, 3, 3.5, 2);
     this.swordLight.position.set(0.25, 0.55, 0.6);
     this.torso.add(this.swordLight);
-    // 右臂 + 戟
+    // 右臂 + 长柄戟：杆、横刃、尖分开，轮廓比细杆大一号
     this.armR.position.set(0.85, 0.95, 0);
     this.armR.add(box(0.3, 0.95, 0.3, stone, 0, -0.45, 0));
     this.armR.add(box(0.36, 0.3, 0.36, stone, 0, -0.95, 0));
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.0, 6), new THREE.MeshStandardMaterial({ color: 0x2e2a24, roughness: 0.9 }));
-    shaft.position.set(0, -0.8, 0.3); shaft.rotation.x = Math.PI / 2 - 0.5; shaft.castShadow = true;
-    this.armR.add(shaft);
-    const axeHead = box(0.06, 0.55, 0.4, new THREE.MeshStandardMaterial({ color: 0x6e747c, roughness: 0.5, metalness: 0.4, flatShading: true }), 0, -0.35, 1.55);
-    axeHead.rotation.x = -0.5;
-    this.armR.add(axeHead);
+    const haftMat = new THREE.MeshStandardMaterial({ color: 0x5a626c, roughness: 0.9, metalness: 0.08, flatShading: true });
+    const steelMat = new THREE.MeshStandardMaterial({ color: COLORS.steel, roughness: 0.46, metalness: 0.4, flatShading: true });
+    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x6a5344, roughness: 0.5, metalness: 0.2, emissive: COLORS.ember, emissiveIntensity: 0.6, flatShading: true });
+    const hal = new THREE.Group();
+    hal.position.set(0, -0.8, 0.3);
+    hal.rotation.x = Math.PI / 2 - 0.5;
+    const shaftLen = 3.35;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, shaftLen, 6), haftMat);
+    shaft.castShadow = true;
+    hal.add(shaft);
+    const headY = shaftLen * 0.5 - 0.42;
+    hal.add(box(0.26, 0.46, 0.26, steelMat, 0, headY - 0.22, 0));
+    hal.add(box(1.02, 0.14, 0.58, steelMat, 0.36, headY, 0));
+    hal.add(box(1.08, 0.05, 0.07, edgeMat, 0.38, headY + 0.02, 0.28));
+    hal.add(box(1.08, 0.05, 0.07, edgeMat, 0.38, headY + 0.02, -0.28));
+    const fluke = box(0.36, 0.09, 0.2, steelMat, -0.28, headY - 0.02, 0);
+    fluke.rotation.z = -0.5;
+    hal.add(fluke);
+    const spikeY = shaftLen * 0.5 - 0.08;
+    hal.add(box(0.14, 0.44, 0.14, steelMat, 0, spikeY + 0.16, 0));
+    hal.add(box(0.08, 0.32, 0.08, steelMat, 0, spikeY + 0.48, 0));
+    hal.add(box(0.045, 0.18, 0.045, edgeMat, 0, spikeY + 0.7, 0));
+    this.armR.add(hal);
     this.torso.add(this.armR);
     // 左臂（爪）
     this.armL.position.set(-0.85, 0.95, 0);
@@ -175,19 +204,19 @@ export class Boss extends BossBase {
       const k = clamp01(t / Math.max(0.0001, m.startup));
       const windK = smooth(seg(k, 0, 0.42));
       const leap = smooth(seg(k, 0.36, 1));
-      this.lerpPose(STANCE, { ...STANCE, armLift: -2.75, lean: -0.6, crouch: 0.38, armSwing: -0.12 }, windK);
+      this.lerpPose(STANCE, { ...STANCE, armLift: -2.95, lean: -0.6, crouch: 0.38, armSwing: -0.62, twist: 0.38 }, windK);
       this.root.position.lerpVectors(this.jumpFrom, this.jumpTo, leap);
       this.pose.crouch *= (1 - leap);
       this.pose.y = (1 - leap) * -0.05 + this.jumpArc(leap);
-      this.pose.armLift = -2.75;
+      this.pose.armLift = -2.95;
       this.pose.lean = -0.6 + 0.12 * leap;
       return;
     }
     if (m.name === "jump" && sub === "act") {
       const snap = 1 - Math.pow(1 - seg(t, 0, m.active), 3);
       this.lerpPose(
-        { ...STANCE, armLift: -2.75, lean: -0.48, y: this.jumpArc(1) },
-        { ...STANCE, armLift: 1.35, lean: 0.78, crouch: 0.48, y: -0.32, reach: 0.15 },
+        { ...STANCE, armLift: -2.95, lean: -0.48, y: this.jumpArc(1), armSwing: -0.62, twist: 0.38 },
+        { ...STANCE, armLift: 1.52, lean: 0.78, crouch: 0.48, y: -0.32, reach: 0.15, armSwing: 0.78, twist: -0.48 },
         snap,
       );
       return;
@@ -203,17 +232,17 @@ export class Boss extends BossBase {
         strike.twist = 0.08; strike.armLift = 1.1; strike.reach = 0.8; strike.lean = 0.36;
         break;
       case "sweep":
-        // 侧举 + 拧身，和头顶下劈分开
-        wind.twist = 1.05; wind.armSwing = -1.45; wind.armLift = -1.35; wind.lean = -0.24;
-        strike.twist = -1.15; strike.armSwing = 1.55; strike.armLift = 0.2; strike.lean = 0.26; strike.reach = 0.4;
+        // 侧举 + 拧身，和头顶下劈分开。臂和腰的转角加大，戟头沿原拍扫更宽的弧
+        wind.twist = 1.22; wind.armSwing = -1.9; wind.armLift = -1.25; wind.lean = -0.24;
+        strike.twist = -1.42; strike.armSwing = 2.05; strike.armLift = 0.32; strike.lean = 0.26; strike.reach = 0.4;
         break;
       case "slam":
-        wind.armLift = -2.85; wind.lean = -0.7; wind.armSwing = 0.06; wind.crouch = 0.12;
-        strike.armLift = 1.35; strike.lean = 0.78; strike.crouch = 0.5; strike.y = -0.34; strike.reach = 0.2;
+        wind.armLift = -2.95; wind.lean = -0.7; wind.armSwing = -0.62; wind.twist = 0.42; wind.crouch = 0.12;
+        strike.armLift = 1.52; strike.lean = 0.78; strike.armSwing = 0.78; strike.twist = -0.48; strike.crouch = 0.5; strike.y = -0.34; strike.reach = 0.2;
         break;
       case "jump":
-        wind.armLift = -2.75; wind.lean = -0.48; wind.y = this.jumpArc(1);
-        strike.armLift = 1.35; strike.lean = 0.78; strike.crouch = 0.48; strike.y = -0.32; strike.reach = 0.15;
+        wind.armLift = -2.95; wind.lean = -0.48; wind.y = this.jumpArc(1); wind.armSwing = -0.62; wind.twist = 0.38;
+        strike.armLift = 1.52; strike.lean = 0.78; strike.crouch = 0.48; strike.y = -0.32; strike.reach = 0.15; strike.armSwing = 0.78; strike.twist = -0.48;
         break;
       case "shoulder":
         wind.twist = 0.85; wind.lean = -0.42; wind.armL = -1.15; wind.reach = -0.12; wind.armLift = -0.45;
@@ -307,7 +336,12 @@ export class Boss extends BossBase {
   /** 判定段开始：挥砍轨迹（蛇招橙焰）；下砸扬尘标出落点 */
   protected override onMoveActive(m: MoveDef): void {
     const chest = this.chestWorld();
-    this.vfx.slash(chest, this.yaw, m.range * 0.85, m.arc > 2 || m.name === "serpSweep", m.name.startsWith("serp") ? 0xff7a30 : 0xffd9a0);
+    const serp = m.name.startsWith("serp");
+    const halberd = m.name === "thrust" || m.name === "thrust2" || m.name === "sweep" || m.name === "slam" || m.name === "jump";
+    // 刀光外沿贴戟头（杆 3.35 + 尖，离胸口约 2.95）。肩撞、抓和蛇招仍用原来的视觉半径。
+    const reach = halberd ? 2.95 : m.range * 0.85;
+    const color = serp ? 0xff7a30 : halberd ? COLORS.ember : 0xffd9a0;
+    this.vfx.slash(chest, this.yaw, reach, m.arc > 2 || m.name === "serpSweep", color);
     if (m.name === "jump" || m.name === "slam") this.vfx.dust.burst(this.root.position, 8, 3.2, 0.85);
   }
 
