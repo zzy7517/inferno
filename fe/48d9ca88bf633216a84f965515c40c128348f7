@@ -1,0 +1,30 @@
+web/src/boss-radahn.ts
+  s_eb3e785bcb9cea::t_4d047d39ce69fc 239-240
+  s_eb3e785bcb9cea::t_8c9c7405957440 379-382
+  s_eb3e785bcb9cea::t_695385481bc689 418-435
+  s_eb3e785bcb9cea::t_5667f98eafa872 18
+web/src/boss-base.ts
+  s_eb3e785bcb9cea::t_ca043a9de7bb78 59-60
+  s_eb3e785bcb9cea::t_00c0e8cb9a2783 16
+  s_eb3e785bcb9cea::t_e7e43dfcf84804 415-416,420-423,425
+  s_eb3e785bcb9cea::t_d361901598530f 412,414,417-419,424,426
+  s_eb3e785bcb9cea::t_7078fd757bf34a 372,374
+  s_eb3e785bcb9cea::t_3b4aa65633426f 212,311,356
+  s_eb3e785bcb9cea::t_3b3ab44480bb82 375-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "fe48d9ca88bf633216a84f965515c40c128348f7",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
