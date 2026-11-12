@@ -1,0 +1,35 @@
+web/src/boss-vordt.ts
+  s_f3baacd9fbcabc::t_9fce335e5f659c 525-550,553-556
+  s_f3baacd9fbcabc::t_4e22db9d98e43c 337-338,347,354,356-358
+  s_f3baacd9fbcabc::t_322a994b628ab9 21,23-30,32-34,36-44
+  s_f3baacd9fbcabc::t_b5a932b24003ce 350
+  s_f3baacd9fbcabc::t_4d4eb729ee9786 104
+  s_f3baacd9fbcabc::t_24e81dd2b83587 346
+  s_f3baacd9fbcabc::t_c96f7b5c602b52 465
+  s_f3baacd9fbcabc::t_72e0e5e86ae44c 31,35
+  s_f3baacd9fbcabc::t_932ffcac9203ca 355
+  s_f3baacd9fbcabc::t_5dbd2a677c5542 431
+  s_f3baacd9fbcabc::t_fa86a1ab662309 410-420,423-424,427-430,432
+  s_f3baacd9fbcabc::t_a76df91ed6aeae 260-262,264-266,268-270,272-274,277,279-288,297,299-311,316-317,324-327
+  s_f3baacd9fbcabc::t_c422c45da685e6 328,480-497,499-506,513,515
+  s_f3baacd9fbcabc::t_23ecb42bc98c7c 399-400
+  s_f3baacd9fbcabc::t_e163433351a198 107-109,115-116
+  s_f3baacd9fbcabc::t_05f3b6f0a8aaea 289,291-296
+  s_f3baacd9fbcabc::t_216cffbd4bfe42 329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "bfc091f64d813effb086b07cce77189ac796673d",
+  "prompts": {},
+  "sessions": {
+    "s_f3baacd9fbcabc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dead4bac-9c32-445f-9f10-b71fdfe0300a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
