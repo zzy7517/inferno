@@ -1,0 +1,20 @@
+web/index.html
+  s_0f3438e72748f1::t_942ea58ff692f8 88
+  s_0f3438e72748f1::t_3679bcefa51ffe 42-58,60-75,77-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ed0643c41622c8a5791847ffd05fcf58556e5550",
+  "prompts": {},
+  "sessions": {
+    "s_0f3438e72748f1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6acb35f0-c27f-4625-a405-5e012e24e0aa",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
