@@ -18,6 +18,8 @@
  *   A1 出生台地(-142..-130) → A2 墓园径三段+袋形墓苑×2 → A3 古达房 r17(c=3.5，可走 32.2)
  *   → 门 B(19.6) → C1 法兰哨路 36m → C2 监视者房 r19(c=74，可走 36.2)
  *   → D1 碎星径 → D2 拉塔恩战场 r91(c=195，可走 180.2)
+ * 三间 Boss 环墙内侧面贴可走圆（距圆心 r−0.9），只向外加厚，净高 ≥3.5m。
+ * 走廊口按半宽 2.75m 留同宽门洞；洞弧上石楣从过头处接到墙顶，楣下铁栅内侧面同样贴可走圆，栅条从地面伸到过头。
  *   人尺度：三间房另铺 1–3m 石碎（不乘 A3k/C2k/D2k）。古达是墓石和断柱，监视者是冷灰石碎，
  *   拉塔恩外圈是短剑和焦黑石块；场心约 6m 留空，用来在加大后的空地上读出远近。
  *   直跑 spawn→雾门 130.5m ≈ 21s @6.2m/s（教学区 20-30s 预算内）
@@ -441,6 +443,92 @@ export function buildCemetery(scene: THREE.Scene): {
     }
   };
 
+  /**
+   * Boss 环墙。内侧面贴可走圆 walk=r−0.9，厚度只向外加。
+   * 走廊口（|z|≤HALF）留同宽门洞。洞弧石楣从 barTop 接到墙顶，楣下铁栅贴同一半径，
+   * 栅条从地面伸到石楣（高于头顶）。全程不调用 rnd，避免搅乱后面的确定性散布。
+   */
+  const arenaRing = (
+    dst: THREE.BufferGeometry[],
+    cx: number,
+    walk: number,
+    doors: ReadonlyArray<"east" | "west">,
+    body: number,
+    alt: number,
+    capCol: number,
+    wallH: number,
+    thick: number,
+    ruin: boolean,
+  ): void => {
+    const capH = 0.22;
+    const barTop = 2.8;
+    const barT = 0.14;
+    const barW = 0.11;
+    const phi = Math.asin(HALF / walk);
+    const cuts: Array<[number, number]> = [];
+    if (doors.includes("east")) cuts.push([-phi, phi]);
+    if (doors.includes("west")) {
+      cuts.push([-Math.PI, -Math.PI + phi]);
+      cuts.push([Math.PI - phi, Math.PI]);
+    }
+    const remain = (a0: number, a1: number): Array<[number, number]> => {
+      let parts: Array<[number, number]> = [[a0, a1]];
+      for (const [c0, c1] of cuts) {
+        const next: Array<[number, number]> = [];
+        for (const [p0, p1] of parts) {
+          if (p1 <= c0 || p0 >= c1) { next.push([p0, p1]); continue; }
+          if (p0 < c0) next.push([p0, c0]);
+          if (p1 > c1) next.push([c1, p1]);
+        }
+        parts = next;
+      }
+      return parts;
+    };
+    /** 切向长 len 的石块。内侧面在 walk（中心半径 = walk + t/2），radShift 只向外偏。 */
+    const slab = (am: number, len: number, y0: number, h: number, tone: number, t: number, radShift = 0): void => {
+      if (len < 0.05 || h <= 0.02) return;
+      const rad = walk + t / 2 + radShift;
+      dst.push(boxG(len, h, t, cx + Math.cos(am) * rad, y0 + h / 2, Math.sin(am) * rad, tone, { ry: -am + Math.PI / 2 }));
+    };
+    const chord = (a0: number, a1: number): number => 2 * walk * Math.sin((a1 - a0) / 2) - 0.02;
+    const dA = 2.55 / (walk + thick / 2);
+    let segI = 0;
+    for (let a0 = -Math.PI; a0 < Math.PI - 1e-8;) {
+      const a1 = Math.min(Math.PI, a0 + dA);
+      const h = ruin ? wallH + (segI % 7) * 0.16 : wallH;
+      const tone = segI % 5 === 0 ? alt : body;
+      for (const [b0, b1] of remain(a0, a1)) {
+        const len = chord(b0, b1);
+        const am = (b0 + b1) / 2;
+        slab(am, len, 0, h - capH, tone, thick);
+        slab(am, len, h - capH, capH, capCol, thick);
+        if (!ruin && b1 - b0 > dA * 0.86 && segI % 2 === 0) slab(am, 0.56, h, 0.46, capCol, thick);
+      }
+      segI++;
+      a0 = a1;
+    }
+    // 门洞按中线整段铺。奇数根栅，正中一根压在走廊中线上——西口若从 ±π 劈开，中线会漏一条空缝。
+    const grateDoor = (mid: number, half: number): void => {
+      let n = Math.max(3, Math.round((walk * 2 * half) / 0.3));
+      if (n % 2 === 0) n += 1;
+      const step = (2 * half) / n;
+      for (let i = 0; i < n; i++) slab(mid - half + step * (i + 0.5), barW, 0, barTop, PAL.steel, barT);
+      const piece = Math.min(dA, 2 * half);
+      for (let t = -half; t < half - 1e-8;) {
+        const t1 = Math.min(half, t + piece);
+        const am = mid + (t + t1) / 2;
+        const len = 2 * walk * Math.sin((t1 - t) / 2) - 0.015;
+        slab(am, len, 1.22, 0.08, PAL.steel, barT, 0.015);
+        slab(am, len, barTop - 0.08, 0.08, PAL.steel, barT, 0.015);
+        slab(am, len, barTop, wallH - barTop - capH, body, thick);
+        slab(am, len, wallH - capH, capH, capCol, thick);
+        t = t1;
+      }
+    };
+    if (doors.includes("east")) grateDoor(0, phi);
+    if (doors.includes("west")) grateDoor(Math.PI, phi);
+  };
+
   // —— A1 出生台地（-142..-130）：来路悬崖封死 + 破拱门出口 + 篝火空场 ——
   {
     const W = structW;
@@ -538,10 +626,11 @@ export function buildCemetery(scene: THREE.Scene): {
     brazier(E, GATE_X - 1.05, -3.05, 2.4);
   }
 
-  // —— A3 古达 Boss 房（r17，c=3.5，可走 32.2）：残柱环贴新圆边 + 外圈墓群 ——
+  // —— A3 古达 Boss 房（r17，c=3.5，可走 32.2）：环墙内侧面贴可走圆 16.1，西雾门/东门 B 留走廊宽门洞 ——
   {
     const E = structE, cx = A3C;
-    const colR = A3R - 0.5;                              // 旧 11.5 = r-0.5，贴可走边外侧
+    arenaRing(E, cx, A3R - 0.9, ["west", "east"], PAL.stoneDark, PAL.stone, PAL.stoneMid, 4, 1.05, false);
+    const colR = (A3R - 0.9) + 1.25;                     // 残柱让到环墙外皮之外，不再从内侧面戳进可走圆
     for (let i = 0; i < 11; i++) {
       const a = (i / 11) * Math.PI * 2 + 0.28;
       if (Math.abs(Math.cos(a)) > 0.86) continue;        // 让开东西两口（雾门/门 B）
@@ -692,10 +781,11 @@ export function buildCemetery(scene: THREE.Scene): {
     mossPatch(C, X1 - 5.2, X1 - 1.6, -1, 1.0, 2.935);
   }
 
-  // —— C2 监视者 Boss 房（r19，c=74，可走 36.2）：符文尖碑环 + 环缘残墙 + 断王座仪式 + 蓝烛台 ——
+  // —— C2 监视者 Boss 房（r19，c=74，可走 36.2）：环墙内侧面贴可走圆 18.1，西哨路/东碎星径留走廊宽门洞 ——
   {
     const C = structC, cx = C2C;
-    const obeliskR = C2R - 0.5;                         // 旧 11.5 = r-0.5，贴可走边外侧
+    arenaRing(C, cx, C2R - 0.9, ["west", "east"], PAL.crypt, PAL.cryptDark, PAL.cryptMid, 4.2, 0.85, false);
+    const obeliskR = (C2R - 0.9) - 1.45;                // 尖碑退到墙内，不穿可走圆上的环墙
     for (let i = 0; i < 10; i++) {                       // 尖碑环（让开西口；朝场一面刻法兰符文 emissive）
       const a = (i / 10) * Math.PI * 2 + 0.31;
       if (Math.cos(a) > 0.86) continue;
@@ -710,7 +800,7 @@ export function buildCemetery(scene: THREE.Scene): {
         blueGeoms.push(boxG(rr(0.05, 0.1), rr(0.18, 0.4), 0.05,
           x - Math.cos(a) * (sd / 2 + 0.028), 0.85 + k * 0.62 + rnd() * 0.2, z - Math.sin(a) * (sd / 2 + 0.028), 0x000000, { ry: ry0 }));
     }
-    // 环缘残墙（贴 r+0.45，让开西口/南侧封门位）：东北段崩塌豁口——豁口之上望见天穹冷月与监视者立影
+    // 外裙残墙（仍在环墙外侧 r+0.45，不担任可走圆边界）。东口会切进碎星径的那几段拨到廊墙外。
     const RIM = C2R + 0.45, moonA = -0.59, doorA = Math.atan2(-13.2, 2.2);
     for (let i = 0; i < 26; i++) {
       const a = (i / 26) * Math.PI * 2 + 0.09;
@@ -718,16 +808,21 @@ export function buildCemetery(scene: THREE.Scene): {
       if (Math.abs(a - doorA) < 0.36) continue;                              // 让开南侧封门位
       const brk = Math.abs(a - moonA) < 0.42;                                // 崩塌豁口段（冷月方位）
       if (brk && rnd() < 0.7) continue;                                      // 豁口仅存残牙
+      let placeA = a;
+      if (Math.cos(a) > 0.5 && Math.abs(Math.sin(a) * RIM) < HALF + 1.2) {
+        const s = Math.sin(a) < 0 ? -1 : 1;
+        placeA = s * Math.asin((HALF + 2.6) / RIM);                          // 3m 宽的残段不要横在东走廊里
+      }
       const h = brk ? rr(0.5, 1.1) : rr(2.0, 3.1);
-      C.push(boxG(3.0, h, 0.55, cx + Math.cos(a) * RIM, h / 2, Math.sin(a) * RIM, pick([PAL.cryptDark, PAL.cryptDeep]), { ry: -a + Math.PI / 2 + rr(-0.07, 0.07), rz: brk ? rr(-0.1, 0.1) : rr(-0.03, 0.03), jitter: 0.1 }));
+      C.push(boxG(3.0, h, 0.55, cx + Math.cos(placeA) * RIM, h / 2, Math.sin(placeA) * RIM, pick([PAL.cryptDark, PAL.cryptDeep]), { ry: -placeA + Math.PI / 2 + rr(-0.07, 0.07), rz: brk ? rr(-0.1, 0.1) : rr(-0.03, 0.03), jitter: 0.1 }));
       if (!brk && rnd() < 0.45) {                                            // 墙头残垛（顶高 ≤3.35 常态低于跟背相机）
         const mh = rr(0.35, 0.6);
-        C.push(boxG(0.6, mh, 0.45, cx + Math.cos(a) * (RIM - 0.05), h + 0.15 + mh / 2, Math.sin(a) * (RIM - 0.05), PAL.cryptMid, { ry: -a + Math.PI / 2, jitter: 0.14 }));
+        C.push(boxG(0.6, mh, 0.45, cx + Math.cos(placeA) * (RIM - 0.05), h + 0.15 + mh / 2, Math.sin(placeA) * (RIM - 0.05), PAL.cryptMid, { ry: -placeA + Math.PI / 2, jitter: 0.14 }));
       }
     }
     rubble(C, cx + Math.cos(moonA) * (RIM - 1.95), Math.sin(moonA) * (RIM - 1.95), 0.85, 7); // 豁口内侧塌落碎石（环内 1.95m，同旧 12.45-10.5）
     // —— 东沿断王座：三层仪式台阶 + 高背主座 + 两侧残座 + 散落王冠 + 剑冢插地（贴新东沿）——
-    const TX = cx + (C2R - 2.3);                         // 旧 cx+9.7 = r-2.3，靠背仍贴环墙内侧
+    const TX = cx + (C2R - 0.9) - 3.55;                  // 靠背东面停在可走圆内侧，东口铁栅不穿王座
     C.push(boxG(6.6, 0.2, 7.8, TX - 0.5, 0.1, 0, PAL.cryptMid, { jitter: 0.07 }));       // 一层台
     C.push(boxG(5.4, 0.2, 6.0, TX + 0.2, 0.3, 0, PAL.cryptMid, { jitter: 0.07 }));       // 二层台
     C.push(boxG(4.2, 0.22, 4.3, TX + 0.9, 0.5, 0, PAL.crypt, { jitter: 0.07 }));         // 三层台
@@ -854,13 +949,19 @@ export function buildCemetery(scene: THREE.Scene): {
     D.push(dodG(1.1, C2_E + 0.7, 0.5, 1.9, PAL.stoneDeep, { ry: 1.8 }));
     D.push(boxG(3.4, 0.4, 0.5, C2_E + 1.4, 2.6, -1.2, PAL.stoneMid, { rz: 0.18, ry: 0.3, jitter: 0.1 }));   // 探出断梁
     rubble(D, C2_E + 2.0, 0.2, 0.6, 6);
-    // D2 环缘残墙（贴 r-0.1..r+0.8，西口让位 ±28°，切向宽度按半径放大，否则 3.6m 墙段在 180m 圆上消失）
+    // 可走圆上的残墙（内侧面 = r−0.9 = 90.1）。西口只留碎星径那么宽，其余一圈都有石头。
+    arenaRing(D, D2C, D2R - 0.9, ["west"], PAL.stoneDark, PAL.stoneDeep, PAL.stoneMid, 3.5, 1.05, true);
+    // 外扶壁：仍消耗原来的三段 rnd，贴在环墙外侧，不再悬在可走圆外面当空气墙。
     for (let i = 0; i < 18; i++) {
       const a = Math.PI + (Math.PI * 2 * i) / 18;
-      const mouth = Math.cos(a % (Math.PI * 2)) < -0.883;   // 西口 ±28°
+      const mouth = Math.cos(a % (Math.PI * 2)) < -0.883;   // 西口 ±28°（比走廊门洞宽，扶壁不挡门）
       if (mouth || rnd() < 0.22) continue;
-      const r = rr(D2R - 0.1, D2R + 0.8);
-      D.push(boxG(3.6 * D2k, rr(1.2, 3.0), 0.5, D2C + Math.cos(a) * r, rr(0.6, 1.5), Math.sin(a) * r, PAL.stoneDark, { ry: -a + Math.PI / 2, jitter: 0.12 }));
+      const rRoll = rr(D2R - 0.1, D2R + 0.8);
+      const hRoll = rr(1.2, 3.0);
+      const yRoll = rr(0.6, 1.5);
+      const h = 3.55 + (hRoll - 1.2) / 1.8 * 1.1 + Math.abs(yRoll - 1.05) * 0.02;
+      const r = (D2R - 0.9) + 1.675 + (rRoll - (D2R + 0.35)) * 0.04;
+      D.push(boxG(2.4, h, 0.85, D2C + Math.cos(a) * r, h / 2, Math.sin(a) * r, PAL.stoneDark, { ry: -a + Math.PI / 2, jitter: 0.12 }));
     }
     // 陨石半埋 ×3（紫纹巨砾——「星坠」的实体证词；位置随陨坑铺到新战场，裂纹走 purpleGeoms）
     for (const [ox, oz, ms] of [[-6.5, -5.0, 1.05], [5.5, 4.5, 0.85], [2.0, -8.0, 0.6]] as const) {
