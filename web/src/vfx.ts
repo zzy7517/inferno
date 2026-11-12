@@ -148,11 +148,59 @@ export class Vfx {
     this.arcs.push({ mesh, life: 0.25, tl: 0.25 });   // 约 0.25s：前段亮、尾段淡出
   }
 
-  /** 冲击环：扩散圆环（下劈震波/变身爆发） */
+  /** 贴地冲击波。外径 1 是波前，由 ring 按 radius 缩放。内缘贴地偏暗，外缘抬起成一条亮边。 */
+  private static ringGeo(): THREE.BufferGeometry {
+    const seg = 48;
+    // r 半径，y 离地高度，b 亮度（乘到调用方传入的颜色上，不改色相）。
+    const section = [
+      [0.78, 0.008, 0.14], // 内缘贴地
+      [0.78, 0.022, 0.24], // 内缘上沿
+      [0.86, 0.040, 0.34], // 波身
+      [0.92, 0.064, 0.48], // 抬向波峰
+      [0.96, 0.082, 0.72], // 波峰，亮边开始
+      [1.00, 0.058, 1.00], // 波前上沿
+      [1.00, 0.012, 1.00], // 波前贴地，最亮
+      [0.90, 0.008, 0.32], // 腹下收回
+      [0.82, 0.006, 0.16],
+    ];
+    const n = section.length;
+    const pos = new Float32Array(seg * n * 3);
+    const col = new Float32Array(seg * n * 3);
+    for (let i = 0; i < seg; i++) {
+      const ang = (i / seg) * Math.PI * 2;
+      const c = Math.cos(ang), s = Math.sin(ang);
+      for (let j = 0; j < n; j++) {
+        const [r, y, b] = section[j];
+        const o = (i * n + j) * 3;
+        pos[o] = c * r; pos[o + 1] = y; pos[o + 2] = s * r;
+        col[o] = b; col[o + 1] = b; col[o + 2] = b;
+      }
+    }
+    const idx = new Uint16Array(seg * n * 6);
+    let w = 0;
+    for (let i = 0; i < seg; i++) {
+      const i2 = (i + 1) % seg;
+      for (let j = 0; j < n; j++) {
+        const j2 = (j + 1) % n;
+        const a = i * n + j;
+        const b = i2 * n + j;
+        const c = i2 * n + j2;
+        const d = i * n + j2;
+        idx[w++] = a; idx[w++] = b; idx[w++] = c;
+        idx[w++] = a; idx[w++] = c; idx[w++] = d;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.Uint16BufferAttribute(idx, 1));
+    return g;
+  }
+
+  /** 冲击环：贴地扩散的波前（下劈震波/变身爆发） */
   ring(pos: THREE.Vector3, radius: number, color = COLORS.ember): void {
-    const geo = new THREE.TorusGeometry(1, 0.05, 8, 40);
-    geo.rotateX(Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+    const geo = Vfx.ringGeo();
+    const mat = new THREE.MeshBasicMaterial({ color, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(pos); mesh.position.y = 0.06;
     this.scene.add(mesh);
