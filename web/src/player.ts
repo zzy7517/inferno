@@ -326,27 +326,24 @@ export class Player {
         if (this.rmbDown) { this.enter("block"); break; }
         const b = this.buffered;
         if (b) {
-          this.buffered = null;
+          // 精力不够就留着缓冲，等回复到能出招；喝不了的原素瓶直接丢掉
           if (b.kind === "r1") {
             const sprinting = moving && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"));
-            // 疾跑中 R1 → 跑攻（跳步直刺，朝移动方向）
-            if (sprinting && this.canSpend(P.r1Cost)) { this.startMove("runAttack", inputDir); break; }
-            // W 按住 + R1 轻点(<0.15s) → 踢击（破盾；对 Boss 仅微量伤害）
+            if (sprinting && this.canSpend(P.r1Cost)) { this.buffered = null; this.startMove("runAttack", inputDir); break; }
             if (this.keys.has("KeyW") && b.tapDur < 0.15 && this.canSpend(P.kickCost)) {
-              this.faceBoss(aim, dt, true); this.startMove("kick"); break;
+              this.buffered = null; this.faceBoss(aim, dt, true); this.startMove("kick"); break;
             }
-            if (this.canSpend(P.r1Cost)) { this.spend(P.r1Cost); this.combo = 0; this.faceBoss(aim, dt, true); this.enter("attack"); break; }
-          }
-          if (b.kind === "roll") {
-            // 静止按空格 → 后撤步（1.6m 后跃，有无敌帧）；有方向输入 → 翻滚
+            if (this.canSpend(P.r1Cost)) { this.buffered = null; this.spend(P.r1Cost); this.combo = 0; this.faceBoss(aim, dt, true); this.enter("attack"); break; }
+          } else if (b.kind === "roll") {
             if (!moving && this.canSpend(P.backstepCost)) {
+              this.buffered = null;
               this.dodgeDir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
               this.enter("backstep"); break;
             }
-            if (moving && this.canSpend(P.rollCost)) { this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
-          }
-          if (b.kind === "parry" && this.canSpend(P.parryCost)) { this.enter("parry"); break; }
-          if (b.kind === "estus" && this.estus > 0 && this.hp < P.hp) { this.enter("estus"); break; }
+            if (moving && this.canSpend(P.rollCost)) { this.buffered = null; this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
+          } else if (b.kind === "parry" && this.canSpend(P.parryCost)) { this.buffered = null; this.enter("parry"); break; }
+          else if (b.kind === "estus" && this.estus > 0 && this.hp < P.hp) { this.buffered = null; this.enter("estus"); break; }
+          else if (b.kind === "estus") this.buffered = null;
         }
         // 移动
         if (moving) {
@@ -378,11 +375,15 @@ export class Player {
         // 后摇 55% 后可翻滚取消 / 接下一刀
         const cancelAt = m.startup + m.active + m.recovery * m.cancelFrom;
         if (tt >= cancelAt && this.buffered) {
-          const b = this.buffered; this.buffered = null;
-          if (b.kind === "roll" && this.canSpend(P.rollCost)) { this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break; }
-          if (b.kind === "r1" && this.canSpend(P.r1Cost) && this.combo < 2) {
-            this.spend(P.r1Cost); this.combo++; this.faceBoss(aim, dt, true); this.enter("attack"); break;
+          const b = this.buffered;
+          if (b.kind === "roll" && this.canSpend(P.rollCost)) {
+            this.buffered = null; this.setDodgeDir(inputDir, camYaw); this.enter("roll"); break;
           }
+          if (b.kind === "r1" && this.combo < 2 && this.canSpend(P.r1Cost)) {
+            this.buffered = null; this.spend(P.r1Cost); this.combo++; this.faceBoss(aim, dt, true); this.enter("attack"); break;
+          }
+          if (b.kind !== "r1" && b.kind !== "roll") this.buffered = null;
+          else if (b.kind === "r1" && this.combo >= 2) this.buffered = null;
         }
         // -1e-3：clip 时长为浮点（0.89999997…），clampWhenFinished 后与 total 差亿分之一会导致永不收招（真机 rAF 必现）
         if (tt >= m.total / (this.actions.attack.timeScale || 1) - 1e-3) {
