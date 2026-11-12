@@ -1,0 +1,19 @@
+web/src/boss-radahn.ts
+  s_eb3e785bcb9cea::t_f7745f2025f424 36-37,188,190-194,350-352,354-356,358-375,385,393,422,684-688,694,702
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "47d9587bfa3bb1d43bfa2e8a493da05fbc0fd3de",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
