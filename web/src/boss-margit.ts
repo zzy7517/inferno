@@ -289,16 +289,27 @@ export class Margit extends BossBase {
       this.rags.push(strip);
       this.body.add(strip);
     }
-    // 尾（袍下三节，横扫尾击时甩出）
+    // 尾：粗节之间收成细腰，末端是尖。尾根、尾尖仍钉在两端。
     this.tailG.position.set(0, 1.44, -0.2);
-    const tailRoot = box(0.16, 0.16, 0.48, skinDark, 0, 0, -0.24);
-    const tailMid = box(0.13, 0.13, 0.42, skinDark, 0, -0.08, -0.62);
-    const tailEnd = box(0.1, 0.1, 0.34, skinDark, 0, -0.2, -0.94);
-    this.tailHilt.position.set(0, 0, 0.24);                                   // 尾根端面
+    const tailRoot = box(0.22, 0.18, 0.3, skinDark, 0, 0.02, -0.15);
+    this.tailHilt.position.set(0, 0, 0.15);                                   // 尾根端面
     tailRoot.add(this.tailHilt);
-    this.tailTip.position.set(0, 0, -0.17);                                   // 尾尖端面
-    tailEnd.add(this.tailTip);
-    this.tailG.add(tailRoot, tailMid, tailEnd);
+    const tailMid = box(0.16, 0.14, 0.26, skinDark, 0, -0.08, -0.54);
+    const tailEnd = box(0.12, 0.1, 0.16, skinDark, 0, -0.17, -0.84);
+    const tailPoint = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.28, 4), skinDark);
+    tailPoint.rotation.x = -Math.PI / 2 - 0.35;                               // 尖顺着下垂的尾
+    tailPoint.position.set(0, -0.26, -1.02);
+    tailPoint.castShadow = true;
+    this.tailTip.position.set(0, 0.14, 0);                                    // 锥尖
+    tailPoint.add(this.tailTip);
+    this.tailG.add(
+      tailRoot,
+      box(0.08, 0.07, 0.14, skinDark, 0, -0.02, -0.34),                       // 节间细腰
+      tailMid,
+      box(0.06, 0.055, 0.12, skinDark, 0, -0.13, -0.7),
+      tailEnd,
+      tailPoint,
+    );
     this.body.add(this.tailG);
 
     // 躯干（窄削佝偻）——底座 y 1.64
@@ -341,7 +352,7 @@ export class Margit extends BossBase {
     this.head.add(this.goldLight);
     this.torso.add(this.head);
 
-    // 右臂 + 咒杖（长 2.3，握中段，顶端分叉咒枝 + 金符文环）
+    // 右臂 + 咒杖。杆仍是木色；顶端分叉杖头比杆粗，远处不是一根棍子。
     this.armR.position.set(0.34, 0.6, 0);
     this.armR.add(box(0.11, 0.5, 0.13, skinDark, 0, -0.22, 0));
     this.armR.add(box(0.09, 0.46, 0.11, skin, 0, -0.6, 0.02));
@@ -349,33 +360,40 @@ export class Margit extends BossBase {
     const staff = new THREE.Group();
     staff.position.set(0, -0.98, 0.06);
     staff.rotation.x = 0.16;                                                 // 杖尾后曳
-    staff.add(box(0.055, 0.16, 0.055, robeDark, 0, 0.05, 0));                // 握柄缠布
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.05, 2.3, 6), wood);
-    shaft.position.y = -0.22; shaft.castShadow = true;
-    this.staffHilt.position.set(0, -1.15, 0);                                 // 杖尾端面
+    staff.add(box(0.08, 0.2, 0.08, robeDark, 0, 0.02, 0));                   // 握处缠布
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.068, 2.05, 6), wood);
+    shaft.position.y = -0.36; shaft.castShadow = true;
+    this.staffHilt.position.set(0, -1.025, 0);                                // 杖尾端面
     shaft.add(this.staffHilt);
     staff.add(shaft);
-    const fork1 = box(0.035, 0.42, 0.035, wood, 0.06, 1.0, 0);
-    fork1.rotation.z = -0.55;
-    this.staffTip.position.set(0, 0.21, 0);                                   // 分叉咒枝顶端
-    fork1.add(this.staffTip);
-    const fork2 = box(0.03, 0.34, 0.03, wood, -0.07, 0.95, 0);
-    fork2.rotation.z = 0.6;
+    staff.add(box(0.1, 0.11, 0.1, wood, 0.012, -0.02, 0.03));                // 瘤结
+    staff.add(box(0.12, 0.05, 0.12, this.runeMat, 0, 0.2, 0));               // 金符文环
+    staff.add(box(0.11, 0.045, 0.11, this.runeMat, 0, 0.44, 0));
+    staff.add(box(0.18, 0.26, 0.18, wood, 0, 0.78, 0));                      // 杖颈
+    staff.add(box(0.22, 0.07, 0.22, this.runeMat, 0, 0.86, 0));              // 杖头金箍
+    staff.add(box(0.26, 0.16, 0.18, wood, 0, 0.96, 0));                      // 分叉根，短，不是剑格
+    const fork1 = box(0.16, 0.52, 0.16, wood, 0.2, 1.15, 0.02);
+    fork1.rotation.z = -0.65;
+    const forkCap = box(0.11, 0.12, 0.11, this.runeMat, 0, 0.3, 0);         // 伸出枝端
+    this.staffTip.position.set(0, 0.06, 0);                                  // 咒枝金头外端
+    forkCap.add(this.staffTip);
+    fork1.add(forkCap);
+    const fork2 = box(0.15, 0.44, 0.15, wood, -0.17, 1.1, -0.02);
+    fork2.rotation.z = 0.72;
+    fork2.add(box(0.1, 0.1, 0.1, this.runeMat, 0, 0.25, 0));
     staff.add(fork1, fork2);
-    staff.add(box(0.075, 0.035, 0.075, this.runeMat, 0, 0.42, 0));           // 金符文环 ×2
-    staff.add(box(0.07, 0.03, 0.07, this.runeMat, 0, 0.78, 0));
-    staff.add(box(0.07, 0.09, 0.07, wood, 0.01, 0.12, 0.02));                // 瘤结
     this.armR.add(staff);
-    // 召唤金锤（Giant-Crusher 风味）：挂右手，显形度 updateVisuals 缓动（hammerShow）
+    // 召唤金锤：短木柄 + 厚方头。锤面比锤身宽出一圈，外端面仍是命中尖。
     this.hammerG.position.set(0, -1.02, 0.16);
-    const hammerHandle = box(0.055, 0.66, 0.055, wood, 0, -0.1, 0);          // 短柄
-    this.hammerHilt.position.set(0, -0.33, 0);                                // 柄端
+    const hammerHandle = box(0.09, 0.6, 0.09, wood, 0, -0.15, 0);
+    this.hammerHilt.position.set(0, -0.3, 0);                                 // 柄端
     hammerHandle.add(this.hammerHilt);
-    const hammerHead = box(0.46, 0.34, 0.42, this.hammerMat, 0, 0.32, 0);    // 金锤头
-    this.hammerTip.position.set(0, 0.17, 0);                                  // 锤头外端面
-    hammerHead.add(this.hammerTip);
-    this.hammerG.add(hammerHandle, hammerHead);
-    this.hammerG.add(box(0.5, 0.08, 0.46, this.hammerMat, 0, 0.14, 0));      // 锤颈箍
+    const hammerHead = box(0.62, 0.52, 0.58, this.hammerMat, 0, 0.3, 0);     // 厚方头
+    const hammerFace = box(0.78, 0.14, 0.7, this.hammerMat, 0, 0.58, 0);     // 锤面，宽出锤身
+    this.hammerTip.position.set(0, 0.07, 0);                                  // 锤面外端
+    hammerFace.add(this.hammerTip);
+    this.hammerG.add(hammerHandle, hammerHead, hammerFace);
+    this.hammerG.add(box(0.22, 0.12, 0.22, this.hammerMat, 0, 0.08, 0));     // 锤颈
     this.hammerLight = new THREE.PointLight(GOLD, 0, 4, 2);
     this.hammerLight.position.set(0, 0.32, 0);
     this.hammerG.add(this.hammerLight);
@@ -393,23 +411,52 @@ export class Margit extends BossBase {
       claw.rotation.x = 0.5 + i * 0.12;
       this.armL.add(claw);
     }
-    const heldBlade = box(0.035, 0.4, 0.015, steel, 0, -0.75, 0.1);          // 袖中咒刃（钝钢）
-    heldBlade.rotation.x = 0.35;
-    this.sleeveHilt.position.set(0, 0.2, 0);
-    this.sleeveTip.position.set(0, -0.2, 0);
-    heldBlade.add(this.sleeveHilt, this.sleeveTip);
-    this.armL.add(heldBlade);
-    // 召唤金剑（Carian 直剑风味）：挂左手，杖剑三连第三拍显形挥斩（swordShow）
+    // 袖刃要短：木柄、小格、钢刃分开，两端仍钉在柄尾和刃尖。
+    const sleeve = new THREE.Group();
+    sleeve.position.set(0, -0.75, 0.1);
+    sleeve.rotation.x = 0.35;
+    const sleeveGrip = box(0.05, 0.13, 0.046, wood, 0, 0.115, 0);
+    this.sleeveHilt.position.set(0, 0.065, 0);                                // 柄尾
+    sleeveGrip.add(this.sleeveHilt);
+    const sleevePoint = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.1, 4), steel);
+    sleevePoint.rotation.x = Math.PI;
+    sleevePoint.position.set(0, -0.19, 0);
+    sleevePoint.castShadow = true;
+    this.sleeveTip.position.set(0, 0.05, 0);                                  // 刃尖
+    sleevePoint.add(this.sleeveTip);
+    sleeve.add(
+      sleeveGrip,
+      box(0.11, 0.032, 0.06, steel, 0, 0.035, 0),                            // 小格，把柄和刃切开
+      box(0.028, 0.18, 0.014, steel, 0, -0.055, 0),
+      sleevePoint,
+    );
+    this.armL.add(sleeve);
+    // 召唤金剑：握柄、宽剑格、收尖，和顶端分叉的木杖分开。
     this.swordG.position.set(0, -0.92, 0.08);
     this.swordG.rotation.x = 0.2;
-    this.swordG.add(box(0.05, 0.18, 0.05, robeDark, 0, 0, 0));               // 柄
-    const swordGuard = box(0.24, 0.04, 0.05, this.swordMat, 0, -0.12, 0);    // 护手
-    swordGuard.add(this.swordHilt);
-    const swordPoint = box(0.045, 0.18, 0.018, this.swordMat, 0, -1.38, 0);  // 剑尖收锋
-    this.swordTip.position.set(0, -0.09, 0);
+    this.swordG.add(box(0.062, 0.26, 0.062, robeDark, 0, 0, 0));             // 握柄
+    for (const gy of [-0.06, 0.04]) this.swordG.add(box(0.08, 0.028, 0.08, this.swordMat, 0, gy, 0));
+    const pommel = box(0.11, 0.1, 0.11, this.swordMat, 0, 0.16, 0);          // 柄头
+    this.swordHilt.position.set(0, 0.05, 0);                                  // 柄尾端面
+    pommel.add(this.swordHilt);
+    const ql = box(0.07, 0.16, 0.07, this.swordMat, -0.24, -0.22, 0);
+    ql.rotation.z = 0.7;
+    const qr = box(0.07, 0.16, 0.07, this.swordMat, 0.24, -0.22, 0);
+    qr.rotation.z = -0.7;
+    const swordPoint = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.22, 4), this.swordMat);
+    swordPoint.rotation.x = Math.PI;
+    swordPoint.position.set(0, -1.46, 0);
+    swordPoint.castShadow = true;
+    this.swordTip.position.set(0, 0.11, 0);                                   // 剑尖
     swordPoint.add(this.swordTip);
-    this.swordG.add(swordGuard);
-    this.swordG.add(box(0.07, 1.15, 0.022, this.swordMat, 0, -0.72, 0));     // 剑身
+    this.swordG.add(pommel);
+    this.swordG.add(box(0.52, 0.08, 0.1, this.swordMat, 0, -0.16, 0));        // 剑格
+    this.swordG.add(box(0.14, 0.12, 0.12, this.swordMat, 0, -0.16, 0));
+    this.swordG.add(ql, qr);
+    this.swordG.add(box(0.1, 0.28, 0.046, this.swordMat, 0, -0.34, 0));       // 剑根
+    this.swordG.add(box(0.05, 0.78, 0.042, this.swordMat, 0, -0.8, 0));       // 脊
+    this.swordG.add(box(0.095, 0.7, 0.02, this.swordMat, 0, -0.78, 0));       // 刃缘，正面比杆宽
+    this.swordG.add(box(0.05, 0.24, 0.03, this.swordMat, 0, -1.26, 0));       // 收窄
     this.swordG.add(swordPoint);
     this.swordG.visible = false;
     this.armL.add(this.swordG);
