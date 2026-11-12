@@ -241,7 +241,7 @@ export class Margit extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：枯瘦高大咒物妖鬼（肩宽 ~0.9 / 高 ~2.9，佝偻 + 咒杖 + 破布长袍 + 双角 + 额前金光） ----------------
+  // ---------------- 外观：恶兆躯体（脚到颅顶约 3.4 / 角与斗篷约 3.8，不超过 4；肩宽于腰，头嵌在肩下） ----------------
   protected override buildBody(): void {
     const skin = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.95, metalness: 0.02, flatShading: true });
     const skinDark = new THREE.MeshStandardMaterial({ color: SKIN_DARK, roughness: 1, flatShading: true });
@@ -250,7 +250,7 @@ export class Margit extends BossBase {
     const wood = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.9, flatShading: true });
     const steel = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.5, metalness: 0.5, flatShading: true });
     this.runeMat = new THREE.MeshStandardMaterial({ color: 0xb99a55, emissive: GOLD, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0.3, flatShading: true });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x120d06, roughness: 0.5, emissive: GOLD, emissiveIntensity: 0.85 });
+    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x120d06, roughness: 0.5, emissive: GOLD, emissiveIntensity: 0.85, flatShading: true });
     this.hammerMat = new THREE.MeshStandardMaterial({ color: 0xcbb277, emissive: GOLD, emissiveIntensity: 0, roughness: 0.35, metalness: 0.5, flatShading: true, transparent: true, opacity: 0.92 });
     this.swordMat = new THREE.MeshStandardMaterial({ color: 0xd6bd82, emissive: GOLD, emissiveIntensity: 0, roughness: 0.3, metalness: 0.55, flatShading: true, transparent: true, opacity: 0.9 });
 
@@ -259,104 +259,146 @@ export class Margit extends BossBase {
       m.position.set(x, y, z); m.castShadow = true;
       return m;
     };
+    // 上端半径、下端半径。沿局部 +Y 为上，手臂和腿都是上粗下细。
+    const cyl = (rt: number, rb: number, h: number, mat: THREE.Material, x = 0, y = 0, z = 0, n = 6) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, n), mat);
+      m.position.set(x, y, z); m.castShadow = true;
+      return m;
+    };
+    const ball = (r: number, mat: THREE.Material, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), mat);
+      m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.castShadow = true;
+      return m;
+    };
+    // 圆柱几何转到 Z 轴，网格本身不转，子级命中点还钉在原来的局部坐标上。
+    const alongZ = (rt: number, rb: number, len: number) => {
+      const g = new THREE.CylinderGeometry(rt, rb, len, 5);
+      g.rotateX(Math.PI / 2);
+      return g;
+    };
 
-    // 枯瘦双腿（袍下若隐若现）——髋枢轴 + 膝枢轴（crouch 弯折 / legL 抬左腿）——腿根 y 1.5（高大）
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.16], [this.legL, this.shinL, -0.16]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.5, 0);
-      leg.add(box(0.15, 0.68, 0.18, skinDark, 0, -0.34, 0));                 // 大腿
-      shin.position.set(0, -0.68, 0);
-      shin.add(box(0.12, 0.62, 0.14, skinDark, 0, -0.31, 0.01));             // 小腿
-      shin.add(box(0.15, 0.08, 0.3, skinDark, 0, -0.62, 0.07));              // 足
+    // 枯瘦腿：髋粗、踝细。髋 1.58，脚底落在 y=0。膝枢轴仍给 crouch / 抬左腿用。
+    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.17], [this.legL, this.shinL, -0.17]] as [THREE.Group, THREE.Group, number][]) {
+      leg.position.set(sx, 1.58, 0);
+      leg.add(cyl(0.125, 0.074, 0.76, skinDark, 0, -0.38, 0));
+      shin.position.set(0, -0.76, 0);
+      shin.add(cyl(0.072, 0.042, 0.76, skinDark, 0, -0.38, 0.012));
+      const foot = ball(0.07, skinDark, 0, -0.789, 0.07, 0.85, 0.45, 1.75);
+      foot.name = "sole";
+      shin.add(foot);
       leg.add(shin);
       this.body.add(leg);
     }
-    // 骨盆 + 绳腰带（守门人的粗绳束腰）
-    this.body.add(box(0.4, 0.26, 0.3, skinDark, 0, 1.52, 0));
-    this.body.add(box(0.46, 0.08, 0.36, robeDark, 0, 1.42, 0));
-    this.body.add(box(0.07, 0.16, 0.05, robeDark, 0.16, 1.36, 0.19));
-    // 破布长袍下摆：阶梯四层 + 摆缘破布条六片（随步态摆动，见 updateVisuals）
-    this.robe.push(
-      box(0.52, 0.34, 0.4, robe, 0, 1.3, 0),
-      box(0.62, 0.34, 0.48, robe, 0, 1.0, 0),
-      box(0.74, 0.34, 0.56, robeDark, 0, 0.7, 0),
-      box(0.86, 0.3, 0.64, robeDark, 0, 0.44, 0.02),
-    );
-    for (const s of this.robe) this.body.add(s);
+    // 腰是全身最窄的一圈。肩在躯干上另起，不跟这条一样宽。
+    const waist = cyl(0.175, 0.15, 0.24, skinDark, 0, 1.54, 0);
+    waist.name = "waist";
+    this.body.add(waist);
+    this.body.add(cyl(0.215, 0.215, 0.055, robeDark, 0, 1.42, 0));
+    this.body.add(box(0.055, 0.12, 0.04, robeDark, 0.15, 1.36, 0.16));
+    // 破布下摆：上收下放，四层半径都不一样。摆动仍走 updateVisuals。
+    for (const [rt, rb, h, y, mat] of [
+      [0.24, 0.32, 0.28, 1.26, robe],
+      [0.30, 0.40, 0.26, 1.00, robe],
+      [0.36, 0.48, 0.26, 0.74, robeDark],
+      [0.42, 0.54, 0.24, 0.50, robeDark],
+    ] as [number, number, number, number, THREE.Material][]) {
+      const skirt = cyl(rt, rb, h, mat, 0, y, 0.02);
+      skirt.scale.z = 0.78;
+      this.robe.push(skirt);
+      this.body.add(skirt);
+    }
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + 0.4;
-      const strip = box(0.09, 0.32 + (i % 3) * 0.08, 0.03, robeDark, Math.sin(a) * 0.44, 0.32, Math.cos(a) * 0.44);
+      const strip = box(0.07, 0.30 + (i % 3) * 0.08, 0.022, robeDark, Math.sin(a) * 0.50, 0.30, Math.cos(a) * 0.38);
       strip.rotation.y = a;
       this.rags.push(strip);
       this.body.add(strip);
     }
-    // 尾：粗节之间收成细腰，末端是尖。尾根、尾尖仍钉在两端。
+    // 一条尾巴。节段改成圆椎，尾根、尾尖仍钉在两端，局部坐标不挪。
     this.tailG.position.set(0, 1.44, -0.2);
-    const tailRoot = box(0.22, 0.18, 0.3, skinDark, 0, 0.02, -0.15);
-    this.tailHilt.position.set(0, 0, 0.15);                                   // 尾根端面
+    const tailRoot = new THREE.Mesh(alongZ(0.11, 0.09, 0.30), skinDark);
+    tailRoot.position.set(0, 0.02, -0.15); tailRoot.castShadow = true;
+    this.tailHilt.position.set(0, 0, 0.15);
     tailRoot.add(this.tailHilt);
-    const tailMid = box(0.16, 0.14, 0.26, skinDark, 0, -0.08, -0.54);
-    const tailEnd = box(0.12, 0.1, 0.16, skinDark, 0, -0.17, -0.84);
+    const tailLink = new THREE.Mesh(alongZ(0.045, 0.035, 0.14), skinDark);
+    tailLink.position.set(0, -0.02, -0.34); tailLink.castShadow = true;
+    const tailMid = new THREE.Mesh(alongZ(0.08, 0.065, 0.26), skinDark);
+    tailMid.position.set(0, -0.08, -0.54); tailMid.castShadow = true;
+    const tailLink2 = new THREE.Mesh(alongZ(0.034, 0.026, 0.12), skinDark);
+    tailLink2.position.set(0, -0.13, -0.7); tailLink2.castShadow = true;
+    const tailEnd = new THREE.Mesh(alongZ(0.055, 0.04, 0.16), skinDark);
+    tailEnd.position.set(0, -0.17, -0.84); tailEnd.castShadow = true;
     const tailPoint = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.28, 4), skinDark);
-    tailPoint.rotation.x = -Math.PI / 2 - 0.35;                               // 尖顺着下垂的尾
+    tailPoint.rotation.x = -Math.PI / 2 - 0.35;
     tailPoint.position.set(0, -0.26, -1.02);
     tailPoint.castShadow = true;
-    this.tailTip.position.set(0, 0.14, 0);                                    // 锥尖
+    this.tailTip.position.set(0, 0.14, 0);
     tailPoint.add(this.tailTip);
-    this.tailG.add(
-      tailRoot,
-      box(0.08, 0.07, 0.14, skinDark, 0, -0.02, -0.34),                       // 节间细腰
-      tailMid,
-      box(0.06, 0.055, 0.12, skinDark, 0, -0.13, -0.7),
-      tailEnd,
-      tailPoint,
-    );
+    this.tailG.add(tailRoot, tailLink, tailMid, tailLink2, tailEnd, tailPoint);
     this.body.add(this.tailG);
 
-    // 躯干（窄削佝偻）——底座 y 1.64
+    // 躯干枢轴仍在 y 1.64。腹小、胸大，肩梁比腰宽，头从肩窝前面伸出来。
     this.torso.position.y = 1.64;
-    this.torso.add(box(0.36, 0.3, 0.26, skinDark, 0, 0.05, 0));              // 腹
-    this.torso.add(box(0.44, 0.4, 0.3, robe, 0, 0.38, 0));                   // 胸（袍裹）
-    this.torso.add(box(0.4, 0.24, 0.32, robeDark, 0, 0.6, 0.01));            // 上层
-    this.torso.add(box(0.34, 0.36, 0.06, skinDark, 0, 0.4, -0.17));          // 背脊（佝偻隆起）
-    // 破烂肩布（非金属，咒体旅装）
+    const gut = ball(0.16, skinDark, 0, 0.12, 0.04, 1.05, 0.9, 0.72);
+    gut.name = "gut";
+    this.torso.add(gut);
+    const chest = ball(0.26, robe, 0, 0.50, 0.06, 1.28, 1.05, 1.08);
+    chest.name = "chest";
+    this.torso.add(chest);
+    this.torso.add(ball(0.15, skinDark, 0, 0.46, -0.22, 0.8, 1.35, 0.62));
+    this.torso.add(cyl(0.012, 0.012, 0.38, robeDark, 0.07, 0.36, 0.24, 5));
+    this.torso.add(cyl(0.012, 0.012, 0.38, robeDark, -0.07, 0.36, 0.24, 5));
+    this.torso.add(box(0.055, 0.08, 0.03, skinDark, 0, 0.16, 0.24));
+    const yoke = cyl(0.1, 0.1, 1.28, robeDark, 0, 1.72, -0.06);
+    yoke.rotation.z = Math.PI / 2;
+    yoke.name = "shoulder";
+    this.torso.add(yoke);
     for (const s of [-1, 1]) {
-      const p1 = box(0.24, 0.14, 0.3, robeDark, s * 0.3, 0.62, 0);
-      p1.rotation.z = -s * 0.35;
-      const p2 = box(0.16, 0.1, 0.24, robe, s * 0.38, 0.52, 0.02);
-      p2.rotation.z = -s * 0.55;
-      this.torso.add(p1, p2);
+      const delt = ball(0.2, robeDark, s * 0.54, 1.58, -0.02, 1.15, 1.0, 0.95);
+      delt.name = "shoulder";
+      this.torso.add(delt);
+      const cowl = cyl(0.02, 0.11, 0.72, robe, s * 0.34, 1.70, -0.08);
+      cowl.rotation.set(-0.35, 0, -s * 0.28);
+      cowl.name = "cowl";
+      this.torso.add(cowl);
     }
-    // 胸前垂绳（两股，挂一枚小骨符）
-    this.torso.add(box(0.025, 0.4, 0.025, robeDark, 0.08, 0.3, 0.15));
-    this.torso.add(box(0.025, 0.4, 0.025, robeDark, -0.08, 0.3, 0.15));
-    this.torso.add(box(0.07, 0.1, 0.04, skinDark, 0, 0.12, 0.17));
+    const hood = cyl(0.04, 0.18, 0.62, robeDark, 0, 1.70, -0.18);
+    hood.rotation.x = 0.42;
+    hood.name = "cowl";
+    this.torso.add(hood);
+    this.torso.add(cyl(0.075, 0.095, 0.18, skin, 0, 1.30, 0.22));
 
-    // 头：恶兆颅（瘦长）+ 后掠双角 + 金瞳 + 额前预言金光印记
-    this.head.position.set(0, 0.82, 0.03);
-    this.head.add(box(0.22, 0.3, 0.26, skin, 0, 0, 0));                      // 颅
-    this.head.add(box(0.18, 0.12, 0.2, skinDark, 0, -0.18, 0.02));           // 颌
-    this.head.add(box(0.2, 0.1, 0.06, skinDark, 0, 0.06, 0.12));             // 眉骨
-    for (const ex of [-0.055, 0.055]) this.head.add(box(0.05, 0.035, 0.02, this.eyeMat, ex, 0.05, 0.145));
-    const mark = box(0.06, 0.08, 0.02, this.runeMat, 0, 0.16, 0.135);        // 预言印记（斜置菱形）
+    // 颅顶约 3.40。角从肩窝里往后掠，最高点交给角和斗篷，不另做一截方盒子。
+    this.head.position.set(0, 1.515, 0.34);
+    const skull = ball(0.16, skin, 0, 0.04, 0, 0.98, 1.28, 1.08);
+    skull.name = "skull";
+    this.head.add(skull);
+    this.head.add(ball(0.1, skinDark, 0, -0.1, 0.045, 0.9, 0.6, 1.02));
+    this.head.add(box(0.17, 0.04, 0.04, skinDark, 0, 0.1, 0.145));
+    for (const ex of [-0.05, 0.05]) this.head.add(box(0.04, 0.026, 0.016, this.eyeMat, ex, 0.06, 0.158));
+    const mark = box(0.048, 0.062, 0.016, this.runeMat, 0, 0.16, 0.155);
     mark.rotation.z = Math.PI / 4;
     this.head.add(mark);
-    for (const s of [-1, 1]) {                                               // 后掠双角（两节）
-      const h1 = box(0.05, 0.3, 0.05, skinDark, s * 0.12, 0.22, -0.05);
-      h1.rotation.set(-0.5, 0, -s * 0.5);
-      const h2 = box(0.04, 0.26, 0.04, skinDark, s * 0.2, 0.42, -0.14);
-      h2.rotation.set(-0.95, 0, -s * 0.7);
+    for (const s of [-1, 1]) {
+      const h1 = cyl(0.018, 0.038, 0.34, skinDark, s * 0.07, 0.26, -0.02);
+      h1.rotation.set(-0.48, 0, -s * 0.4);
+      const h2 = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.4, 5), skinDark);
+      h2.position.set(s * 0.15, 0.525, -0.13);
+      h2.rotation.set(-0.95, 0, -s * 0.55);
+      h2.castShadow = true;
+      h2.name = "horn";
       this.head.add(h1, h2);
     }
     this.goldLight = new THREE.PointLight(GOLD, 0.7, 5, 2);
-    this.goldLight.position.set(0, 0.16, 0.32);
+    this.goldLight.position.set(0, 0.16, 0.3);
     this.head.add(this.goldLight);
     this.torso.add(this.head);
 
-    // 右臂 + 咒杖。杆仍是木色；顶端分叉杖头比杆粗，远处不是一根棍子。
-    this.armR.position.set(0.34, 0.6, 0);
-    this.armR.add(box(0.11, 0.5, 0.13, skinDark, 0, -0.22, 0));
-    this.armR.add(box(0.09, 0.46, 0.11, skin, 0, -0.6, 0.02));
-    this.armR.add(box(0.1, 0.12, 0.12, skinDark, 0, -0.9, 0.04));            // 枯爪握持
+    // 右臂从肩窝垂下，上粗下细。咒杖仍握在原来的手里，柄和尖不挪。
+    this.armR.position.set(0.34, 1.42, 0);
+    this.armR.add(cyl(0.115, 0.072, 0.52, skinDark, 0, -0.26, 0));
+    this.armR.add(cyl(0.07, 0.042, 0.46, skin, 0, -0.64, 0.02));
+    this.armR.add(ball(0.055, skinDark, 0, -0.9, 0.04, 1.05, 0.75, 0.9));
     const staff = new THREE.Group();
     staff.position.set(0, -0.98, 0.06);
     staff.rotation.x = 0.16;                                                 // 杖尾后曳
@@ -401,14 +443,16 @@ export class Margit extends BossBase {
     this.armR.add(this.hammerG);
     this.torso.add(this.armR);
 
-    // 左臂 + 枯爪 + 袖中咒刃（投掷位）
-    this.armL.position.set(-0.34, 0.6, 0);
-    this.armL.add(box(0.11, 0.48, 0.13, skinDark, 0, -0.21, 0));
-    this.armL.add(box(0.09, 0.44, 0.11, skin, 0, -0.57, 0.02));
-    this.armL.add(box(0.1, 0.1, 0.11, skinDark, 0, -0.85, 0.04));
-    for (let i = 0; i < 3; i++) {                                            // 三根枯爪
-      const claw = box(0.02, 0.14, 0.03, skinDark, -0.03 + i * 0.03, -0.95, 0.06);
-      claw.rotation.x = 0.5 + i * 0.12;
+    // 左臂同样上粗下细。袖刃和金剑还钉在原来的柄、尖上。
+    this.armL.position.set(-0.34, 1.42, 0);
+    this.armL.add(cyl(0.11, 0.07, 0.48, skinDark, 0, -0.24, 0));
+    this.armL.add(cyl(0.068, 0.04, 0.44, skin, 0, -0.6, 0.02));
+    this.armL.add(ball(0.05, skinDark, 0, -0.85, 0.04, 1.0, 0.7, 0.85));
+    for (let i = 0; i < 3; i++) {
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.14, 4), skinDark);
+      claw.position.set(-0.03 + i * 0.03, -0.95, 0.06);
+      claw.rotation.x = Math.PI + 0.5 + i * 0.12;
+      claw.castShadow = true;
       this.armL.add(claw);
     }
     // 袖刃要短：木柄、小格、钢刃分开，两端仍钉在柄尾和刃尖。
