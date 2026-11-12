@@ -1,0 +1,21 @@
+web/src/game.ts
+  s_97703e72bac605::t_9d6b151ebb0bf9 819,826
+  s_97703e72bac605::t_4868f528526039 893-900
+  s_97703e72bac605::t_bbbb67d0157193 883
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e33bf26b5f6bd749941c5ec9e8820d5ca509dfdc",
+  "prompts": {},
+  "sessions": {
+    "s_97703e72bac605": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b8ad59fd-40d3-4f9c-804b-fe93777139c5",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
