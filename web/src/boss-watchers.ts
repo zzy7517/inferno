@@ -8,20 +8,35 @@ import * as THREE from "three";
 import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { AU } from "./audio";
-import { BossBase, BossStats, clamp01, smooth, seg, angleWithin } from "./boss-base";
+import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin } from "./boss-base";
 import type { BossHost } from "./boss-base";
 
 export type { BossState, BossHost } from "./boss-base";
 
 // ---------------- 帧数据（m3-bosses.md 一阶段表 + 二阶段新招） ----------------
 export const MOVES_WATCHERS: Record<string, MoveDef> = {
-  // 三连斩：固定节拍 0.45s/刀。多段时间轴：第 k 段在 min(active*0.4 + k*0.45, active) 触发，
-  // active 须 ≥ 0.36+2*0.45≈1.26 才能三段全部触发 → 取 1.3（首刀 0.52 / 二刀 0.97 / 三刀收在 1.30）。
-  // 第三刀横扫（表弧 2.6）与前两刀（1.4）的弧度差异用整体 1.6 折中——拆分需引擎改逐段判定，收益不抵。
+  // 三连斩拆成三招：BossBase 一次判定只用同一个 m.arc，第三刀要真横扫只能单独一招（弧 2.6）。
+  // watcherCombo 的名字不动；回斩/横扫只走 chain，不进选招池，所以节拍仍是「出了第一刀就有第三刀」。
+  // 吃刀硬直 0.4s、翻滚 0.7s（无敌 0.04–0.30）。命中间隔 = 上一段 active×0.6 + 后摇 + 下一段前摇 + 下一段 active×0.4。
+  // 前两刀间隔 0.84s（active 0.22，命中落在 0.088s，约等于表内 0.10 判定）：硬直末段缓冲的翻滚能盖住下一刀。
+  // 第三刀前摇 0.52s，剑扔开再扫。首段可弹反的窗口就是这一下判定前的约 0.09s，前摇 0.32s 用来读。
+  // 旧数据把三段塞进 active 1.3、弧折中 1.6：第三刀被钳到 t=active（间隔只剩 0.33s，短于硬直），
+  // 且刀光与切后摇同一帧，updateVisuals 只在 act 里补画，第三刀刀光从不出现。
   watcherCombo: {
-    name: "watcherCombo", label: "三连斩", startup: 0.32, active: 1.3, recovery: 0.75,
-    dmg: 12, range: 3.0, arc: 1.6, hits: 3, hitInterval: 0.45,
-    parryable: true, cd: 3.5, feel: "wCombo",   // 仅首段可弹反由引擎保证（首段命中关窗 + t>active*0.7 关窗）
+    name: "watcherCombo", label: "三连斩", startup: 0.32, active: 0.22, recovery: 0.28,
+    dmg: 12, range: 3.0, arc: 1.4,
+    parryable: true, cd: 3.5, chain: "watcherCombo2", feel: "wCombo", // 仅首段可弹反
+  },
+  watcherCombo2: {
+    name: "watcherCombo2", label: "三连斩·回斩", startup: 0.34, active: 0.22, recovery: 0.28,
+    dmg: 12, range: 3.0, arc: 1.4,
+    parryable: false, cd: 0, chain: "watcherSweep", feel: "wCombo",
+  },
+  // 第三刀横扫。前摇里把剑横着拉开并停住；后摇 0.75 是整段连斩的惩罚窗口（表内后摇落在收尾）。
+  watcherSweep: {
+    name: "watcherSweep", label: "三连斩·横扫", startup: 0.52, active: 0.22, recovery: 0.75,
+    dmg: 12, range: 3.0, arc: 2.6,
+    parryable: false, cd: 0, feel: "wHeavy",
   },
   // 突进斩：lunge 位移由子类在 movePose tel 段消费（引擎的 lunge 字段仅数据，无人统一施加）
   watcherDash: {
@@ -80,13 +95,13 @@ const STANCE: WPose = { y: 0, lean: 0.08, twist: -0.12, crouch: 0, reach: 0, arm
 const STATUE_W: WPose = { ...STANCE, lean: 0.1, twist: 0, armLift: 0.15, armSwing: 0, armL: 0.05, nod: 0.5 };  // 垂剑而立、低头（监视者是站像）
 const KNEEL: WPose = { ...STANCE, y: -0.62, lean: 0.5, crouch: 0.55, nod: 0.75, armLift: 0.3, armSwing: 0.25, armL: 0.3 };  // 单膝跪地 + 剑拄地
 const RISE: WPose = { ...STANCE, lean: -0.12, armLift: -0.55, armSwing: -0.2, nod: -0.12, twist: 0.1 };                     // 红焰站起挺剑
-// 三连斩三刀姿态（拍内 wind→strike；1 右→左斜劈 / 2 左→右回斩 / 3 大横扫最扑）
+// 三连斩三刀姿态（1 右→左斜劈 / 2 左→右回斩 / 3 躯干连剑一起扔开——轮廓必须比前两刀宽一档）
 const C1W: WPose = { ...STANCE, twist: 0.55, armLift: -0.9, armSwing: -0.75 };
 const C1K: WPose = { ...STANCE, twist: -0.5, armLift: 0.55, armSwing: 0.9, lean: 0.18 };
 const C2W: WPose = { ...STANCE, twist: -0.45, armLift: -0.6, armSwing: 0.8 };
 const C2K: WPose = { ...STANCE, twist: 0.5, armLift: 0.5, armSwing: -0.95, lean: 0.14 };
-const C3W: WPose = { ...STANCE, twist: 0.8, armLift: -0.35, armSwing: -1.1 };
-const C3K: WPose = { ...STANCE, twist: -0.85, armLift: 0.35, armSwing: 1.3, lean: 0.22, crouch: 0.12 };
+const C3W: WPose = { ...STANCE, twist: 1.2, armLift: -0.55, armSwing: -1.6, lean: -0.16, crouch: 0.24, reach: -0.06, nod: 0.22, armL: 0.5 };
+const C3K: WPose = { ...STANCE, twist: -1.22, armLift: 0.2, armSwing: 1.85, lean: 0.48, crouch: 0.02, reach: 0.5, nod: -0.1, armL: -0.45, y: 0.03 };
 
 export class Watchers extends BossBase {
   private body = new THREE.Group();
@@ -110,6 +125,8 @@ export class Watchers extends BossBase {
   private moveLen = 0;
   private p2Applied = false;                        // 二阶段数值 buff 是否已写入共享表
   private slashFired = 0;                           // 已补画刀光的判定段数（与 hitFired 对齐，多段每段一刀光）
+  private lastPick = "";                            // 上一记选招，同招连续降权
+  private steerT = 0;                               // 上挑前摇内转向的段内时钟
 
   constructor(scene: THREE.Scene, vfx: Vfx, pos: THREE.Vector3, host: BossHost, facing = -Math.PI / 2) {
     super(scene, vfx, pos, host, WATCHERS_STATS, facing);
@@ -251,8 +268,13 @@ export class Watchers extends BossBase {
     const wind: WPose = { ...STANCE }, strike: WPose = { ...STANCE };
     switch (m.name) {
       case "watcherCombo":
-        wind.twist = 0.5; wind.armLift = -0.85; wind.armSwing = -0.7; wind.nod = 0.12;
-        strike.twist = -0.55; strike.armLift = 0.75; strike.armSwing = 0.95; strike.lean = 0.22;
+        Object.assign(wind, C1W); Object.assign(strike, C1K);
+        break;
+      case "watcherCombo2":
+        Object.assign(wind, C2W); Object.assign(strike, C2K);
+        break;
+      case "watcherSweep":
+        Object.assign(wind, C3W); Object.assign(strike, C3K);
         break;
       case "watcherDash":
         wind.twist = 0.55; wind.armLift = -0.4; wind.armSwing = -0.5; wind.crouch = 0.18; wind.reach = 0.1;
@@ -267,23 +289,44 @@ export class Watchers extends BossBase {
         strike.twist = 0.7; strike.armLift = 0.35; strike.armSwing = -1.15; strike.lean = 0.15;
         break;
       case "watcherFirenova":
-        wind.armLift = -2.5; wind.crouch = 0.2; wind.lean = -0.08; wind.twist = 0.4;           // 剑竖举蓄势
-        strike.armLift = 0.45; strike.armSwing = 1.25; strike.lean = 0.14;                     // 挥平扫圆（spin 转体）
+        // 剑竖直举起（和横扫的侧向拉开分开），后半段前摇停在这个姿势上
+        wind.armLift = -2.45; wind.armSwing = 0; wind.crouch = 0.22; wind.lean = -0.2; wind.twist = 0.12; wind.nod = -0.28;
+        strike.armLift = 0.35; strike.armSwing = 1.35; strike.lean = 0.12; strike.crouch = 0.06;
         break;
     }
     if (sub === "tel") {
-      this.lerpPose(STANCE, wind, smooth(seg(t, m.startup * 0.45, m.startup)));
-      // 位移段：突进斩前冲（最多冲到玩家身前 1m）/ 后撤斩反向撤步 1.5m（基准在 onMoveStart 记录）
+      // 上挑：绕背时前摇内转过身，否则弧 1.2 永远打在空气里（idle 转向会被这记选招立刻打断）
+      if (m.name === "watcherRiser") {
+        const dt = Math.min(0.05, Math.max(0, t - this.steerT));
+        this.steerT = t;
+        this.facePlayer(6.2, dt);
+      }
+      // 横扫 / 旋风：前半段摆到蓄势，后半段停住。连斩两刀的前摇全程都在动，缝才看得见。
+      const held = m.name === "watcherSweep" || m.name === "watcherFirenova";
+      const linked = m.name === "watcherCombo" || m.name === "watcherCombo2";
+      const tell = held
+        ? smooth(seg(t, m.startup * 0.05, m.startup * 0.5))
+        : linked
+          ? smooth(seg(t, m.startup * 0.08, m.startup * 0.9))
+          : smooth(seg(t, m.startup * 0.45, m.startup));
+      this.lerpPose(STANCE, wind, tell);
+      // 位移段：突进斩前冲（最多冲到玩家身前 1m）/ 后撤斩反向撤步 1.5m / 横扫小踏步（基准在 onMoveStart 记录）
       if (this.moveLen !== 0) {
         const k = smooth(clamp01((t - m.startup * 0.3) / (m.startup * 0.7)));
         this.root.position.copy(this.moveFrom).addScaledVector(this.moveDir, this.moveLen * k);
       }
     } else if (sub === "act") {
-      if (m.name === "watcherCombo") this.comboPose(t, m);
-      else if (m.name === "watcherFirenova") {
+      this.emitSlash(m, t);   // 与命中同一帧；收在 active 末帧的刀也不会因为切后摇被吃掉
+      if (m.name === "watcherFirenova") {
         const k = smooth(clamp01(t / m.active));
         this.lerpPose(wind, strike, k);
         this.pose.spin = Math.PI * 2 * k;   // 恰好整一圈
+      } else if (m.name === "watcherSweep") {
+        // 命中在 active*0.4；在此之前甩到扔开的尽头并停住
+        const k = clamp01(t / (m.active * 0.42));
+        this.lerpPose(wind, strike, 1 - (1 - k) * (1 - k));
+      } else if (m.name === "watcherCombo" || m.name === "watcherCombo2") {
+        this.lerpPose(wind, strike, smooth(clamp01(t / (m.active * 0.75))));
       } else this.lerpPose(wind, strike, seg(t, 0, m.active));
     } else {
       this.lerpPose(strike, STANCE, smooth(seg(t, m.recovery * 0.35, m.recovery)));
@@ -292,15 +335,27 @@ export class Watchers extends BossBase {
     void total;
   }
 
-  /** 三连斩判定段姿态：三拍与引擎判定时刻对齐（首刀 active*0.4，其后每 0.45s），交替方向、末刀最横 */
-  private comboPose(t: number, m: MoveDef): void {
+  /** 刀光与基类多段时刻同一公式，画在 act 内、命中判定之前 */
+  private emitSlash(m: MoveDef, t: number): void {
+    const hits = m.hits ?? 1;
     const firstAt = m.active * 0.4;
-    const ph = clamp01((t - firstAt) / (m.active - firstAt)) * 3;
-    const idx = Math.min(2, Math.floor(ph));
-    const s = smooth(clamp01(ph - idx));
-    const w = idx === 0 ? C1W : idx === 1 ? C2W : C3W;
-    const k = idx === 0 ? C1K : idx === 1 ? C2K : C3K;
-    this.lerpPose(w, k, s);
+    const interval = m.hitInterval ?? 0.45;
+    const burn = this.phase === 2;
+    while (this.slashFired < hits && t >= Math.min(firstAt + this.slashFired * interval, m.active)) {
+      this.slashFired++;
+      this.vfx.slash(this.chestWorld(), this.yaw, m.range * 0.85,
+        m.arc > 2 || m.name === "watcherFirenova", burn ? 0xff5a20 : 0xd7e3ec);
+    }
+  }
+
+  /** 前摇内朝玩家转，速率封顶，卡帧不会一帧拧过身 */
+  private facePlayer(rate: number, dt: number): void {
+    const toP = this.playerPos.clone().sub(this.root.position);
+    toP.y = 0;
+    if (toP.lengthSq() < 1e-4 || dt <= 0) return;
+    let d = Math.atan2(toP.x, toP.z) - this.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.yaw += clampMag(d, rate * dt);
   }
 
   // ---------------- 监视者专属覆盖点 ----------------
@@ -319,7 +374,7 @@ export class Watchers extends BossBase {
     if (this.t >= 1.6) { this.state = "combat"; this.sub = "idle"; this.t = 0; }
   }
 
-  /** 眼缝红点呼吸 / 二阶段燃剑 / 披风摆动 / 刀光按判定段补画 / 二阶段数值 buff 一次性写入 */
+  /** 眼缝红点呼吸 / 二阶段燃剑 / 披风摆动 / 二阶段数值 buff 一次性写入（刀光在 movePose 的判定帧画） */
   protected override updateVisuals(): void {
     const now = performance.now();
     let eye = this.state === "statue" ? 0.3 : this.phase === 2 ? 1.8 : 0.8;
@@ -335,21 +390,14 @@ export class Watchers extends BossBase {
       c.rotation.x = 0.16 + Math.sin(now * 0.003 + i * 1.7) * 0.09;
       c.rotation.z = Math.sin(now * 0.0022 + i * 2.3) * 0.06;
     }
-    // 刀光：每段判定一刀光（hitFired 无条件按节拍推进，躲开也照画；首段与命中同帧）
-    if (this.state === "combat" && this.sub === "act" && this.move) {
-      while (this.slashFired < this.hitFired) {
-        this.slashFired++;
-        this.vfx.slash(this.chestWorld(), this.yaw, this.move.range * 0.85,
-          this.move.arc > 2 || this.move.name === "watcherFirenova", burn ? 0xff5a20 : 0xd7e3ec);
-      }
-    }
-    // 二阶段数值 buff：一次性改写共享帧数据表（reset 还原）
+    // 二阶段数值 buff：一次性改写共享帧数据表（reset 还原）。刀光在 movePose 的 act 里画，与命中同帧。
     if (burn && !this.p2Applied) this.applyPhase2Moves();
   }
 
   private applyPhase2Moves(): void {
     this.p2Applied = true;
     for (const m of Object.values(MOVES_WATCHERS)) {
+      // 燃剑只加长判定距离和伤害。前摇保持各招原值，二阶段不是无前摇连段。
       m.range = P1_BASE[m.name].range + 0.4;
       m.dmg = Math.round(P1_BASE[m.name].dmg * 1.25);
     }
@@ -367,10 +415,16 @@ export class Watchers extends BossBase {
     this.pose.y = Math.abs(Math.sin(performance.now() * 0.0126)) * 0.045 - 0.015;
   }
 
-  /** 位移类招基准：突进斩朝玩家 / 后撤斩沿面向反向 */
+  /** 横扫 whoosh 更闷，和前两刀的脆刀分开 */
+  protected override activeWhooshVolume(m: MoveDef): number {
+    return m.name === "watcherSweep" || m.name === "watcherFirenova" ? 0.62 : 1;
+  }
+
+  /** 位移类招基准：突进斩朝玩家 / 后撤斩沿面向反向 / 横扫踏进一步 */
   protected override onMoveStart(m: MoveDef, toPlayer: THREE.Vector3, dist: number): void {
     this.moveFrom.copy(this.root.position);
     this.slashFired = 0;
+    this.steerT = 0;
     this.moveLen = 0;
     if (m.name === "watcherDash") {
       this.moveDir.copy(toPlayer).setY(0).normalize();
@@ -378,6 +432,9 @@ export class Watchers extends BossBase {
     } else if (m.name === "watcherBackslash") {
       this.moveDir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       this.moveLen = 1.5;
+    } else if (m.name === "watcherSweep") {
+      this.moveDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      this.moveLen = Math.min(0.7, Math.max(0, dist - 0.9));
     }
   }
 
@@ -431,10 +488,13 @@ export class Watchers extends BossBase {
     return true;
   }
 
-  /** 被击反击（后撤斩）：正常受击（未死/未破绽/未入演出）、后摇或待机、cd 好 → 30% 打断后摇立即反击 */
+  /** 被击反击（后撤斩）：正常受击（未死/未破绽/未入演出）、后摇或待机、cd 好 → 30% 打断后摇立即反击。
+   *  不进选招池。三连斩的段间后摇不是反击窗口，否则第三刀横扫会被受击掐掉。 */
   override takeHit(dmg: number, poise: number): { died: boolean; staggered: boolean } {
     const r = super.takeHit(dmg, poise);
     const bs = MOVES_WATCHERS.watcherBackslash;
+    const linking = this.move?.name === "watcherCombo" || this.move?.name === "watcherCombo2";
+    if (linking) return r;
     if (!r.died && !r.staggered && this.state === "combat" && (this.sub === "rec" || this.sub === "idle")
       && (this.cds[bs.name] ?? 0) <= 0 && Math.random() < 0.3) {
       this.sub = "tel"; this.move = bs; this.t = 0;
@@ -452,6 +512,8 @@ export class Watchers extends BossBase {
     super.reset();
     this.transformHitAt = 1.2;
     this.transformDur = 2.4;
+    this.lastPick = "";
+    this.steerT = 0;
   }
 
   protected override releaseSharedState(): void {
@@ -466,26 +528,51 @@ export class Watchers extends BossBase {
     this.lerpPose(STANCE, STATUE_W, 1);
   }
 
+  /** 三连斩的后续段必出。基类 chain 是 40% 且出了射程就取消，会把「第三刀必横扫」变成掷骰。 */
+  protected override pickChain(m: MoveDef, dist: number, toPlayer: THREE.Vector3): MoveDef | null {
+    if (m.name === "watcherCombo" || m.name === "watcherCombo2") {
+      const next = m.chain ? MOVES_WATCHERS[m.chain] : undefined;
+      return next ?? null;
+    }
+    return super.pickChain(m, dist, toPlayer);
+  }
+
   // ---------------- 选招（监视者权重） ----------------
   protected override pickMove(dist: number): MoveDef | null {
+    const M = MOVES_WATCHERS;
     const ready = (m: MoveDef) => (this.cds[m.name] ?? 0) <= 0 && (!m.phase2Only || this.phase === 2);
-    // 背身（面向偏离玩家 > 2.1rad）或玩家贴身（<1.3）→ 上挑优先（击飞解围）
+    // 背身或贴身 → 上挑解围。必须在命中距离内：原先任意距离背身都会挥空，而且前摇不转向，弧 1.2 打不中。
+    // 贴身连续上挑让给权重池（同招降权）；绕背仍然上挑，因为只有这一招会在前摇里转身。
     const toP = this.playerPos.clone().sub(this.root.position); toP.y = 0;
     const dirYaw = Math.atan2(toP.x, toP.z);
-    if ((dist < 1.3 || !angleWithin(this.yaw, dirYaw, 2.1)) && ready(MOVES_WATCHERS.watcherRiser)) {
-      return MOVES_WATCHERS.watcherRiser;
+    const riser = M.watcherRiser;
+    const facedAway = toP.lengthSq() > 1e-4 && !angleWithin(this.yaw, dirYaw, 2.1);
+    const hugging = dist < 1.3;
+    if (ready(riser) && dist <= riser.range + 0.35 && (facedAway || (hugging && this.lastPick !== riser.name))) {
+      return this.remember(riser);
     }
+    const penalize = (m: MoveDef, w: number) => (w > 0 && m.name === this.lastPick ? w * 0.35 : w);
+    // 贴身时上挑仍留在池里（降权后），否则「刚上挑过」会把唯一够得着的招也拿掉
+    const riserW = dist > 1.5 || hugging ? 1.5 : 0;
+    // 二阶段刀长 +0.4，旋风的出手距离带跟着外扩，否则加长的判定接不到人
+    const novaFar = 4.5 + (this.phase === 2 ? 0.4 : 0);
     const pool: [MoveDef, number][] = [
-      [MOVES_WATCHERS.watcherCombo, 3],
-      [MOVES_WATCHERS.watcherDash, dist > 2.0 ? 2.5 : 0],
-      [MOVES_WATCHERS.watcherRiser, dist > 1.5 ? 1.5 : 0],
-      [MOVES_WATCHERS.watcherFirenova, this.phase === 2 && dist > 2.5 && dist < 4.5 ? 2 : 0],
+      [M.watcherCombo, penalize(M.watcherCombo, 3)],
+      [M.watcherDash, penalize(M.watcherDash, dist > 2.0 ? 2.5 : 0)],
+      [M.watcherRiser, penalize(M.watcherRiser, riserW)],
+      [M.watcherFirenova, penalize(M.watcherFirenova, this.phase === 2 && dist > 2.5 && dist < novaFar ? 2 : 0)],
     ];
+    // 回斩 / 横扫 / 后撤斩不进池：后两段只从 chain 来，后撤斩只从受击来
     const cands = pool.filter(([m, w]) => w > 0 && ready(m) && dist < m.range * 0.95);
     if (!cands.length) return null;
     const sum = cands.reduce((s, [, w]) => s + w, 0);
     let r = Math.random() * sum;
-    for (const [m, w] of cands) { r -= w; if (r <= 0) return m; }
-    return cands[0][0];
+    for (const [m, w] of cands) { r -= w; if (r <= 0) return this.remember(m); }
+    return this.remember(cands[0][0]);
+  }
+
+  private remember(m: MoveDef): MoveDef {
+    this.lastPick = m.name;
+    return m;
   }
 }
