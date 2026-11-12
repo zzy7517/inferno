@@ -1,0 +1,27 @@
+web/src/game.ts
+  s_c653b285af7847::t_710529755f56e9 154
+web/src/enemy.ts
+  s_c653b285af7847::t_cd1d21e2392efd 815-817,827
+  s_c653b285af7847::t_6a504b436334e1 151-153,156-161,163,167-178,180,184-206
+  s_c653b285af7847::t_5b9299bc0de654 61-63
+  s_c653b285af7847::t_faf5bf5fa0b41f 272
+  s_c653b285af7847::t_2c0b28148fff43 727-728
+  s_c653b285af7847::t_d1cca692ef8194 235-236
+  s_c653b285af7847::t_9b2a4ec6352d1e 207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "09ca0913e98aaeac404de48e7d0c72bcd827a15a",
+  "prompts": {},
+  "sessions": {
+    "s_c653b285af7847": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5caa16a0-9106-4723-9673-0cfd6041569a",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
