@@ -1,0 +1,19 @@
+web/src/boss-morgott.ts
+  s_eb3e785bcb9cea::t_91af8891522cc1 23,48-49,213-224,298-318,352,398-399,420,432,442,465,677,954-980,1150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "559cf78850039f9f9f31bcf2da441108c1690ed2",
+  "prompts": {},
+  "sessions": {
+    "s_eb3e785bcb9cea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44d99b0a-a962-4354-8b14-061c73809047",
+        "model": "grok-4.7"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
