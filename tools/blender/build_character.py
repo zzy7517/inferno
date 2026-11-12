@@ -342,15 +342,20 @@ def build_parts(arm_obj):
     # —— 剑在右手（+X / Hand.L），顺着小臂伸出去。
     #    以前刃垂直焊在手腕上，手臂一转剑就绕骨拧。锥尖是局部 -Z，Ry(-90) 把它送向 +X。
     SWORD_R = (0, math.radians(-90), 0)
-    make_sphere("Pommel", (0.56, 0.02, 1.43), M_METAL, 0.028, seg=8, ring=6)
-    make_cyl("Grip", (0.66, 0.02, 1.43), M_DARK, 0.016, 0.15, seg=8, rot=SWORD_R)
-    guard = make_box("Guard", (0.22, 0.028, 0.038), (0.75, 0.02, 1.43), M_METAL)
+    # 刃长 1.28m，宽端留在护手处。角色约 1.8m，这是一把看得清的长剑，不是一根针。
+    BLADE_DEPTH = 1.28
+    make_sphere("Pommel", (0.56, 0.02, 1.43), M_METAL, 0.032, seg=8, ring=6)
+    make_cyl("Grip", (0.66, 0.02, 1.43), M_DARK, 0.018, 0.16, seg=8, rot=SWORD_R)
+    guard = make_box("Guard", (0.32, 0.034, 0.046), (0.75, 0.02, 1.43), M_METAL)
     guard.rotation_euler = SWORD_R
-    make_cone("Blade", (1.18, 0.02, 1.43), M_STEEL, 0.003, 0.036, 0.88, seg=6,
-              rot=SWORD_R, scale=(1.0, 0.20, 1.0))
+    blade_center = 0.74 + BLADE_DEPTH / 2
+    blade = make_cone("Blade", (blade_center, 0.02, 1.43), M_STEEL, 0.004, 0.052, BLADE_DEPTH, seg=6,
+                      rot=SWORD_R, scale=(1.0, 0.32, 1.0))
+    blade["half"] = BLADE_DEPTH / 2
     # 刃口一条窄余烬，贴在朝前的一侧，远看能把剑从披风里认出来
-    make_cone("BladeEdge", (1.16, 0.05, 1.43), M_EMBER, 0.001, 0.012, 0.78, seg=4,
-              rot=SWORD_R, scale=(1.0, 0.18, 1.0))
+    edge_depth = BLADE_DEPTH * 0.88
+    make_cone("BladeEdge", (0.78 + edge_depth / 2, 0.07, 1.43), M_EMBER, 0.001, 0.016, edge_depth, seg=4,
+              rot=SWORD_R, scale=(1.0, 0.28, 1.0))
 
     # —— 圆盾在左手 ——
     shield_rot = (math.radians(72), 0, 0)
@@ -894,8 +899,11 @@ def finish_curves(arm_obj):
         raise RuntimeError(f"手臂四元数曲线没有写进去 quat={nq}")
 
 def _blade_tip():
+    """锥尖在局部 -Z。半长记在刃上，换尺寸不用改这里。"""
     bpy.context.view_layer.update()
-    return bpy.data.objects["Blade"].matrix_world @ Vector((0.0, 0.0, -0.44))
+    blade = bpy.data.objects["Blade"]
+    half = float(blade.get("half", 0.64))
+    return blade.matrix_world @ Vector((0.0, 0.0, -half))
 
 def assert_attacks(arm_obj):
     """剑尖必须在身前划过。拧到背后、指到天上的旧挥法在这里失败。"""

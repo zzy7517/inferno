@@ -36,7 +36,7 @@ const COMBO_STEP = 0.38;
 export const MOVES_SULYVANN: Record<string, MoveDef> = {
   // active 2.2：首段 active*0.4=0.88，其后 0.88+0.50 / +0.38 / +0.38 ⇒ 0.88 / 1.38 / 1.76 / 2.14。
   // 末段距收尾 0.06s，四段都落在 active 内，不会被 min(..., active) 并到同一帧。
-  // 弹反窗仍是「act 起至首段命中，或 t>active*0.7」（约 0.88s / 1.54s），不把可弹反招改成不可弹反。
+  // 弹反窗：前摇最后 0.2s，以及判定段直到首段打实（这一下在 0.88s）。打空则整段判定仍可弹。
   sulyvahnCombo4: {
     name: "sulyvahnCombo4", label: "双剑四连", startup: 0.30, active: 2.2, recovery: 0.85,
     dmg: 11, range: 3.2, arc: 1.6, hits: 4, hitInterval: COMBO_BAIT,

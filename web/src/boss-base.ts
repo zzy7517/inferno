@@ -171,10 +171,17 @@ export abstract class BossBase {
     return { died: false, staggered: false };
   }
 
-  /** 弹反判定：Boss 处于可弹反招式的判定帧前段 */
+  /** 还能被弹开：可弹反招的前摇最后 0.2 秒，或整段判定，直到这一下打实。 */
+  canBeParried(): boolean {
+    if (this.state !== "combat" || !this.move?.parryable || this.hitDone) return false;
+    if (this.sub === "act") return true;
+    if (this.sub === "tel") return this.move.startup - this.t <= 0.2;
+    return false;
+  }
+
+  /** 弹反判定。成功则进入 parried，清掉已积的韧性。 */
   tryParried(): boolean {
-    if (this.state !== "combat" || this.sub !== "act" || !this.move || !this.move.parryable) return false;
-    if (this.t > this.move.active * 0.7 || this.hitDone) return false;
+    if (!this.canBeParried()) return false;
     this.state = "parried"; this.sub = "idle"; this.t = 0; this.poise = 0;
     return true;
   }
@@ -309,14 +316,15 @@ export abstract class BossBase {
       const hits = m.hits ?? 1;
       const firstAt = m.active * 0.4;
       const interval = m.hitInterval ?? 0.45;
-      while (this.hitFired < hits && this.t >= Math.min(firstAt + this.hitFired * interval, m.active)) {
+      while (this.hitFired < hits && this.state === "combat" && this.t >= Math.min(firstAt + this.hitFired * interval, m.active)) {
         this.hitFired++;
         if (dist <= m.range + 0.45 && angleWithin(this.yaw, dirYaw, m.arc / 2)) {
-          if (this.hitFired === 1) this.hitDone = true;   // 首段命中后关闭弹反窗
           if (!playerIframed) {
             const dir = toPlayer.clone().normalize();
             this.host.onBossHit(m.dmg, dir, this.chestWorld(), m);
           }
+          // 打实且没被弹开才关窗。弹反在 onBossHit 里先把状态切走。
+          if (this.hitFired === 1 && this.state === "combat") this.hitDone = true;
         }
       }
       if (m.shock && this.t >= m.active * 0.5 && this.t - dt < m.active * 0.5) {
