@@ -48,6 +48,7 @@ export const P = {
   bufferWindow: 0.25,
   dmgMul: 1,                                           // 调试：全局攻击倍率，命中结算时乘
   godDmg: false,                                       // 调试：两下死——命中直接结算目标 maxHp/2（忽略倍率）
+  infHp: false,                                        // 调试：无限血量——受伤不扣血（受击硬直照常）
 };
 
 export const BOSS = {

@@ -227,6 +227,9 @@ export class Player {
   }
 
   // ---------------- 外部事件 ----------------
+  /** 扣血统一入口：P.infHp（无限血量调试开关）开启时不扣，受击表现照常 */
+  private damage(v: number): void { if (!P.infHp) this.hp -= v; }
+
   /** 外部事件。feelKey：命中的手感档案（FEEL key），knockback 由档案给出 */
   applyHit(dmg: number, dir: THREE.Vector3, move: MoveDef | null, feelOverride?: string): void {
     const feelKey = feelOverride ?? move?.feel ?? "bLight";
@@ -241,17 +244,17 @@ export class Player {
       const drain = dmg * P.blockDrainMul;
       if (this.stamina >= drain) {
         this.stamina -= drain; this.spendAt = this.elapsed;
-        this.hp -= dmg * P.blockChip;
+        this.damage(dmg * P.blockChip);
         AU.blockHit();
         this.host.onPlayerHurt(dmg * P.blockChip, point, "block");
       } else {
         this.stamina = 0;
         this.enter("guardbreak");   // 破防
-        this.hp -= dmg;
+        this.damage(dmg);
         this.host.onPlayerHurt(dmg, point, feelKey);
       }
     } else {
-      this.hp -= dmg;
+      this.damage(dmg);
       this.host.onPlayerHurt(dmg, point, feelKey);
       if (move?.frost) this.applySlow(move.frost.mul, move.frost.dur);
       if (this.state !== "riposte") this.enter("hurt");

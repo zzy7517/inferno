@@ -352,6 +352,7 @@ export class Tuning {
     this.slider(d, "处决伤害", () => P.riposteDmg, x => { P.riposteDmg = Math.round(x); }, 1, 200, 1);
     this.slider(d, "攻击倍率", () => P.dmgMul, x => { P.dmgMul = x; }, 0.1, 20, 0.1);
     this.check(d, "两下死（调试）", () => P.godDmg, x => { P.godDmg = x; });
+    this.check(d, "无限血量（调试）", () => P.infHp, x => { P.infHp = x; });
     this.slider(d, "原素瓶回复", () => P.estusHeal, x => { P.estusHeal = x; }, 0.1, 1, 0.05);
     this.slider(d, "预输入窗 s", () => P.bufferWindow, x => { P.bufferWindow = x; }, 0.05, 0.5, 0.01);
 
