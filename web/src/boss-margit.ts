@@ -19,17 +19,13 @@ import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, angleWithin, pickWeighted as pickByWeight } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
-// ---------------- 主题色（冷灰咒体 + 预言金光唯一强调色） ----------------
+// ---------------- 主题色（冷灰咒体 + 预言金光唯一强调色；躯体色板在 Blender 脚本里） ----------------
 const GOLD = 0xd8b46a;        // 预言金光 / 召唤武器（巨锤/直剑/咒刃）统一辉光
 const GOLD_SLASH = 0xcfc4a4;  // 杖风轨迹（灰金，一阶段）
-const SKIN = 0x8a7d6b;        // 灰褐皮肤（枯瘦咒体）
-const SKIN_DARK = 0x6b6053;
-const ROBE = 0x37332d;        // 破布长袍（灰褐粗布）
-const ROBE_DARK = 0x28251f;
-const WOOD = 0x4a3d2c;        // 咒杖木色
 
 /** 咒刃投射物：速度 12，drop 每秒下坠 1.1 制造抛物线弹道，life 1.6s ≈ 19m 射程后自散 */
 const DAGGER_PROJ: ProjDef = { speed: 12, radius: 0.4, dmg: 14, feelKey: "mMagic", life: 1.6, color: GOLD, drop: 1.1 };
@@ -241,273 +237,53 @@ export class Margit extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：恶兆躯体（脚到颅顶约 3.4 / 角与斗篷约 3.8，不超过 4；肩宽于腰，头嵌在肩下） ----------------
+
+  // ---------------- 外观：恶兆躯体由 Blender 管线出（tools/blender/build_bosses.py）。
+  // 挂点局部变换与上面的组常量一致，mountBoss 抄回各组后 applyPose 一行不改；
+  // 判定标记（杖/锤/剑/袖刃/尾）钉在 GLB 里，招式代码仍按名字取。 ----------------
   protected override buildBody(): void {
-    const skin = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.95, metalness: 0.02, flatShading: true });
-    const skinDark = new THREE.MeshStandardMaterial({ color: SKIN_DARK, roughness: 1, flatShading: true });
-    const robe = new THREE.MeshStandardMaterial({ color: ROBE, roughness: 1, flatShading: true });
-    const robeDark = new THREE.MeshStandardMaterial({ color: ROBE_DARK, roughness: 1, flatShading: true });
-    const wood = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.9, flatShading: true });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.5, metalness: 0.5, flatShading: true });
-    this.runeMat = new THREE.MeshStandardMaterial({ color: 0xb99a55, emissive: GOLD, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0.3, flatShading: true });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x120d06, roughness: 0.5, emissive: GOLD, emissiveIntensity: 0.85, flatShading: true });
-    this.hammerMat = new THREE.MeshStandardMaterial({ color: 0xcbb277, emissive: GOLD, emissiveIntensity: 0, roughness: 0.35, metalness: 0.5, flatShading: true, transparent: true, opacity: 0.92 });
-    this.swordMat = new THREE.MeshStandardMaterial({ color: 0xd6bd82, emissive: GOLD, emissiveIntensity: 0, roughness: 0.3, metalness: 0.55, flatShading: true, transparent: true, opacity: 0.9 });
-
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    // 上端半径、下端半径。沿局部 +Y 为上，手臂和腿都是上粗下细。
-    const cyl = (rt: number, rb: number, h: number, mat: THREE.Material, x = 0, y = 0, z = 0, n = 6) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, n), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    const ball = (r: number, mat: THREE.Material, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) => {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), mat);
-      m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.castShadow = true;
-      return m;
-    };
-    // 圆柱几何转到 Z 轴，网格本身不转，子级命中点还钉在原来的局部坐标上。
-    const alongZ = (rt: number, rb: number, len: number) => {
-      const g = new THREE.CylinderGeometry(rt, rb, len, 5);
-      g.rotateX(Math.PI / 2);
-      return g;
-    };
-
-    // 枯瘦腿：髋粗、踝细。髋 1.58，脚底落在 y=0。膝枢轴仍给 crouch / 抬左腿用。
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.17], [this.legL, this.shinL, -0.17]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.58, 0);
-      leg.add(cyl(0.125, 0.074, 0.76, skinDark, 0, -0.38, 0));
-      shin.position.set(0, -0.76, 0);
-      shin.add(cyl(0.072, 0.042, 0.76, skinDark, 0, -0.38, 0.012));
-      const foot = ball(0.07, skinDark, 0, -0.789, 0.07, 0.85, 0.45, 1.75);
-      foot.name = "sole";
-      shin.add(foot);
-      leg.add(shin);
-      this.body.add(leg);
-    }
-    // 腰是全身最窄的一圈。肩在躯干上另起，不跟这条一样宽。
-    const waist = cyl(0.175, 0.15, 0.24, skinDark, 0, 1.54, 0);
-    waist.name = "waist";
-    this.body.add(waist);
-    this.body.add(cyl(0.215, 0.215, 0.055, robeDark, 0, 1.42, 0));
-    this.body.add(box(0.055, 0.12, 0.04, robeDark, 0.15, 1.36, 0.16));
-    // 破布下摆：上收下放，四层半径都不一样。摆动仍走 updateVisuals。
-    for (const [rt, rb, h, y, mat] of [
-      [0.24, 0.32, 0.28, 1.26, robe],
-      [0.30, 0.40, 0.26, 1.00, robe],
-      [0.36, 0.48, 0.26, 0.74, robeDark],
-      [0.42, 0.54, 0.24, 0.50, robeDark],
-    ] as [number, number, number, number, THREE.Material][]) {
-      const skirt = cyl(rt, rb, h, mat, 0, y, 0.02);
-      skirt.scale.z = 0.78;
-      this.robe.push(skirt);
-      this.body.add(skirt);
-    }
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.4;
-      const strip = box(0.07, 0.30 + (i % 3) * 0.08, 0.022, robeDark, Math.sin(a) * 0.50, 0.30, Math.cos(a) * 0.38);
-      strip.rotation.y = a;
-      this.rags.push(strip);
-      this.body.add(strip);
-    }
-    // 一条尾巴。节段改成圆椎，尾根、尾尖仍钉在两端，局部坐标不挪。
-    this.tailG.position.set(0, 1.44, -0.2);
-    const tailRoot = new THREE.Mesh(alongZ(0.11, 0.09, 0.30), skinDark);
-    tailRoot.position.set(0, 0.02, -0.15); tailRoot.castShadow = true;
-    this.tailHilt.position.set(0, 0, 0.15);
-    tailRoot.add(this.tailHilt);
-    const tailLink = new THREE.Mesh(alongZ(0.045, 0.035, 0.14), skinDark);
-    tailLink.position.set(0, -0.02, -0.34); tailLink.castShadow = true;
-    const tailMid = new THREE.Mesh(alongZ(0.08, 0.065, 0.26), skinDark);
-    tailMid.position.set(0, -0.08, -0.54); tailMid.castShadow = true;
-    const tailLink2 = new THREE.Mesh(alongZ(0.034, 0.026, 0.12), skinDark);
-    tailLink2.position.set(0, -0.13, -0.7); tailLink2.castShadow = true;
-    const tailEnd = new THREE.Mesh(alongZ(0.055, 0.04, 0.16), skinDark);
-    tailEnd.position.set(0, -0.17, -0.84); tailEnd.castShadow = true;
-    const tailPoint = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.28, 4), skinDark);
-    tailPoint.rotation.x = -Math.PI / 2 - 0.35;
-    tailPoint.position.set(0, -0.26, -1.02);
-    tailPoint.castShadow = true;
-    this.tailTip.position.set(0, 0.14, 0);
-    tailPoint.add(this.tailTip);
-    this.tailG.add(tailRoot, tailLink, tailMid, tailLink2, tailEnd, tailPoint);
-    this.body.add(this.tailG);
-
-    // 躯干枢轴仍在 y 1.64。腹小、胸大，肩梁比腰宽，头从肩窝前面伸出来。
-    this.torso.position.y = 1.64;
-    const gut = ball(0.16, skinDark, 0, 0.12, 0.04, 1.05, 0.9, 0.72);
-    gut.name = "gut";
-    this.torso.add(gut);
-    const chest = ball(0.26, robe, 0, 0.50, 0.06, 1.28, 1.05, 1.08);
-    chest.name = "chest";
-    this.torso.add(chest);
-    this.torso.add(ball(0.15, skinDark, 0, 0.46, -0.22, 0.8, 1.35, 0.62));
-    this.torso.add(cyl(0.012, 0.012, 0.38, robeDark, 0.07, 0.36, 0.24, 5));
-    this.torso.add(cyl(0.012, 0.012, 0.38, robeDark, -0.07, 0.36, 0.24, 5));
-    this.torso.add(box(0.055, 0.08, 0.03, skinDark, 0, 0.16, 0.24));
-    const yoke = cyl(0.1, 0.1, 1.28, robeDark, 0, 1.72, -0.06);
-    yoke.rotation.z = Math.PI / 2;
-    yoke.name = "shoulder";
-    this.torso.add(yoke);
-    for (const s of [-1, 1]) {
-      const delt = ball(0.2, robeDark, s * 0.54, 1.58, -0.02, 1.15, 1.0, 0.95);
-      delt.name = "shoulder";
-      this.torso.add(delt);
-      const cowl = cyl(0.02, 0.11, 0.72, robe, s * 0.34, 1.70, -0.08);
-      cowl.rotation.set(-0.35, 0, -s * 0.28);
-      cowl.name = "cowl";
-      this.torso.add(cowl);
-    }
-    const hood = cyl(0.04, 0.18, 0.62, robeDark, 0, 1.70, -0.18);
-    hood.rotation.x = 0.42;
-    hood.name = "cowl";
-    this.torso.add(hood);
-    this.torso.add(cyl(0.075, 0.095, 0.18, skin, 0, 1.30, 0.22));
-
-    // 颅顶约 3.40。角从肩窝里往后掠，最高点交给角和斗篷，不另做一截方盒子。
-    this.head.position.set(0, 1.515, 0.34);
-    const skull = ball(0.16, skin, 0, 0.04, 0, 0.98, 1.28, 1.08);
-    skull.name = "skull";
-    this.head.add(skull);
-    this.head.add(ball(0.1, skinDark, 0, -0.1, 0.045, 0.9, 0.6, 1.02));
-    this.head.add(box(0.17, 0.04, 0.04, skinDark, 0, 0.1, 0.145));
-    for (const ex of [-0.05, 0.05]) this.head.add(box(0.04, 0.026, 0.016, this.eyeMat, ex, 0.06, 0.158));
-    const mark = box(0.048, 0.062, 0.016, this.runeMat, 0, 0.16, 0.155);
-    mark.rotation.z = Math.PI / 4;
-    this.head.add(mark);
-    for (const s of [-1, 1]) {
-      const h1 = cyl(0.018, 0.038, 0.34, skinDark, s * 0.07, 0.26, -0.02);
-      h1.rotation.set(-0.48, 0, -s * 0.4);
-      const h2 = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.4, 5), skinDark);
-      h2.position.set(s * 0.15, 0.525, -0.13);
-      h2.rotation.set(-0.95, 0, -s * 0.55);
-      h2.castShadow = true;
-      h2.name = "horn";
-      this.head.add(h1, h2);
-    }
+    const rig = mountBoss(getBossGltf("margit"), {
+      body: this.body, torso: this.torso, head: this.head,
+      legR: this.legR, shinR: this.shinR, legL: this.legL, shinL: this.shinL,
+      armR: this.armR, armL: this.armL,
+      tail: this.tailG, hammer: this.hammerG, sword: this.swordG,
+    }, [
+      "weapon-hilt", "weapon-tip", "weapon2-hilt", "weapon2-tip",
+      "hammer-hilt", "hammer-tip", "sword-hilt", "sword-tip",
+      "tail-hilt", "tail-tip",
+    ]);
+    this.staffHilt = rig.node("weapon-hilt");
+    this.staffTip = rig.node("weapon-tip");
+    this.sleeveHilt = rig.node("weapon2-hilt");
+    this.sleeveTip = rig.node("weapon2-tip");
+    this.hammerHilt = rig.node("hammer-hilt");
+    this.hammerTip = rig.node("hammer-tip");
+    this.swordHilt = rig.node("sword-hilt");
+    this.swordTip = rig.node("sword-tip");
+    this.tailHilt = rig.node("tail-hilt");
+    this.tailTip = rig.node("tail-tip");
+    this.eyeMat = rig.mat("margit-eye");
+    this.runeMat = rig.mat("margit-gold");
+    this.hammerMat = rig.mat("margit-hammer");
+    this.swordMat = rig.mat("margit-sword");
+    this.robe = [0, 1, 2, 3].map(i => rig.mesh(`robe${i}`));        // 长袍下摆阶梯层
+    this.rags = [0, 1, 2, 3, 4, 5].map(i => rig.mesh(`rag${i}`));   // 下摆破布条
     this.goldLight = new THREE.PointLight(GOLD, 0.7, 5, 2);
     this.goldLight.position.set(0, 0.16, 0.3);
     this.head.add(this.goldLight);
-    this.torso.add(this.head);
-
-    // 右臂从肩窝垂下，上粗下细。咒杖仍握在原来的手里，柄和尖不挪。
-    this.armR.position.set(0.34, 1.42, 0);
-    this.armR.add(cyl(0.115, 0.072, 0.52, skinDark, 0, -0.26, 0));
-    this.armR.add(cyl(0.07, 0.042, 0.46, skin, 0, -0.64, 0.02));
-    this.armR.add(ball(0.055, skinDark, 0, -0.9, 0.04, 1.05, 0.75, 0.9));
-    const staff = new THREE.Group();
-    staff.position.set(0, -0.98, 0.06);
-    staff.rotation.x = 0.16;                                                 // 杖尾后曳
-    staff.add(box(0.08, 0.2, 0.08, robeDark, 0, 0.02, 0));                   // 握处缠布
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.068, 2.05, 6), wood);
-    shaft.position.y = -0.36; shaft.castShadow = true;
-    this.staffHilt.position.set(0, -1.025, 0);                                // 杖尾端面
-    shaft.add(this.staffHilt);
-    staff.add(shaft);
-    staff.add(box(0.1, 0.11, 0.1, wood, 0.012, -0.02, 0.03));                // 瘤结
-    staff.add(box(0.12, 0.05, 0.12, this.runeMat, 0, 0.2, 0));               // 金符文环
-    staff.add(box(0.11, 0.045, 0.11, this.runeMat, 0, 0.44, 0));
-    staff.add(box(0.18, 0.26, 0.18, wood, 0, 0.78, 0));                      // 杖颈
-    staff.add(box(0.22, 0.07, 0.22, this.runeMat, 0, 0.86, 0));              // 杖头金箍
-    staff.add(box(0.26, 0.16, 0.18, wood, 0, 0.96, 0));                      // 分叉根，短，不是剑格
-    const fork1 = box(0.16, 0.52, 0.16, wood, 0.2, 1.15, 0.02);
-    fork1.rotation.z = -0.65;
-    const forkCap = box(0.11, 0.12, 0.11, this.runeMat, 0, 0.3, 0);         // 伸出枝端
-    this.staffTip.position.set(0, 0.06, 0);                                  // 咒枝金头外端
-    forkCap.add(this.staffTip);
-    fork1.add(forkCap);
-    const fork2 = box(0.15, 0.44, 0.15, wood, -0.17, 1.1, -0.02);
-    fork2.rotation.z = 0.72;
-    fork2.add(box(0.1, 0.1, 0.1, this.runeMat, 0, 0.25, 0));
-    staff.add(fork1, fork2);
-    this.armR.add(staff);
-    // 召唤金锤：短木柄 + 厚方头。锤面比锤身宽出一圈，外端面仍是命中尖。
-    this.hammerG.position.set(0, -1.02, 0.16);
-    const hammerHandle = box(0.09, 0.6, 0.09, wood, 0, -0.15, 0);
-    this.hammerHilt.position.set(0, -0.3, 0);                                 // 柄端
-    hammerHandle.add(this.hammerHilt);
-    const hammerHead = box(0.62, 0.52, 0.58, this.hammerMat, 0, 0.3, 0);     // 厚方头
-    const hammerFace = box(0.78, 0.14, 0.7, this.hammerMat, 0, 0.58, 0);     // 锤面，宽出锤身
-    this.hammerTip.position.set(0, 0.07, 0);                                  // 锤面外端
-    hammerFace.add(this.hammerTip);
-    this.hammerG.add(hammerHandle, hammerHead, hammerFace);
-    this.hammerG.add(box(0.22, 0.12, 0.22, this.hammerMat, 0, 0.08, 0));     // 锤颈
     this.hammerLight = new THREE.PointLight(GOLD, 0, 4, 2);
     this.hammerLight.position.set(0, 0.32, 0);
     this.hammerG.add(this.hammerLight);
     this.hammerG.visible = false;
-    this.armR.add(this.hammerG);
-    this.torso.add(this.armR);
-
-    // 左臂同样上粗下细。袖刃和金剑还钉在原来的柄、尖上。
-    this.armL.position.set(-0.34, 1.42, 0);
-    this.armL.add(cyl(0.11, 0.07, 0.48, skinDark, 0, -0.24, 0));
-    this.armL.add(cyl(0.068, 0.04, 0.44, skin, 0, -0.6, 0.02));
-    this.armL.add(ball(0.05, skinDark, 0, -0.85, 0.04, 1.0, 0.7, 0.85));
-    for (let i = 0; i < 3; i++) {
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.14, 4), skinDark);
-      claw.position.set(-0.03 + i * 0.03, -0.95, 0.06);
-      claw.rotation.x = Math.PI + 0.5 + i * 0.12;
-      claw.castShadow = true;
-      this.armL.add(claw);
-    }
-    // 袖刃要短：木柄、小格、钢刃分开，两端仍钉在柄尾和刃尖。
-    const sleeve = new THREE.Group();
-    sleeve.position.set(0, -0.75, 0.1);
-    sleeve.rotation.x = 0.35;
-    const sleeveGrip = box(0.05, 0.13, 0.046, wood, 0, 0.115, 0);
-    this.sleeveHilt.position.set(0, 0.065, 0);                                // 柄尾
-    sleeveGrip.add(this.sleeveHilt);
-    const sleevePoint = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.1, 4), steel);
-    sleevePoint.rotation.x = Math.PI;
-    sleevePoint.position.set(0, -0.19, 0);
-    sleevePoint.castShadow = true;
-    this.sleeveTip.position.set(0, 0.05, 0);                                  // 刃尖
-    sleevePoint.add(this.sleeveTip);
-    sleeve.add(
-      sleeveGrip,
-      box(0.11, 0.032, 0.06, steel, 0, 0.035, 0),                            // 小格，把柄和刃切开
-      box(0.028, 0.18, 0.014, steel, 0, -0.055, 0),
-      sleevePoint,
-    );
-    this.armL.add(sleeve);
-    // 召唤金剑：握柄、宽剑格、收尖，和顶端分叉的木杖分开。
-    this.swordG.position.set(0, -0.92, 0.08);
-    this.swordG.rotation.x = 0.2;
-    this.swordG.add(box(0.062, 0.26, 0.062, robeDark, 0, 0, 0));             // 握柄
-    for (const gy of [-0.06, 0.04]) this.swordG.add(box(0.08, 0.028, 0.08, this.swordMat, 0, gy, 0));
-    const pommel = box(0.11, 0.1, 0.11, this.swordMat, 0, 0.16, 0);          // 柄头
-    this.swordHilt.position.set(0, 0.05, 0);                                  // 柄尾端面
-    pommel.add(this.swordHilt);
-    const ql = box(0.07, 0.16, 0.07, this.swordMat, -0.24, -0.22, 0);
-    ql.rotation.z = 0.7;
-    const qr = box(0.07, 0.16, 0.07, this.swordMat, 0.24, -0.22, 0);
-    qr.rotation.z = -0.7;
-    const swordPoint = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.22, 4), this.swordMat);
-    swordPoint.rotation.x = Math.PI;
-    swordPoint.position.set(0, -1.46, 0);
-    swordPoint.castShadow = true;
-    this.swordTip.position.set(0, 0.11, 0);                                   // 剑尖
-    swordPoint.add(this.swordTip);
-    this.swordG.add(pommel);
-    this.swordG.add(box(0.52, 0.08, 0.1, this.swordMat, 0, -0.16, 0));        // 剑格
-    this.swordG.add(box(0.14, 0.12, 0.12, this.swordMat, 0, -0.16, 0));
-    this.swordG.add(ql, qr);
-    this.swordG.add(box(0.1, 0.28, 0.046, this.swordMat, 0, -0.34, 0));       // 剑根
-    this.swordG.add(box(0.05, 0.78, 0.042, this.swordMat, 0, -0.8, 0));       // 脊
-    this.swordG.add(box(0.095, 0.7, 0.02, this.swordMat, 0, -0.78, 0));       // 刃缘，正面比杆宽
-    this.swordG.add(box(0.05, 0.24, 0.03, this.swordMat, 0, -1.26, 0));       // 收窄
-    this.swordG.add(swordPoint);
     this.swordG.visible = false;
+    // 关节层级仍由代码搭（Blender 侧同构，网格已挂到各组上）
+    this.legR.add(this.shinR);
+    this.legL.add(this.shinL);
+    this.body.add(this.legR, this.legL, this.torso, this.tailG);
+    this.torso.add(this.head, this.armR, this.armL);
+    this.armR.add(this.hammerG);
     this.armL.add(this.swordG);
-    this.torso.add(this.armL);
-
     this.root.add(this.body);
-    this.body.add(this.torso);
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }

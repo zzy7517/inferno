@@ -14,20 +14,13 @@ import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
 import { strikeContact } from "./weapon-hit";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
-// ---------------- 主题色（暗金纹章 + 腐绿接肢肉 + 铁灰甲） ----------------
-const GOLD = 0xb08d45;        // 暗金甲（纹章层）
-const GOLD_TRIM = 0xd6b26b;   // 金饰/眼光/王冠高光
-const ROTTEN = 0x5c6b4a;      // 腐绿接肢肤
-const ROTTEN_DARK = 0x45523a; // 腐绿暗面
-const IRON = 0x3d4148;        // 铁灰主甲
-const IRON_DARK = 0x2c2f35;
-const HAIR = 0xc9a55c;        // 金发
+// ---------------- 主题色（暗金纹章 + 腐绿接肢肉 + 铁灰甲；躯体色板在 Blender 脚本里） ----------------
 const AXE_SLASH = 0xe8d9a8;   // 巨斧金辉刀光
 const FLAME = 0xff7a2a;       // 龙焰（P2）
-const DRAGON = 0x6a7059;      // 龙头死鳞
 
 // ---------------- 帧数据（P1 巨斧+接肢臂 7 招 + P2 龙系 3 招；全程不可弹反——wiki 锚点） ----------------
 export const MOVES_GODRICK: Record<string, MoveDef> = {
@@ -226,7 +219,7 @@ export class Godrick extends BossBase {
   private dragon = new THREE.Group();          // P2 龙头手臂（接上后显示）
   private jawLower = new THREE.Group();        // 龙下颚（jaw 开合）
   private stump!: THREE.Mesh;                  // 断臂残端（斩臂后显示、接龙后隐藏）
-  private graftArms: THREE.Group[] = [];       // 躯干伸出的三条嫁接手臂（updateVisuals 蠕动）
+  private graftArms: THREE.Object3D[] = [];      // 躯干伸出的三条嫁接手臂（updateVisuals 蠕动）
   private graftBase: { x: number; z: number }[] = [];
   private axeHead = new THREE.Object3D();      // 月刃腹心：刀光贴着刃，不从胸口铺开
   private axeHilt = new THREE.Object3D();      // 握把
@@ -262,291 +255,48 @@ export class Godrick extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：接肢贵族（站立：脚到冠 3.6 / 肩 4.3 / 最高臂 5.6；褪色者按 1.8） ----------------
+
+  // ---------------- 外观：接肢贵族由 Blender 管线出（tools/blender/build_bosses.py）。
+  // 挂点局部变换 = 组常量 × k(1.1526)，mountBoss 抄回各组后 applyPose 一行不改。
+  // 斧/接肢爪/龙头的判定标记与月刃腹心都钉在 GLB 里；嫁接臂蠕动仍按游戏侧基准角。 ----------------
   protected override buildBody(): void {
-    const iron = new THREE.MeshStandardMaterial({ color: IRON, roughness: 0.7, metalness: 0.3, flatShading: true });
-    const ironDark = new THREE.MeshStandardMaterial({ color: IRON_DARK, roughness: 0.85, metalness: 0.2, flatShading: true });
-    const gold = new THREE.MeshStandardMaterial({ color: GOLD, roughness: 0.5, metalness: 0.5, flatShading: true });
-    const goldTrim = new THREE.MeshStandardMaterial({ color: GOLD_TRIM, roughness: 0.4, metalness: 0.6, flatShading: true });
-    const flesh = new THREE.MeshStandardMaterial({ color: ROTTEN, roughness: 1, flatShading: true });
-    const fleshDark = new THREE.MeshStandardMaterial({ color: ROTTEN_DARK, roughness: 1, flatShading: true });
-    const hair = new THREE.MeshStandardMaterial({ color: HAIR, roughness: 0.9, flatShading: true });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x707784, roughness: 0.45, metalness: 0.6, flatShading: true });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 0.95, flatShading: true });
-    const dragonMat = new THREE.MeshStandardMaterial({ color: DRAGON, roughness: 0.8, metalness: 0.1, flatShading: true });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: 0x140f08, roughness: 0.5, emissive: GOLD_TRIM, emissiveIntensity: 0.9, flatShading: true });
-    this.flameMat = new THREE.MeshStandardMaterial({
-      color: FLAME, emissive: FLAME, emissiveIntensity: 0, roughness: 0.4, flatShading: true,
-      transparent: true, opacity: 0.9,
-    });
-
-    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.castShadow = true;
-      return m;
-    };
-    // 圆柱默认沿 +Y。挂着的手臂：+Y 端是肩，上粗下细。
-    const cyl = (
-      rt: number, rb: number, h: number, mat: THREE.Material,
-      x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0,
-    ) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(Math.max(0.008, rt), Math.max(0.008, rb), h, 6), mat);
-      m.position.set(x, y, z);
-      m.rotation.set(rx, ry, rz);
-      m.castShadow = true;
-      return m;
-    };
-    const egg = (r: number, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 5), mat);
-      m.position.set(x, y, z);
-      m.scale.set(sx, sy, sz);
-      m.castShadow = true;
-      return m;
-    };
-
-    // 腿：大腿粗、小腿收、足平。髋/膝枢轴仍给 crouch 用
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.32], [this.legL, this.shinL, -0.32]] as [THREE.Group, THREE.Group, number][]) {
-      leg.position.set(sx, 1.48, 0.02);
-      leg.add(cyl(0.22, 0.15, 0.70, ironDark, 0, -0.36, 0));             // 大腿髋粗膝细
-      leg.add(cyl(0.17, 0.18, 0.12, gold, 0, -0.66, 0.03));              // 膝甲
-      shin.position.set(0, -0.72, 0);
-      shin.add(cyl(0.14, 0.09, 0.60, ironDark, 0, -0.30, 0.02));         // 小腿上粗下细
-      const foot = cyl(0.07, 0.11, 0.42, iron, 0, -0.64, 0.10, Math.PI / 2, 0, 0);
-      foot.name = "foot";
-      shin.add(foot);
-      leg.add(shin);
-      this.body.add(leg);
-    }
-    // 骨盆比肚子窄一圈，腰带收住
-    this.body.add(cyl(0.34, 0.30, 0.28, ironDark, 0, 1.58, 0.02));
-    this.body.add(cyl(0.40, 0.38, 0.07, gold, 0, 1.42, 0.04));
-    for (const [fx, ry] of [[0, 0.08], [0.22, 0.62], [-0.22, -0.62]] as [number, number][]) {
-      const plate = box(0.22, 0.36, 0.04, iron, fx, 1.22, 0.28);
-      plate.rotation.set(0.35, ry, 0);
-      this.body.add(plate);
-    }
-
-    // 躯干底座。肚子比胸腔大，头和冠在胸的前面，不跟胸口同一块
-    this.torso.position.y = 1.72;
-    const belly = egg(0.50, flesh, 0, 0.02, 0.12, 1.18, 0.78, 1.26);   // 腐绿大肚，前凸
-    belly.name = "belly";
-    const chest = cyl(0.30, 0.38, 0.44, iron, 0, 0.52, -0.02);          // 胸腔更窄、更靠后
-    chest.name = "chest";
-    const breast = cyl(0.22, 0.28, 0.20, gold, 0, 0.78, 0.06);          // 上胸金甲，再收一圈
-    breast.name = "chest";
-    const back = egg(0.30, fleshDark, 0, 0.55, -0.30, 1.25, 1.05, 0.72); // 背后接肢肉床
-    this.torso.add(belly, chest, breast, back);
-    this.torso.add(box(0.14, 0.18, 0.04, goldTrim, 0, 0.55, 0.40));     // 纹章
-    this.gustFrom.position.set(0, 0.55, 0.42);
-    this.torso.add(this.gustFrom);
-    // 颈：把头从胸口里拔出来
-    this.torso.add(cyl(0.11, 0.15, 0.28, fleshDark, 0, 1.08, 0.22, 0.45, 0, 0));
-
-    // 肩甲高过王冠。左肩是接肢肉，右肩是铁。顶高在站立姿态里对到 4.3
-    const addShoulder = (side: number, top: number, mat: THREE.Material) => {
-      const baseY = 0.62;
-      const h = top - baseY;
-      const g = new THREE.Group();
-      g.position.set(side * 0.42, baseY, -0.06);
-      g.name = "shoulder";
-      const mass = cyl(0.08, 0.26, h, mat, side * 0.05, h * 0.46, 0);
-      mass.rotation.z = -side * 0.20;
-      mass.name = "shoulder";
-      const cap = cyl(0.04, 0.12, 0.18, gold, side * 0.08, h * 0.78, 0.03);
-      cap.rotation.z = -side * 0.20;
-      cap.name = "shoulder";
-      g.add(mass, cap);
-      this.torso.add(g);
-    };
-    addShoulder(-1, 2.612, fleshDark);
-    addShoulder(1, 2.46, iron);
-
-    // 头颅单独一块，冠是细尖不是方盒。站立时冠顶对到脚上方 3.6
-    this.head.position.set(0, 1.235, 0.46);
-    this.head.add(egg(0.20, flesh, 0, 0.02, 0, 1.02, 1.18, 1.05));
-    this.head.add(egg(0.12, fleshDark, 0, -0.16, 0.05, 1.05, 0.62, 0.95));
-    this.head.add(cyl(0.09, 0.13, 0.06, fleshDark, 0, 0.10, 0.16, Math.PI / 2, 0, 0)); // 眉
-    for (const ex of [-0.07, 0.07]) this.head.add(box(0.05, 0.03, 0.02, this.eyeMat, ex, 0.06, 0.20));
-    this.head.add(cyl(0.06, 0.14, 0.36, hair, 0, 0.02, -0.16, 0.7, 0, 0));
-    this.head.add(cyl(0.04, 0.09, 0.28, hair, 0.10, -0.02, -0.14, 0.5, 0, 0.3));
-    this.head.add(cyl(0.04, 0.08, 0.24, hair, -0.10, -0.04, -0.12, 0.45, 0, -0.35));
-    const band = cyl(0.22, 0.23, 0.05, goldTrim, 0, 0.28, 0);
-    band.name = "crown";
-    this.head.add(band);
-    for (const [sx, h] of [[-0.12, 0.30], [0, 0.44], [0.12, 0.28]] as [number, number][]) {
-      const sp = cyl(0.012, 0.038, h, goldTrim, sx, 0.30 + h / 2, 0.01);
-      sp.name = "crown";
-      this.head.add(sp);
-    }
-    this.torso.add(this.head);
-
-    // 右臂：肩粗、腕细。长度维持原枢轴附近，斧跟着身体略放大
-    this.armR.position.set(0.56, 0.74, 0.04);
-    this.armR.add(cyl(0.15, 0.11, 0.46, ironDark, 0, -0.24, 0));
-    this.armR.add(cyl(0.11, 0.07, 0.42, flesh, 0, -0.62, 0.03));
-    this.armR.add(cyl(0.10, 0.08, 0.16, iron, 0, -0.88, 0.05));
-    const axe = new THREE.Group();
-    axe.position.set(0, -0.98, 0.05);
-    // 整柄前下倾，月刃落在身前。角度不改，尺寸随身高 3.12→3.6
-    axe.rotation.x = 0.58;
-    const k = 3.6 / 3.123;
-    const haftLen = 1.7 * k;
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * k, 0.08 * k, haftLen, 6), wood);
-    shaft.rotation.x = Math.PI / 2;
-    shaft.position.set(0, 0, haftLen * 0.5 - 0.04 * k);
-    shaft.castShadow = true;
-    axe.add(shaft);
-    axe.add(box(0.13 * k, 0.13 * k, 0.14 * k, goldTrim, 0, 0, -0.14 * k));
-    axe.add(box(0.11 * k, 0.11 * k, 0.24 * k, iron, 0, 0, 0.1 * k));
-    axe.add(box(0.10 * k, 0.10 * k, 0.07 * k, goldTrim, 0, 0, 0.46 * k));
-    axe.add(box(0.10 * k, 0.10 * k, 0.07 * k, goldTrim, 0, 0, 0.86 * k));
-    axe.add(box(0.11 * k, 0.11 * k, 0.07 * k, goldTrim, 0, 0, 1.22 * k));
-    const hz = haftLen - 0.08 * k;
-    // 护手横在握把上，命中从这里量到刃缘，不把柄尾算进去
-    const guard = cyl(0.045 * k, 0.045 * k, 0.36 * k, iron, 0, 0, 0.10 * k, 0, 0, Math.PI / 2);
-    guard.name = "axeGuard";
-    axe.add(guard);
-    axe.add(cyl(0.09 * k, 0.12 * k, 0.16 * k, iron, 0.02 * k, 0, hz - 0.04 * k, Math.PI / 2, 0, 0));
-    // 月刃：重叠弧带，外缘亮、上尖下钩
-    const ax = 0;
-    const moon = (ang: number, radius: number, len: number, thick: number, depth: number, mat: THREE.Material, zBias = 0) => {
-      const m = box(len, thick, depth, mat, ax + Math.cos(ang) * radius, Math.sin(ang) * radius, hz + zBias);
-      m.rotation.z = ang + Math.PI / 2;
-      m.name = "axeBlade";
-      axe.add(m);
-      return m;
-    };
-    for (const ang of [-1.12, -0.74, -0.36, 0, 0.36, 0.74, 1.1]) {
-      moon(ang, 0.52 * k, 0.50 * k, 0.36 * k, 0.24 * k, gold);
-      moon(ang, 0.74 * k, 0.42 * k, 0.08 * k, 0.09 * k, goldTrim, 0.02 * k);
-    }
-    const point = (ang: number, radius: number, reach: number, girth: number, depth: number, mat: THREE.Material) => {
-      const m = box(girth, reach, depth, mat, ax + Math.cos(ang) * radius, Math.sin(ang) * radius, hz);
-      m.rotation.z = ang - Math.PI / 2;
-      m.name = "axeBlade";
-      axe.add(m);
-      return m;
-    };
-    point(1.28, 0.86 * k, 0.50 * k, 0.10 * k, 0.07 * k, goldTrim);
-    point(1.28, 1.12 * k, 0.22 * k, 0.06 * k, 0.045 * k, goldTrim);
-    point(-1.26, 0.78 * k, 0.42 * k, 0.11 * k, 0.08 * k, gold);
-    const spike = box(0.34 * k, 0.09 * k, 0.10 * k, steel, -0.22 * k, 0.05 * k, hz);
-    spike.rotation.z = 0.5;
-    axe.add(spike);
-    this.axeHead.position.set(0.62 * k, 0.02 * k, hz);
-    axe.add(this.axeHead);
-    // 护手在握把横档，刃缘在月刃外沿（半径约 0.95×身长比）
-    this.axeHilt.position.set(0, 0, 0.10 * k);
-    this.axeTip.position.set(0.95 * k, 0, hz);
-    axe.add(this.axeHilt, this.axeTip);
-    this.armR.add(axe);
-    this.torso.add(this.armR);
-
-    // 左肩枢轴：P1 接肢巨爪 / P2 龙头。臂本身上粗下细，爪再收成尖
-    this.armL.position.set(-0.56, 0.74, 0.02);
-    this.fleshArm.add(cyl(0.20, 0.14, 0.50, flesh, 0, -0.26, 0));
-    this.fleshArm.add(cyl(0.14, 0.09, 0.46, fleshDark, 0, -0.68, 0.03));
-    this.fleshArm.add(egg(0.12, flesh, 0, -0.96, 0.06, 1.15, 0.72, 1.05));
-    // 中爪尖仍落在原来的局部点上，抓取刃长不跟着外形另拉一截
-    const claws: [number, number, number, number][] = [[-0.07, -1.10, 0.16, 0.22], [0, -1.23, 0.24, 0.26], [0.07, -1.08, 0.16, 0.20]];
-    for (const [fx, tipY, fz, h] of claws) {
-      this.fleshArm.add(cyl(0.030, 0.012, h, fleshDark, fx, tipY + h / 2, fz));
-    }
-    this.armHilt.position.set(0, 0, 0);                                    // 肩
-    this.armTip.position.set(0, -1.23, 0.24);                              // 中爪尖
-    this.fleshArm.add(this.armHilt, this.armTip);
-    this.armL.add(this.fleshArm);
-
-    // 龙头（P2）：颈粗、吻尖收细。开合仍走 jawLower
-    const dScale = k;
-    this.dragon.add(cyl(0.20 * dScale, 0.14 * dScale, 0.48 * dScale, dragonMat, 0, -0.22 * dScale, 0.02 * dScale));
-    this.dragon.add(egg(0.20 * dScale, dragonMat, 0, -0.58 * dScale, 0.16 * dScale, 1.15, 0.78, 1.05));
-    this.dragon.add(cyl(0.10 * dScale, 0.16 * dScale, 0.10 * dScale, dragonMat, 0, -0.48 * dScale, 0.30 * dScale, Math.PI / 2, 0, 0));
-    const snout = cyl(0.04 * dScale, 0.12 * dScale, 0.56 * dScale, dragonMat, 0, -0.66 * dScale, 0.78 * dScale, Math.PI / 2, 0, 0);
-    snout.name = "snout";
-    this.dragon.add(snout);
-    this.jawLower.position.set(0, -0.82 * dScale, 0.34 * dScale);
-    this.jawLower.add(cyl(0.05 * dScale, 0.09 * dScale, 0.48 * dScale, dragonMat, 0, -0.02 * dScale, 0.28 * dScale, Math.PI / 2, 0, 0));
-    this.jawLower.add(cyl(0.025 * dScale, 0.05 * dScale, 0.22 * dScale, dragonMat, 0, 0, 0.58 * dScale, Math.PI / 2, 0, 0));
-    for (const fx of [-0.08, -0.03, 0.03, 0.08]) {
-      const fang = cyl(0.01, 0.02, 0.14 * dScale, steel, fx * dScale, 0.06 * dScale, (0.50 + Math.abs(fx)) * dScale);
-      fang.rotation.x = -0.35;
-      this.jawLower.add(fang);
-    }
-    const lick = cyl(0.03 * dScale, 0.04 * dScale, 0.16 * dScale, this.flameMat, 0, 0.05 * dScale, 0.36 * dScale, Math.PI / 2, 0, 0);
-    lick.castShadow = false;
-    this.jawLower.add(lick);
-    this.dragon.add(this.jawLower);
-    for (const fx of [-0.07, -0.025, 0.025, 0.07]) {
-      this.dragon.add(cyl(0.012, 0.02, 0.12 * dScale, steel, fx * dScale, -0.72 * dScale, (0.55 + Math.abs(fx) * 1.4) * dScale));
-    }
-    this.dragon.add(box(0.07 * dScale, 0.045 * dScale, 0.03 * dScale, this.eyeMat, -0.12 * dScale, -0.54 * dScale, 0.32 * dScale));
-    this.dragon.add(box(0.07 * dScale, 0.045 * dScale, 0.03 * dScale, this.eyeMat, 0.12 * dScale, -0.54 * dScale, 0.32 * dScale));
-    const addHorn = (s: number) => {
-      const h = new THREE.Group();
-      h.position.set(s * 0.16 * dScale, -0.48 * dScale, 0.06 * dScale);
-      h.rotation.set(-0.42, s * 0.18, s * -0.9);
-      h.add(cyl(0.05 * dScale, 0.08 * dScale, 0.32 * dScale, dragonMat, 0, 0.16 * dScale, 0));
-      const mid = cyl(0.03 * dScale, 0.05 * dScale, 0.40 * dScale, dragonMat, 0, 0.48 * dScale, 0);
-      mid.rotation.z = s * -0.38;
-      const tip = cyl(0.012 * dScale, 0.03 * dScale, 0.30 * dScale, gold, 0, 0.80 * dScale, 0);
-      tip.rotation.z = s * -0.28;
-      h.add(mid, tip);
-      this.dragon.add(h);
-    };
-    addHorn(-1);
-    addHorn(1);
-    const nose = cyl(0.015 * dScale, 0.03 * dScale, 0.28 * dScale, gold, 0, -0.50 * dScale, 0.92 * dScale);
-    nose.rotation.x = 1.2;
-    this.dragon.add(nose);
-    for (const [yy, zz, rx] of [[-0.06, -0.16, -0.75], [-0.24, -0.18, -0.55], [-0.40, -0.12, -0.4]] as [number, number, number][]) {
-      const sp = cyl(0.02 * dScale, 0.035 * dScale, 0.18 * dScale, dragonMat, 0, yy * dScale, zz * dScale);
-      sp.rotation.x = rx;
-      this.dragon.add(sp);
-    }
-    const throat = cyl(0.06 * dScale, 0.08 * dScale, 0.16 * dScale, this.flameMat, 0, -0.74 * dScale, 0.42 * dScale, Math.PI / 2, 0, 0);
-    const breath = cyl(0.035 * dScale, 0.05 * dScale, 0.12 * dScale, this.flameMat, 0, -0.72 * dScale, 0.58 * dScale, Math.PI / 2, 0, 0);
-    throat.castShadow = false;
-    breath.castShadow = false;
-    this.dragon.add(throat, breath);
-    this.maw.position.set(0, -0.70 * dScale, 1.12 * dScale);
-    this.dragon.add(this.maw);
-    this.dragonHilt.position.set(0, -0.22 * dScale, 0.02 * dScale);       // 颈
-    this.dragonTip.position.set(0, -0.66 * dScale, 1.06 * dScale);        // 吻尖
-    this.dragon.add(this.dragonHilt, this.dragonTip);
+    const rig = mountBoss(getBossGltf("godrick"), {
+      body: this.body, torso: this.torso, head: this.head,
+      legR: this.legR, shinR: this.shinR, legL: this.legL, shinL: this.shinL,
+      armR: this.armR, armL: this.armL, flesh: this.fleshArm,
+      dragon: this.dragon, jaw: this.jawLower,
+    }, [
+      "weapon-hilt", "weapon-tip", "axe-head",
+      "weapon2-hilt", "weapon2-tip",
+      "maw-hilt", "maw-tip", "maw", "gust",
+    ]);
+    this.axeHilt = rig.node("weapon-hilt");
+    this.axeTip = rig.node("weapon-tip");
+    this.axeHead = rig.node("axe-head");
+    this.armHilt = rig.node("weapon2-hilt");
+    this.armTip = rig.node("weapon2-tip");
+    this.dragonHilt = rig.node("maw-hilt");
+    this.dragonTip = rig.node("maw-tip");
+    this.maw = rig.node("maw");
+    this.gustFrom = rig.node("gust");
+    this.eyeMat = rig.mat("godrick-eye");
+    this.flameMat = rig.mat("godrick-flame");
+    this.stump = rig.mesh("stump");                     // 断臂残端
+    this.stump.visible = false;
+    this.graftArms = [rig.node("graft0"), rig.node("graft1"), rig.node("graft2")];
+    this.graftBase = [{ x: -1.15, z: -0.42 }, { x: -1.25, z: 0.48 }, { x: -0.38, z: 0.06 }];
     this.flameLight = new THREE.PointLight(FLAME, 0, 6, 2);
     this.flameLight.position.copy(this.maw.position);
     this.dragon.add(this.flameLight);
     this.dragon.visible = false;
-    this.armL.add(this.dragon);
-    this.torso.add(this.armL);
-    this.stump = cyl(0.10, 0.14, 0.12, fleshDark, -0.56, 0.66, 0.02);
-    this.stump.visible = false;
-    this.torso.add(this.stump);
-
-    // 背上三条接肢臂，上粗下细。最后一条从肩后抬起，站立时指尖到 5.6
-    const grafts: { x: number; y: number; z: number; rx: number; rz: number; len: number; thick: number }[] = [
-      { x: 0.26, y: 0.72, z: -0.40, rx: -1.15, rz: -0.42, len: 0.92, thick: 0.10 },
-      { x: -0.28, y: 0.95, z: -0.38, rx: -1.25, rz: 0.48, len: 1.05, thick: 0.11 },
-      { x: 0.02, y: 2.22, z: -0.36, rx: -0.38, rz: 0.06, len: 1.717, thick: 0.12 },
-    ];
-    for (const spec of grafts) {
-      const g = new THREE.Group();
-      g.position.set(spec.x, spec.y, spec.z);
-      g.rotation.set(spec.rx, 0, spec.rz);
-      g.name = "graftArm";
-      this.graftBase.push({ x: spec.rx, z: spec.rz });
-      const len = spec.len;
-      const thick = spec.thick;
-      g.add(cyl(thick * 0.62, thick, len * 0.50, flesh, 0, len * 0.25, 0));
-      g.add(cyl(thick * 0.28, thick * 0.62, len * 0.36, fleshDark, 0, len * 0.66, 0.02));
-      g.add(cyl(thick * 0.16, thick * 0.30, len * 0.14, flesh, 0, len * 0.90, 0.03));
-      this.graftArms.push(g);
-      this.torso.add(g);
-    }
-
+    // 关节层级仍由代码搭（Blender 侧同构，网格已挂到各组上）
+    this.legR.add(this.shinR);
+    this.legL.add(this.shinL);
+    this.body.add(this.legR, this.legL, this.torso);
+    this.torso.add(this.head, this.armR, this.armL, this.stump);
+    this.armL.add(this.fleshArm, this.dragon);
+    this.dragon.add(this.jawLower);
     this.root.add(this.body);
-    this.body.add(this.torso);
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }

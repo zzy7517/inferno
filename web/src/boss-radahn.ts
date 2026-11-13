@@ -18,7 +18,7 @@ import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted as pickByWeight } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
 import type { ProjDef } from "./projectile";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -27,19 +27,10 @@ const GRAVITY = 0x8a6fd1;        // 重力紫（引力汇聚/冲击环/剑缘辉
 const GRAVITY_DEEP = 0x5d4a9e;   // 深紫（岩块/波体）
 const GRAVITY_GLOW = 0xa98fe8;   // 紫辉（箭矢/刀光/瞳）
 const SLASH_COOL = 0xcdd6e4;     // 一阶段剑光（冷白）
-const HAIR = 0x8f3a2a;           // 红鬃（暗赤）
-const HAIR_DARK = 0x6d2c20;
-const SKIN = 0x6e6355;           // 枯肤（重力干枯的将军之躯）
-const IRON = 0x3a3e47;           // 暗铁甲
-const IRON_DARK = 0x2b2e36;
-const GOLD_TRIM = 0xa8783c;      // 将军甲金饰（稀疏点缀）
-const STEEL = 0x707888;          // 剑身钢色
 /** 旧方块网格在站立姿态下脚到盔顶 4.1108 米（发梢只到 4.35，没有披到原作的 11.7）。盔顶按原作收到 8.1。 */
 const FORM_SCALE = 8.1 / 4.1108;
 /** 旧刃握点到尖 2.67，方块刃约 3.92。刀光半径跟着放大后的刃走；打中与否仍看钉在握柄和剑尖上的标记。 */
 const SWORD_VIS_SCALE = (3.92 / 2.67) * FORM_SCALE;
-/** 发簇本地、乘 FORM_SCALE 之前的鬃尖。站立网格量过后再抬，使发梢世界高度落到 11.7。 */
-const MANE_TIP = 2.10;
 
 /** 投射物参数（发射走 host.fireProjectile，飞行/命中/消散由 game 侧 Projectiles 池负责）
  *  命中高度带 0.15–1.85（projectile.ts）：狙击箭平飞 1.8 全程在带内；岩/箭雨自高处抛落，入带段=威胁距离带 */
@@ -142,106 +133,6 @@ const BASE_WALK = RADAHN_STATS.walkSpeed;
 const BASE_TURN = RADAHN_STATS.turnRate;
 const ENRAGE_AT = 0.18;                 // 濒死狂暴线（wiki：低血量显著加速）
 
-// ---------------- 顶点色几何工具（同 scene-cemetery：非索引化 + 每面微扰 + merge 合批） ----------------
-let seed = 20261112;
-const rnd = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
-
-interface GOpt { rx?: number; ry?: number; rz?: number; jitter?: number; seg?: number }
-
-const sc = (n: number): number => n * FORM_SCALE;
-
-function paint(geo: THREE.BufferGeometry, color: number, jitter = 0): THREE.BufferGeometry {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const c = new THREE.Color(color);
-  const n = g.attributes.position.count;
-  const arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i += 3) {
-    const f = jitter ? 1 + (rnd() - 0.5) * jitter : 1;
-    for (let k = 0; k < 3 && i + k < n; k++) {
-      const j = (i + k) * 3;
-      arr[j] = c.r * f; arr[j + 1] = c.g * f; arr[j + 2] = c.b * f;
-    }
-  }
-  g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-  return g;
-}
-
-function boxG(w: number, h: number, d: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(w, h, d);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-/** 圆台：+Y 为顶半径。肢体用它，避免再堆方块。 */
-function cylG(rt: number, rb: number, h: number, x: number, y: number, z: number, color: number, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(Math.max(0.012, rt), Math.max(0.012, rb), h, opt.seg ?? 8);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-/** 椭球。sx/sy/sz 是相对半径的比例，不跟 FORM_SCALE 再乘一次。 */
-function sphG(r: number, x: number, y: number, z: number, color: number, sx = 1, sy = 1, sz = 1, opt: GOpt = {}): THREE.BufferGeometry {
-  const g = new THREE.SphereGeometry(r, opt.seg ?? 8, 6);
-  g.scale(sx, sy, sz);
-  if (opt.rx) g.rotateX(opt.rx);
-  if (opt.ry) g.rotateY(opt.ry);
-  if (opt.rz) g.rotateZ(opt.rz);
-  g.translate(x, y, z);
-  return paint(g, color, opt.jitter ?? 0);
-}
-
-const LIMB_UP = new THREE.Vector3(0, 1, 0);
-const LIMB_DIR = new THREE.Vector3();
-const LIMB_Q = new THREE.Quaternion();
-const LIMB_M = new THREE.Matrix4();
-
-/** 两端收口的一绺：r0 在起点，r1 在终点。头发和弓臂都走这里，仍并进所属的那一个 Mesh。 */
-function limbG(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r0: number, r1: number, color: number, jitter = 0): THREE.BufferGeometry {
-  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
-  const len = Math.max(0.04, Math.hypot(dx, dy, dz));
-  const g = new THREE.CylinderGeometry(Math.max(0.012, r1), Math.max(0.012, r0), len, 6);
-  LIMB_DIR.set(dx, dy, dz).multiplyScalar(1 / len);
-  LIMB_Q.setFromUnitVectors(LIMB_UP, LIMB_DIR);
-  LIMB_M.makeRotationFromQuaternion(LIMB_Q);
-  LIMB_M.setPosition((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5);
-  g.applyMatrix4(LIMB_M);
-  return paint(g, color, jitter);
-}
-
-/** 弓臂/弓梢/弦的一段：沿两点收成圆棍，两端各搭出一截，弯折处不裂开。 */
-function spanG(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, thick: number, color: number): THREE.BufferGeometry {
-  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
-  const len = Math.max(1e-4, Math.hypot(dx, dy, dz));
-  const overlap = Math.min(sc(0.06), thick * 0.85) * 0.5;
-  const ux = dx / len, uy = dy / len, uz = dz / len;
-  const r = thick * 0.5;
-  return limbG(x0 - ux * overlap, y0 - uy * overlap, z0 - uz * overlap, x1 + ux * overlap, y1 + uy * overlap, z1 + uz * overlap, r, r, color);
-}
-
-/** 反曲中线。t=0 握把上端，t=1 弓梢。X 外鼓后收回（正面的弧），Y 弓腹在前、梢回到弦侧，Z 朝上。尺寸跟身子走。 */
-function bowLimbPoint(t: number, sign: 1 | -1): [number, number, number] {
-  const z = sign * (0.24 + t * 1.46);
-  const bulge = Math.sin(Math.PI * t) * (1 - t * 0.12) ** 1.1;
-  const x = -1.08 * bulge + 0.18 * t * t;
-  const y = -0.30 * bulge + 0.26 * t * t;
-  return [sc(x), sc(y), sc(z)];
-}
-
-/** 合批建部件 Mesh：merge 后释放源几何（一件关节 = 1 draw call） */
-function part(geoms: THREE.BufferGeometry[], mat: THREE.Material, shadow = true): THREE.Mesh {
-  const merged = mergeGeometries(geoms, false)!;
-  for (const g of geoms) g.dispose();
-  const m = new THREE.Mesh(merged, mat);
-  m.castShadow = shadow;
-  return m;
-}
-
 // ---------------- 姿态（Pose）：双剑臂各自 lift/swing（同沙力万双持范式）。大腿、小腿分开，蹲伏时膝向前折 ----------------
 interface Pose {
   y: number; lean: number; twist: number; crouch: number; reach: number;
@@ -341,192 +232,49 @@ export class Radahn extends BossBase {
     this.assemble();
   }
 
-  // ---------------- 外观：盔顶 8.1 / 发梢 11.7（褪色者按 1.8）。肩极宽，头夹在肩甲之间 ----------------
-  // 腿、躯干、头、发、臂各合批；膝单独一件才能弯。双剑、弓随 FORM_SCALE 放大。无贴图、无 PointLight。
+
+  // ---------------- 外观：碎星将军由 Blender 管线出（tools/blender/build_bosses.py）。
+  // 挂点局部变换 = 组常量 × FORM_SCALE，mountBoss 抄回各组后 applyPose 一行不改；
+  // 双剑的 rest 旋转（-1.08/±0.38/±0.2）和握柄/剑尖标记都烘在 GLB 里。 ----------------
   protected override buildBody(): void {
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.9, metalness: 0.15, flatShading: true });
-    this.swordMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, vertexColors: true, roughness: 0.4, metalness: 0.55, flatShading: true,
-      emissive: GRAVITY, emissiveIntensity: 0.25,
+    const rig = mountBoss(getBossGltf("radahn"), {
+      body: this.body, torso: this.torso, head: this.head, hair: this.hairG,
+      legR: this.legR, shinR: this.shinR, legL: this.legL, shinL: this.shinL,
+      armR: this.armR, armL: this.armL, bow: this.bow,
+    }, ["weapon-hilt", "weapon-tip", "weapon2-hilt", "weapon2-tip"]);
+    this.swordR.hilt = rig.node("weapon-hilt");
+    this.swordR.tip = rig.node("weapon-tip");
+    this.swordL.hilt = rig.node("weapon2-hilt");
+    this.swordL.tip = rig.node("weapon2-tip");
+    this.swordMat = rig.mat("radahn-sword");
+    // 双瞳/大弓是加色辉光：GLB 里只有标准材质，这里换回 BasicMaterial 保住原观感（无阴影）
+    this.eyeMat = new THREE.MeshBasicMaterial({
+      color: GRAVITY_GLOW, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    this.eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.bowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-    const cyl = (rt: number, rb: number, h: number, x: number, y: number, z: number, color: number, opt: GOpt = {}) =>
-      cylG(sc(rt), sc(rb), sc(h), sc(x), sc(y), sc(z), color, opt);
-    const egg = (r: number, x: number, y: number, z: number, color: number, sx = 1, sy = 1, sz = 1, opt: GOpt = {}) =>
-      sphG(sc(r), sc(x), sc(y), sc(z), color, sx, sy, sz, opt);
-    const lock = (a: [number, number, number], b: [number, number, number], r0: number, r1: number, color: number) =>
-      limbG(sc(a[0]), sc(a[1]), sc(a[2]), sc(b[0]), sc(b[1]), sc(b[2]), sc(r0), sc(r1), color, 0.1);
-
-    // 髋仍在旧枢轴乘 FORM_SCALE 的高度上，脚底才和放大前一样贴地。大腿粗、膝圆、小腿收细。
-    for (const [leg, shin, sx] of [[this.legR, this.shinR, 0.5], [this.legL, this.shinL, -0.5]] as [THREE.Group, THREE.Group, number][]) {
-      leg.name = "radahnLeg";
-      leg.position.set(sc(sx), sc(1.95), 0);
-      leg.add(part([
-        cyl(0.34, 0.22, 1.02, 0, -0.52, 0.01, IRON, { jitter: 0.06 }),                 // 大腿，上粗下收到膝
-        egg(0.27, 0, -1.06, 0.03, IRON_DARK, 1.08, 0.82, 1.12),                        // 膝
-      ], bodyMat));
-      shin.position.set(0, sc(-1.08), sc(0.04));
-      shin.add(part([
-        cyl(0.17, 0.12, 0.72, 0, -0.36, 0.01, IRON_DARK, { jitter: 0.05 }),            // 小腿，比大腿细一圈
-        egg(0.2, 0, -0.77, 0.16, IRON, 1.15, 0.42, 2.05),                              // 足，扁而长，脚底贴地
-      ], bodyMat));
-      leg.add(shin);
-      this.body.add(leg);
+    for (const n of ["eyeR", "eyeL"]) {
+      const m = rig.mesh(n);
+      m.material = this.eyeMat;
+      m.castShadow = false;
     }
-
-    // 躯干一件：厚胸、窄颈，肩甲高到耳侧，把头夹在中间。
-    this.torso.position.y = sc(2.0);
-    this.torso.add(part([
-      egg(0.48, 0, -0.05, 0, IRON_DARK, 1.18, 0.5, 0.98),                               // 骨盆
-      cyl(0.64, 0.68, 0.1, 0, 0.14, 0.04, GOLD_TRIM),                                   // 束带
-      cyl(0.11, 0.045, 0.5, 0.3, -0.32, 0.3, IRON_DARK, { rx: 0.42, rz: 0.22 }),        // 战裙，收成尖
-      cyl(0.11, 0.045, 0.5, -0.3, -0.32, 0.3, IRON_DARK, { rx: 0.42, rz: -0.22 }),
-      cyl(0.09, 0.04, 0.42, 0, -0.28, 0.38, IRON_DARK, { rx: 0.22 }),
-      egg(0.52, 0, 0.4, 0.06, IRON, 1.28, 0.7, 1.18, { jitter: 0.04 }),                 // 腹
-      egg(0.66, 0, 0.96, 0.1, IRON, 1.38, 0.84, 1.24, { jitter: 0.05 }),                // 胸，又宽又厚
-      egg(0.34, 0, 1.4, 0.04, IRON, 1.02, 0.52, 0.92),                                  // 上胸收到颈
-      egg(0.48, 0, 0.82, -0.5, IRON_DARK, 1.22, 0.98, 0.6),                             // 背甲
-      cyl(0.15, 0.2, 0.36, 0, 1.55, 0.1, SKIN),                                         // 颈
-      egg(0.58, 1.12, 1.32, 0.02, IRON, 1.2, 0.72, 0.95, { jitter: 0.05 }),             // 右肩甲，把头夹在中间，顶低于盔
-      egg(0.16, 1.48, 1.38, 0.1, GOLD_TRIM, 1, 0.55, 0.75),
-      egg(0.58, -1.12, 1.32, 0.02, IRON, 1.2, 0.72, 0.95, { jitter: 0.05 }),            // 左肩甲
-      egg(0.16, -1.48, 1.38, 0.1, GOLD_TRIM, 1, 0.55, 0.75),
-      cyl(0.12, 0.12, 0.05, 0, 1.0, 0.94, GOLD_TRIM, { rx: Math.PI / 2 }),              // 胸口纹章
-    ], bodyMat));
-
-    // 头夹在两肩之间：盔顶是这具身子的 8.1 米，不是肩甲。
-    this.head.name = "radahnHead";
-    this.head.position.set(0, sc(1.526), sc(0.1));
-    const headMesh = part([
-      cyl(0.15, 0.18, 0.22, 0, -0.12, 0, SKIN),                                         // 颈
-      egg(0.22, 0, 0.0, 0.1, SKIN, 1.02, 1.08, 0.96, { jitter: 0.06 }),                 // 面，探出盔缘
-      egg(0.16, 0, -0.12, 0.08, SKIN, 1.05, 0.62, 0.9),                                 // 颌
-      egg(0.34, 0, 0.16, -0.1, IRON, 1.08, 1.08, 1.02, { jitter: 0.05 }),               // 残盔，顶就是头顶
-      egg(0.1, 0.24, -0.02, 0.06, IRON_DARK, 0.7, 1.15, 1.1),                           // 颊甲
-      egg(0.1, -0.24, -0.02, 0.06, IRON_DARK, 0.7, 1.15, 1.1),
-      limbG(sc(0), sc(0.28), sc(-0.02), sc(0.1), sc(0.5), sc(0.02), sc(0.08), sc(0.02), IRON_DARK, 0.08),
-      limbG(sc(0), sc(0.26), sc(-0.04), sc(-0.12), sc(0.46), sc(-0.02), sc(0.07), sc(0.02), IRON_DARK, 0.08),
-      limbG(sc(0), sc(0.3), sc(0.02), sc(0), sc(0.52), sc(0.06), sc(0.06), sc(0.015), GOLD_TRIM, 0.06),
-    ], bodyMat);
-    headMesh.name = "radahnHeadMesh";
-    this.head.add(headMesh);
-    // 双瞳（重力紫辉·加色，一件 = 1 mesh，无阴影）
-    this.head.add(part([
-      sphG(sc(0.045), sc(0.09), sc(0.08), sc(0.33), GRAVITY_GLOW, 1.15, 0.7, 0.55),
-      sphG(sc(0.045), sc(-0.09), sc(0.08), sc(0.33), GRAVITY_GLOW, 1.15, 0.7, 0.55),
-    ], this.eyeMat, false));
-
-    // 红鬃一件：向上披到 11.7，也顺着背披下来。
-    this.hairG.name = "radahnHair";
-    this.hairG.position.set(0, sc(0.22), sc(-0.08));
-    const tip = MANE_TIP;
-    const hairMesh = part([
-      lock([0, 0.02, 0], [0.02, tip * 0.52, -0.22], 0.28, 0.14, HAIR),
-      lock([0.02, tip * 0.52, -0.22], [0.06, tip, -0.62], 0.14, 0.03, HAIR),
-      lock([-0.16, 0.0, 0.02], [-0.4, tip * 0.74, -0.48], 0.16, 0.035, HAIR_DARK),
-      lock([0.18, 0.0, 0.02], [0.46, tip * 0.7, -0.44], 0.15, 0.03, HAIR),
-      lock([0, -0.02, -0.04], [0.04, -0.72, -0.3], 0.2, 0.09, HAIR),                    // 后披
-      lock([0.04, -0.72, -0.3], [0, -1.6, -0.38], 0.09, 0.025, HAIR_DARK),
-      lock([-0.16, -0.04, -0.02], [-0.28, -1.2, -0.24], 0.12, 0.025, HAIR_DARK),
-      lock([0.18, -0.04, 0], [0.34, -1.1, -0.18], 0.11, 0.025, HAIR),
-      lock([0.24, 0.0, 0.06], [0.7, -0.62, 0.12], 0.1, 0.025, HAIR),                    // 搭上肩甲
-      lock([-0.24, 0.0, 0.06], [-0.7, -0.62, 0.12], 0.1, 0.025, HAIR),
-    ], bodyMat);
-    hairMesh.name = "radahnHairMesh";
-    this.hairG.add(hairMesh);
-    this.head.add(this.hairG);
-    this.torso.add(this.head);
-
-    // 双臂 + 碎星大剑（一臂一剑各一件，仍各 1 mesh）：宽刃前下曳，垂剑时剑尖贴地。
-    // 剑格宽于刃、剑尖单独收锋；左右外张并前后错开，避免并成一块。
-    const buildSword = (side: 1 | -1): THREE.Group => {
-      const g = new THREE.Group();
-      const x = (n: number) => side * n;
-      const b = (w: number, h: number, d: number, px: number, py: number, pz: number, color: number, opt: GOpt = {}) =>
-        boxG(sc(w), sc(h), sc(d), sc(px), sc(py), sc(pz), color, opt);
-      g.position.set(x(sc(0.02)), sc(-1.24), sc(0.12) + x(sc(0.05)));
-      g.rotation.set(-1.08, x(0.38), x(0.2));           // 负俯仰＝剑尖朝前下方；偏航/滚转把两刃撑开
-      g.add(part([
-        b(0.2, 0.16, 0.2, 0, 0.28, 0, GOLD_TRIM),                                   // 柄头
-        b(0.12, 0.36, 0.12, 0, 0.02, 0, IRON_DARK),                                 // 柄
-        b(1.18, 0.16, 0.28, 0, -0.26, 0, GOLD_TRIM),                                // 剑格（明显宽于刃）
-        b(0.14, 0.28, 0.16, x(0.52), -0.08, 0, GOLD_TRIM, { rz: x(-0.6) }),         // 格端上翘
-        b(0.12, 0.22, 0.14, x(-0.5), -0.1, 0, IRON, { rz: x(0.45) }),
-        b(0.2, 0.24, 0.1, 0, -0.48, 0, IRON_DARK),                                  // 剑颈，隔开剑格和宽刃
-        b(0.88, 1.45, 0.1, x(0.05), -1.4, 0, STEEL, { jitter: 0.05, rz: x(0.03) }), // 宽刃上段
-        b(0.14, 1.3, 0.04, x(0.05), -1.38, 0.055, IRON_DARK),                       // 血槽
-        b(0.14, 1.3, 0.04, x(0.05), -1.38, -0.055, IRON_DARK),
-        b(0.68, 1.2, 0.09, x(0.16), -2.55, 0, STEEL, { jitter: 0.05, rz: x(0.08) }), // 宽刃下段，向外弯
-        b(0.94, 1.35, 0.02, x(0.05), -1.36, 0.07, GRAVITY_GLOW),                    // 剑缘紫辉（emissive × 顶点色）
-        b(0.94, 1.35, 0.02, x(0.05), -1.36, -0.07, GRAVITY_GLOW),
-        b(0.74, 1.1, 0.018, x(0.16), -2.52, 0.06, GRAVITY),
-        b(0.74, 1.1, 0.018, x(0.16), -2.52, -0.06, GRAVITY),
-        b(0.26, 0.5, 0.06, x(0.24), -3.35, 0.01, STEEL, { rz: x(0.1) }),           // 剑尖收窄
-        b(0.12, 0.34, 0.04, x(0.28), -3.74, 0.01, STEEL, { rz: x(0.12) }),         // 尖锋，和宽刃断开一截
-        b(0.16, 0.42, 0.016, x(0.25), -3.32, 0.045, GRAVITY_GLOW, { rz: x(0.1) }),
-        b(0.16, 0.42, 0.016, x(0.25), -3.32, -0.02, GRAVITY_GLOW, { rz: x(0.1) }),
-      ], this.swordMat));
-      const mark = side === 1 ? this.swordR : this.swordL;
-      mark.hilt.position.set(0, sc(0.02), 0);             // 握柄中段
-      // 尖锋那只盒子先绕 Z 再平移，标记钉在转完之后的下角，不钉在盒子中心
-      const corner = new THREE.Vector3(x(-0.06), -0.17, 0);
-      corner.applyAxisAngle(new THREE.Vector3(0, 0, 1), x(0.12));
-      mark.tip.position.set(sc(x(0.28) + corner.x), sc(-3.74 + corner.y), sc(0.01));
-      g.add(mark.hilt, mark.tip);
-      return g;
-    };
-    const armGeoms = () => [
-      cyl(0.26, 0.17, 0.68, 0, -0.36, 0, IRON, { jitter: 0.05 }),                      // 上臂，肩粗肘细
-      egg(0.19, 0, -0.7, 0.02, IRON_DARK, 1.05, 0.75, 1.05),                           // 肘
-      cyl(0.15, 0.12, 0.48, 0, -0.98, 0.03, IRON_DARK, { jitter: 0.05 }),              // 前臂
-      egg(0.19, 0, -1.24, 0.06, IRON, 1.2, 0.68, 1.15),                                // 铁手套
-    ];
-    this.armR.position.set(sc(1.22), sc(1.14), sc(0.04));
-    this.armR.add(part(armGeoms(), bodyMat));
-    this.armR.add(buildSword(1));
-    this.torso.add(this.armR);
-    this.armL.position.set(sc(-1.22), sc(1.14), sc(0.04));
-    this.armL.add(part(armGeoms(), bodyMat));
-    this.armL.add(buildSword(-1));
-    this.torso.add(this.armL);
-
-    // 召唤碎星大弓（仍只在射箭时显形；反曲弓臂 + 弓梢 + 满弦，一件顶点色合批，无阴影）
-    // 左臂本地：拉弓时 +Z 朝上、+X 朝身侧、+Y 朝射手。弓臂向 -X 鼓出，弦拉向身侧。尺寸跟身子走。
-    this.bow.position.set(sc(-0.18), sc(-1.4), sc(0.05));
-    const bowN = 10;
-    const bowGeoms: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < bowN - 1; i++) {
-      const t0 = i / (bowN - 1);
-      const t1 = (i + 1) / (bowN - 1);
-      const thick = sc(0.16 - ((t0 + t1) * 0.5) * 0.08);
-      for (const sign of [1, -1] as const) {
-        const a = bowLimbPoint(t0, sign);
-        const b = bowLimbPoint(t1, sign);
-        bowGeoms.push(spanG(a[0], a[1], a[2], b[0], b[1], b[2], thick, GRAVITY_GLOW));
-      }
+    this.bowMat = new THREE.MeshBasicMaterial({
+      color: GRAVITY_GLOW, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    for (const n of ["bowGrip", "bowUpper", "bowLower", "bowString"]) {
+      const m = rig.mesh(n);
+      m.material = this.bowMat;
+      m.castShadow = false;
     }
-    const upTip = bowLimbPoint(1, 1);
-    const loTip = bowLimbPoint(1, -1);
-    const upHorn: [number, number, number] = [upTip[0] + sc(0.12), upTip[1] + sc(0.22), upTip[2] + sc(0.16)];
-    const loHorn: [number, number, number] = [upHorn[0], upHorn[1], -upHorn[2]];
-    const nock: [number, number, number] = [sc(1.0), sc(0.55), 0];
-    bowGeoms.push(
-      spanG(upTip[0], upTip[1], upTip[2], upHorn[0], upHorn[1], upHorn[2], sc(0.05), GRAVITY_GLOW), // 上弓梢，探过弦槽
-      spanG(loTip[0], loTip[1], loTip[2], loHorn[0], loHorn[1], loHorn[2], sc(0.05), GRAVITY_GLOW),
-      spanG(upTip[0], upTip[1], upTip[2], nock[0], nock[1], nock[2], sc(0.05), GRAVITY),             // 满弦：两梢拉到身侧一点
-      spanG(nock[0], nock[1], nock[2], loTip[0], loTip[1], loTip[2], sc(0.05), GRAVITY),
-      sphG(sc(0.05), nock[0], nock[1], nock[2], GRAVITY),                                             // 拉弦点
-      cylG(sc(0.09), sc(0.09), sc(0.68), 0, sc(-0.04), 0, GRAVITY_GLOW, { rx: Math.PI / 2 }),        // 握把（长轴沿 Z）
-      cylG(sc(0.11), sc(0.11), sc(0.16), 0, sc(-0.04), 0, GRAVITY, { rx: Math.PI / 2 }),             // 缠把
-      cylG(sc(0.03), sc(0.03), sc(0.26), sc(0.2), sc(0.02), sc(0.03), GRAVITY_GLOW, { rz: Math.PI / 2 }), // 箭台，朝弦
-    );
-    this.bow.add(part(bowGeoms, this.bowMat, false));
     this.bow.visible = false;
+    // 关节层级仍由代码搭（Blender 侧同构，网格已挂到各组上）
+    this.legR.add(this.shinR);
+    this.legL.add(this.shinL);
+    this.body.add(this.legR, this.legL, this.torso);
+    this.torso.add(this.head, this.armR, this.armL);
+    this.head.add(this.hairG);
     this.armL.add(this.bow);
-
     this.root.add(this.body);
-    this.body.add(this.torso);
   }
 
   protected override chestPart(): THREE.Object3D { return this.torso; }
