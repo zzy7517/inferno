@@ -1,0 +1,37 @@
+web/src/boss.ts
+  s_15cd13217234a9::t_36dfe33b72cdb3 64-72,74-75,79-81,86
+  s_15cd13217234a9::t_57c296c9e6ca2d 124-125,130,138-139,141,144,146
+  s_15cd13217234a9::t_5930ca882672e7 12
+  s_15cd13217234a9::t_22f07bb4f60be1 41-42
+web/src/boss-sulyvahn.ts
+  s_15cd13217234a9::t_671647e8dccbed 258-271,277-278,281-285
+  s_15cd13217234a9::t_049b3c0f368c25 15
+  s_15cd13217234a9::t_925311eab26384 272
+  s_15cd13217234a9::t_c7ab861404e85a 300
+  s_15cd13217234a9::t_679f611ceb79de 209-210
+web/src/main.ts
+  s_15cd13217234a9::t_1922f30243c4c5 20
+  s_15cd13217234a9::t_bda3212f8bf55f 11-14
+web/src/boss-vordt.ts
+  s_15cd13217234a9::t_1369c2368ef092 13
+  s_15cd13217234a9::t_8aa1834536d3d3 129-133,135-137,139,141,143-145
+web/src/boss-watchers.ts
+  s_15cd13217234a9::t_5a613830c46c91 144-151,153-155,157-162
+  s_15cd13217234a9::t_50c3e0fc6acd82 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "01fc02a2bb4278381ceb71c29ff82b62a48edba1",
+  "prompts": {},
+  "sessions": {
+    "s_15cd13217234a9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65f8c788-3dda-451a-b6e8-715a0e4054cc",
+        "model": "glm-5.3"
+      },
+      "human_author": "zzy7517 <zz7517@proton.me>"
+    }
+  }
+}
