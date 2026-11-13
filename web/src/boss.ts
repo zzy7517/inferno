@@ -9,7 +9,7 @@ import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
-import { numbered, part, partMat, spawnBoss } from "./boss-rig";
+import { mountBoss, getBossGltf, extentZ } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -38,7 +38,8 @@ export class Boss extends BossBase {
   private swordInChest!: THREE.Object3D;
   private swordLight!: THREE.PointLight;
   private emberMat!: THREE.MeshStandardMaterial;
-  /** 放大前站立盔顶量得 3.182 米。整身放大到 4.2，肩留在 3.6 以下。 */
+  /** 旧 3.182 参照系到 4.2 的换算系数。GLB 已按 4.2 终尺度导出不再整体放大，
+   *  但蛇节姿态和胸口灯的局部坐标是照旧参照系调的，写入时乘它换算。 */
   private readonly formScale = 4.2 / 3.182;
 
   private pose: Pose = { ...STATUE };
@@ -60,36 +61,30 @@ export class Boss extends BossBase {
 
   // ---------------- 外观 ----------------
   protected override buildBody(): void {
-    // 形体来自 tools/blender/build_bosses.py。关节转角仍由 applyPose 写。
-    const rig = spawnBoss("gundyr", "g_body");
-    this.body = part(rig, "g_body") as THREE.Group;
-    this.torso = part(rig, "g_torso") as THREE.Group;
-    this.head = part(rig, "g_head");
-    this.armR = part(rig, "g_armR") as THREE.Group;
-    this.armL = part(rig, "g_armL") as THREE.Group;
-    const hal = part(rig, "g_hal");
-    const shaftLen = 3.35;
-    const spikeY = shaftLen * 0.5 - 0.08;
-    this.halHilt.position.set(0, -shaftLen * 0.5, 0);
-    this.halTip.position.set(0, spikeY + 0.79, 0);
-    hal.add(this.halHilt, this.halTip);
-    this.swordInChest = part(rig, "g_coil");
-    this.emberMat = partMat(rig, "g_ember");
+    // 形体来自 tools/blender/build_bosses.py（4.2 终尺度）。关节转角仍由 applyPose 写。
+    const rig = mountBoss(getBossGltf("gundyr"), {
+      body: this.body, torso: this.torso, armR: this.armR, armL: this.armL,
+    }, ["weapon-hilt", "weapon-tip"]);
+    this.head = rig.node("head");
+    this.halHilt = rig.node("weapon-hilt");
+    this.halTip = rig.node("weapon-tip");
+    this.swordInChest = rig.node("swordInChest");
+    this.emberMat = rig.mat("gundyr-ember");
     this.swordLight = new THREE.PointLight(COLORS.ember, 3, 3.5, 2);
-    this.swordLight.position.set(0.25, 0.55, 0.6);
+    const k = this.formScale;
+    this.swordLight.position.set(0.25 * k, 0.55 * k, 0.6 * k);
     this.torso.add(this.swordLight);
     this.serpent = [];
     this.serpDepth = [];
-    for (const s of numbered(rig, "g_serp")) {
-      s.geometry.computeBoundingBox();
-      const bb = s.geometry.boundingBox!;
-      this.serpDepth.push(bb.max.z - bb.min.z);
+    for (let i = 0; i < 8; i++) {
+      const s = rig.mesh(`serpent${String(i).padStart(2, "0")}`);
+      this.serpDepth.push(extentZ(s));
       this.serpent.push(s);
     }
     this.serpGlow = new THREE.PointLight(COLORS.ember, 0, 6, 2);
     this.torso.add(this.serpGlow);
+    this.body.add(this.torso);
     this.root.add(this.body);
-    this.body.scale.setScalar(this.formScale);
   }
 
 
@@ -126,12 +121,13 @@ export class Boss extends BossBase {
     const show = this.phase === 2 || this.state === "transform";
     const serp = (this.phase === 2 && this.state !== "transform") ? Math.max(p.serpOut, 0.72) : p.serpOut;
     const n = this.serpent.length;
-    const outLen = serp * 3.4;
+    const fs = this.formScale;   // 蛇节坐标按旧 3.182 参照系调的，换算到 GLB 的 4.2 尺度
+    const outLen = serp * 3.4 * fs;
     this.serpGlow.intensity = show ? Math.min(6.5, 1.6 + serp * 2.4) : 0;
     const aim = Math.PI + p.serpYaw;
     const forward = Math.max(0, -Math.cos(p.serpYaw));
     // 背后待机把头抬过肩，突刺时把这条弧压平。首尾的水平伸距不变。
-    const crest = (1 - forward * 0.72) * 1.2;
+    const crest = (1 - forward * 0.72) * 1.2 * fs;
     const bow = Math.PI * 0.58;
     const step = outLen / Math.max(1, n - 1);
     const facePlayer = Math.max(0, Math.cos(p.serpYaw));
@@ -139,15 +135,15 @@ export class Boss extends BossBase {
       const s = this.serpent[i];
       s.visible = show;
       const k = i / (n - 1);
-      const wobble = Math.sin(performance.now() * 0.004 + i * 0.9) * 0.14 * Math.min(1, serp);
-      const reach = 0.28 + k * outLen;
+      const wobble = Math.sin(performance.now() * 0.004 + i * 0.9) * 0.14 * fs * Math.min(1, serp);
+      const reach = 0.28 * fs + k * outLen;
       // 中段偏到肩外。两端不横移，命中用的首尾仍在原来的水平伸距上。
-      const side = Math.sin(k * Math.PI) * 0.42;
+      const side = Math.sin(k * Math.PI) * 0.42 * fs;
       const along = Math.cos(aim) * reach - Math.sin(aim) * side;
       const lateral = Math.sin(aim) * reach + Math.cos(aim) * side + wobble;
-      s.position.set(lateral, 1.22 + Math.sin(k * bow) * crest, along);
+      s.position.set(lateral, 1.22 * fs + Math.sin(k * bow) * crest, along);
       const dy = crest * bow * Math.cos(k * bow);
-      let pitch = -Math.atan2(dy, Math.max(0.35, outLen));
+      let pitch = -Math.atan2(dy, Math.max(0.35 * fs, outLen));
       let yaw = aim;
       if (i === n - 1 && facePlayer > 0) {
         // 身子朝背后伸，头转回来低头看玩家，吻和下巴才露在肩上。

@@ -12,7 +12,7 @@ import { MOVES, FEEL, MoveDef, FeelDef } from "./config";
 import { Vfx } from "./vfx";
 import { BossBase, BossStats, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
-import { part, partMat, spawnBoss } from "./boss-rig";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 import type { ProjDef } from "./projectile";
 
 export type { BossState, BossHost } from "./boss-base";
@@ -206,8 +206,8 @@ export class Sulyvahn extends BossBase {
   private shinL = new THREE.Group();
   private armR = new THREE.Group();
   private armL = new THREE.Group();
-  private swordR!: THREE.Group;
-  private swordL!: THREE.Group;
+  private swordR!: THREE.Object3D;
+  private swordL!: THREE.Object3D;
   private tipR = new THREE.Object3D();
   private tipL = new THREE.Object3D();
   private hiltR = new THREE.Object3D();
@@ -255,41 +255,34 @@ export class Sulyvahn extends BossBase {
 
   // ---------------- 外观：高瘦术士。关节位置不动，网格换成 Blender 导出的冠、袍和双剑 ----------------
   protected override buildBody(): void {
-    // 形体来自 tools/blender/build_bosses.py。双剑静止外撇在模型里，招式转角仍由 applyPose 写。
-    const rig = spawnBoss("sulyvahn", "sulBody");
-    this.body = part(rig, "sulBody") as THREE.Group;
-    this.torso = part(rig, "sulTorso") as THREE.Group;
-    this.head = part(rig, "sulHead") as THREE.Group;
-    this.legR = part(rig, "sulLegR") as THREE.Group;
-    this.legL = part(rig, "sulLegL") as THREE.Group;
-    this.shinR = part(rig, "sulShinR") as THREE.Group;
-    this.shinL = part(rig, "sulShinL") as THREE.Group;
-    this.armR = part(rig, "sulArmR") as THREE.Group;
-    this.armL = part(rig, "sulArmL") as THREE.Group;
-    this.swordR = part(rig, "sulSwordR") as THREE.Group;
-    this.swordL = part(rig, "sulSwordL") as THREE.Group;
-    this.hiltR.position.set(0, 0.02, 0);
-    this.hiltL.position.set(0, 0.02, 0);
-    this.tipR.position.set(0, -2.74, 0);
-    this.tipL.position.set(0, -2.74, 0);
-    this.hiltR.name = "sulHiltR";
-    this.hiltL.name = "sulHiltL";
-    this.tipR.name = "sulTipR";
-    this.tipL.name = "sulTipL";
-    this.swordR.add(this.hiltR, this.tipR);
-    this.swordL.add(this.hiltL, this.tipL);
-    this.eyeMat = partMat(rig, "s_eye");
-    this.bladeFire = partMat(rig, "s_fire");
-    this.bladeDark = partMat(rig, "s_darkflame");
+    // 形体来自 tools/blender/build_bosses.py。双剑静止姿态在模型里，招式转角仍由 applyPose 写。
+    const rig = mountBoss(getBossGltf("sulyvahn"), {
+      body: this.body, torso: this.torso, head: this.head,
+      legR: this.legR, shinR: this.shinR, legL: this.legL, shinL: this.shinL,
+      armR: this.armR, armL: this.armL,
+    }, ["weapon-hilt", "weapon-tip", "weapon2-hilt", "weapon2-tip"]);
+    this.swordR = rig.node("weapon");
+    this.swordL = rig.node("weapon2");
+    this.hiltR = rig.node("weapon-hilt");
+    this.hiltL = rig.node("weapon2-hilt");
+    this.tipR = rig.node("weapon-tip");
+    this.tipL = rig.node("weapon2-tip");
+    this.eyeMat = rig.mat("sul-eye");
+    this.bladeFire = rig.mat("sul-fire");
+    this.bladeDark = rig.mat("sul-dark");
     this.bladeFire.emissiveIntensity = 0;
     this.bladeDark.emissiveIntensity = 0;
     this.fireLight = new THREE.PointLight(FIRE, 0, 5, 2);
     this.darkLight = new THREE.PointLight(DARKFLAME, 0, 5, 2);
-    this.fireLight.position.set(0, -1.35, 0);
-    this.darkLight.position.set(0, -1.35, 0);
+    this.fireLight.position.set(0, -1.0, 0);   // 刃中段
+    this.darkLight.position.set(0, -1.0, 0);
     this.swordR.add(this.fireLight);
     this.swordL.add(this.darkLight);
-    this.skirt = [part(rig, "sulSkirt0") as THREE.Mesh, part(rig, "sulSkirt1") as THREE.Mesh];
+    this.skirt = [rig.mesh("skirt0"), rig.mesh("skirt1")];
+    this.legR.add(this.shinR);
+    this.legL.add(this.shinL);
+    this.body.add(this.legR, this.legL, this.torso);
+    this.torso.add(this.head, this.armR, this.armL);
     this.root.add(this.body);
 
 
@@ -304,7 +297,7 @@ export class Sulyvahn extends BossBase {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         m.castShadow = false;
-        if (m.name === "sulEye") {
+        if (m.name === "sulEye" || m.name === "sulEye2") {
           m.material = GHOST_EYE_MAT;
           m.renderOrder = 3;
         } else {

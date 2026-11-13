@@ -10,7 +10,7 @@ import { Vfx } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, BossStats, clamp01, clampMag, smooth, seg, angleWithin, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost } from "./boss-base";
-import { numbered, part, partMat, spawnBoss } from "./boss-rig";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -141,29 +141,25 @@ export class Watchers extends BossBase {
 
   // ---------------- 外观：瘦长剑士。关节位置不动，网格换成 Blender 导出的兜帽与斗篷 ----------------
   protected override buildBody(): void {
-    // 形体来自 tools/blender/build_bosses.py。剑的静止倾角在模型里，招式转角仍由 applyPose 写。
-    const rig = spawnBoss("watchers", "w_body");
-    const u = (n: number) => n * (2.15 / 2.57);
-    this.body = part(rig, "w_body") as THREE.Group;
-    this.torso = part(rig, "w_torso") as THREE.Group;
-    this.head = part(rig, "w_head") as THREE.Group;
-    this.legR = part(rig, "w_legR") as THREE.Group;
-    this.legL = part(rig, "w_legL") as THREE.Group;
-    this.shinR = part(rig, "w_shinR") as THREE.Group;
-    this.shinL = part(rig, "w_shinL") as THREE.Group;
-    this.armR = part(rig, "w_armR") as THREE.Group;
-    this.armL = part(rig, "w_armL") as THREE.Group;
-    const sword = part(rig, "w_sword");
-    this.swordHilt.position.set(0, u(-0.06), 0);
-    this.swordTip.position.set(0, u(-1.85), 0);
-    sword.add(this.swordHilt, this.swordTip);
+    // 形体来自 tools/blender/build_bosses.py。剑的静止姿态在模型里，招式转角仍由 applyPose 写。
+    const rig = mountBoss(getBossGltf("watchers"), {
+      body: this.body, torso: this.torso, head: this.head,
+      legR: this.legR, shinR: this.shinR, legL: this.legL, shinL: this.shinL,
+      armR: this.armR, armL: this.armL,
+    }, ["weapon-hilt", "weapon-tip", "weapon2-hilt", "weapon2-tip"]);
+    this.swordHilt = rig.node("weapon-hilt");
+    this.swordTip = rig.node("weapon-tip");
     this.swordLight = new THREE.PointLight(0xff5a20, 0, 5, 2);
-    this.swordLight.position.set(0, u(-1.05), 0);
-    sword.add(this.swordLight);
-    this.bladeMat = partMat(rig, "w_blade");
+    this.swordLight.position.set(0, -0.8, 0);   // 刃中段
+    rig.node("weapon").add(this.swordLight);
+    this.bladeMat = rig.mat("watcher-blade");
     this.bladeMat.emissiveIntensity = 0;
-    this.eyeMat = partMat(rig, "w_eye");
-    this.cape = numbered(rig, "w_cape");
+    this.eyeMat = rig.mat("watcher-eye");
+    this.cape = [rig.mesh("cape0"), rig.mesh("cape1")];
+    this.legR.add(this.shinR);
+    this.legL.add(this.shinL);
+    this.body.add(this.legR, this.legL, this.torso);
+    this.torso.add(this.head, this.armR, this.armL);
     this.root.add(this.body);
   }
 

@@ -10,7 +10,7 @@ import { Vfx, Particles } from "./vfx";
 import { AU } from "./audio";
 import { BossBase, clamp01, smooth, seg, pickWeighted } from "./boss-base";
 import type { AttackVolume, BossHost, BossStats } from "./boss-base";
-import { numbered, part, partMat, spawnBoss } from "./boss-rig";
+import { mountBoss, getBossGltf } from "./boss-gltf";
 
 export type { BossState, BossHost } from "./boss-base";
 
@@ -126,26 +126,23 @@ export class Vordt extends BossBase {
   // ---------------- 外观：关节位置仍是原来的四足骨架，网格换成 Blender 导出的兽形 ----------------
   protected override buildBody(): void {
     // 形体来自 tools/blender/build_bosses.py。四足关节的转角仍由 applyPose 写。
-    const rig = spawnBoss("vordt", "v_body");
-    this.body = part(rig, "v_body") as THREE.Group;
-    this.torso = part(rig, "v_torso") as THREE.Group;
-    this.legR = part(rig, "v_legR") as THREE.Group;
-    this.legL = part(rig, "v_legL") as THREE.Group;
-    this.headG = part(rig, "v_headG") as THREE.Group;
+    const rig = mountBoss(getBossGltf("vordt"), {
+      body: this.body, torso: this.torso, headG: this.headG,
+      legR: this.legR, legL: this.legL, armR: this.armR, armL: this.armL,
+      hammer: this.hammerG,
+    }, ["weapon-hilt", "weapon-tip"]);
     this.head = this.headG;
-    this.armR = part(rig, "v_armR") as THREE.Group;
-    this.armL = part(rig, "v_armL") as THREE.Group;
-    this.hammerG = part(rig, "v_hammer") as THREE.Group;
-    const sc = (n: number) => n * (3.8 / 2.579);
-    this.hamHilt.position.set(0, sc(0.1), sc(0.15));
-    this.hamTip.position.set(0, sc(0.364), sc(1.537));
-    this.hammerG.add(this.hamHilt, this.hamTip);
-    this.eyeMat = partMat(rig, "v_eye");
+    this.hamHilt = rig.node("weapon-hilt");
+    this.hamTip = rig.node("weapon-tip");
+    this.eyeMat = rig.mat("vordt-eye");
     this.eyeLight = new THREE.PointLight(ICE, 0, 4.5, 2);
-    this.eyeLight.position.set(0, sc(0.04), sc(0.42));
+    this.eyeLight.position.set(0, 0.08, 0.42);
     this.headG.add(this.eyeLight);
-    this.hammerIce = numbered(rig, "v_ice");
+    this.hammerIce = [0, 1, 2].map(i => rig.mesh(`ice${i}`));
     for (const c of this.hammerIce) c.visible = false;
+    this.body.add(this.torso, this.legR, this.legL);
+    this.torso.add(this.headG, this.armR, this.armL);
+    this.armR.add(this.hammerG);
     this.root.add(this.body);
   }
 
