@@ -4,11 +4,11 @@
  * 覆盖：
  *  ① zones 分区表：B（走廊+玻尔多房）/ D（月坛走廊+沙力万房）西→东有序，
  *     id 与 progress.ZONE_OF（vordt→"highwall:B" / sulyvahn→"highwall:D"）对齐
- *  ② 逐区钳制：D 未解锁时推回 B 东界（衔接门 x=18 附近，clampWorld 上限≈B 房可走东缘 18.2）；
+ *  ② 逐区钳制：D 未解锁时推回 B 东界（衔接门 x=36 = D 走廊西口，clampWorld 收敛≈36.0）；
  *     解锁后可深入 D 廊道并抵达沙力万房圆心
  *  ③ B 区步程：spawn→雾门直跑 @6.2m/s ∈ [40,60] s（§1.3 大区复跑预算）
  *  ④ DC 预算：玻尔多房圆心采样（T5 同口径）——隐藏角色/清小怪后场景本体 ≤45；
- *     整机 ≤90（§4.2 红线；T5 基线整机 89，扩建须更省）
+ *     整机 ≤130（§4.2 2026-11-12 校准：90→130，角色 v2 31 网格 + 视距小怪）
  *  ⑤ tsc 零错（另由 `npx tsc --noEmit` 在 CI/命令行保证）
  *  ⑥ 回归：?fresh=1 玻尔多雾门流程完好（E 跨入雾门 → E 拔出螺旋剑 → 开战）
  *
@@ -106,11 +106,15 @@ async function sampleRender(page: import("@playwright/test").Page, frames = 30):
   return { calls: Math.round(med(r.calls)), triangles: Math.round(med(r.triangles)), fps: Math.round(1000 / med(r.ms.slice(1))) };
 }
 
+/** 除沙力万外全灭的自然终盘存档：bossForScene 推导本场 Boss=沙力万（驻 D 房）。
+ *  勿用「D 已解锁但沙力万前置未满」的人工档——那会让 Boss 回落为玻尔多石像（B 房），
+ *  人穿 B 房即被其封印钳住（雾门语义），D 门（x=36）恰在封印圆缘上，测试随之失真。 */
 const lateProgress = JSON.stringify({
-  defeated: ["gundyr", "vordt", "margit", "godrick", "watchers"],
+  defeated: ["gundyr", "vordt", "margit", "godrick", "morgott", "watchers", "radahn"],
   unlockedScenes: ["cemetery", "highwall", "stormveil"],
   zoneUnlocks: ["cemetery:A", "highwall:B", "stormveil:E", "stormveil:E4", "cemetery:C", "highwall:D"],
-  shortcuts: [], litBonfires: ["cemetery", "highwall", "stormveil"],
+  shortcuts: ["cemetery:a3-a1", "highwall:d-b", "stormveil:e4-e1"],
+  litBonfires: ["cemetery", "highwall", "stormveil"],
   lastBonfire: "highwall", souls: 0, attempts: {}, bloodstain: null,
   stats: { deaths: 0, soulRegains: 0, parries: 0, ripostes: 0 },
 });
@@ -130,13 +134,14 @@ test("① zones 分区表：B/D 各含走廊+竞技场，西→东有序，id �
   // 走廊净宽 4.8m（§1.3：4–6m）
   expect(z.zones[0].half).toBe(2.4);
   expect(z.zones[2].half).toBe(2.4);
-  // Boss 房 d24（§1.3 v1 目标）
-  expect(z.zones[1].r).toBe(12);
-  expect(z.zones[3].r).toBe(12);
+  // Boss 房大圆（2026-11-12 22ccd2d「按大圆形原作房间加大」，§1.3 已校准）：
+  // B 玻尔多房可走 d40.2（r21，c=16.1）；D 沙力万房可走 d36.2（r19，c=99.1）
+  expect(z.zones[1].r).toBe(21);
+  expect(z.zones[3].r).toBe(19);
   // 锚点一致性：走廊东口=雾门；legacy 场地=玻尔多房
   expect(z.zones[0].maxX).toBeCloseTo(z.gateX, 5);
   expect(z.boss[0]).toBeCloseTo(z.zones[1].center!.x, 5);
-  expect(z.r).toBe(12);
+  expect(z.r).toBe(21);
   // 衔接链：B 走廊东口 = B 房可走西缘（center−r+0.9）；B 房东界 = D 走廊西口；D 走廊东口 = D 房可走西缘
   expect(z.zones[1].minX).toBeCloseTo(z.zones[1].center!.x - z.zones[1].r! + 0.9, 5);
   expect(z.zones[1].maxX).toBeCloseTo(z.zones[2].minX, 5);
@@ -192,17 +197,21 @@ test("②a 逐区钳制（D 锁定）：推回 B 东界 + 走廊 z/西界钳制"
   await waitForGame(page);
   await clearMobs(page);
   await page.evaluate(() => { (window as unknown as { __game: { fog: { solid: boolean } } }).__game.fog.solid = false; });
-  const eastEdge = 18.2;                                                // B 房可走东缘（center 7.1 + r−0.9 = 18.2）
-  for (const tx of [22, 30, 60]) {
-    const p = await teleport(page, tx, 0, 8);
-    expect(p.x).toBeLessThanOrEqual(eastEdge + 0.05);                   // 推回 B 东界（门 x=18，墙内无穿透）
-  }
-  const pz = await teleport(page, 30, 6, 8);                            // D 廊道 z 钳制（若被推回则处 B 房缘）
-  expect(Math.abs(pz.z)).toBeLessThanOrEqual(2.45);
+  // 走廊检查必须先行：人进玻尔多房可走圆即布 Boss 封印（雾门语义，game.ts trySealBossRoom），
+  // 封印会把此后所有传送钳回房内圆上——旧版此测试靠容差侥幸滑过，现按正确顺序重排。
   const west = await teleport(page, -400, 0, 8);                        // B 走廊西界
   expect(west.x).toBeGreaterThanOrEqual(-282.01);
   const zc = await teleport(page, -100, 9, 8);                          // 走廊 z 钳制 ±2.4
   expect(zc.z).toBeCloseTo(2.4, 1);
+  // B 房内自由走位（可走圆 r20.1，c=16.1）：不按走廊钳 z
+  const inRoom = await teleport(page, 30, 6, 8);
+  expect(inRoom.x).toBeCloseTo(30, 1);
+  expect(Math.abs(inRoom.z)).toBeGreaterThan(4);
+  // D 锁定单向墙：门 x=36（D 走廊西口 = B 房区段东界）；越界者被推回门口收敛（35.6 推回 + 走廊段钳 36.0）
+  for (const tx of [40, 60]) {
+    const p = await teleport(page, tx, 0, 8);
+    expect(p.x).toBeLessThanOrEqual(36.05);                            // 推回 B 东界（门 x=36，墙内无穿透）
+  }
 });
 
 test("②b 逐区钳制（D 解锁）：可进 D 区并抵达沙力万房心", async ({ page }) => {
@@ -211,21 +220,21 @@ test("②b 逐区钳制（D 解锁）：可进 D 区并抵达沙力万房心", a
   await waitForGame(page);
   await clearMobs(page);
   await page.evaluate(() => { (window as unknown as { __game: { fog: { solid: boolean } } }).__game.fog.solid = false; });
-  const p30 = await teleport(page, 30, 0, 8);
-  expect(p30.x).toBeGreaterThan(29.5);                                  // 可进 D 廊道
+  const p38 = await teleport(page, 38, 0, 8);                            // 可进 D 廊道（门 x=36 以东）
+  expect(p38.x).toBeGreaterThan(36.5);
   const dz = await teleport(page, 40, 5, 8);
   expect(dz.z).toBeCloseTo(2.4, 1);                                     // D 廊道 z ±2.4
-  // 直达沙力万房圆心
+  // 直达沙力万房圆心（c=99.1；进 D 房会布沙力万封印，但封印圆=房可走圆，不影响以下读数）
   const r = await drive(page, [{ x: 50, z: 0 }, { x: 99.1, z: 0 }]);
   const center = await teleport(page, 99.1, 0, 6);
   expect(Math.hypot(center.x - 99.1, center.z)).toBeLessThan(1.0);
   console.log(`[T4] D 区纵深 drive 50→99.1 = ${r.total.toFixed(1)}m`);
-  // D 房东缘封口：传送超界推回可走圆（r−0.9 = 11.1 → x ≤ 85.2）
+  // D 房东缘封口：传送超界推回可走圆（r−0.9 = 18.1 → x ≤ 117.2）
   const pe = await teleport(page, 120, 0, 8);
-  expect(pe.x).toBeLessThanOrEqual(85.3);
+  expect(pe.x).toBeLessThanOrEqual(117.3);
 });
 
-test("④ DC 预算：场景本体 ≤45 / 整机 ≤90（玻尔多房心采样）", async ({ page }) => {
+test("④ DC 预算：场景本体 ≤45 / 整机 ≤130（玻尔多房心采样）", async ({ page }) => {
   await page.goto(`${BASE}&fresh=1`);
   await waitForGame(page);
   await clearMobs(page);
@@ -234,7 +243,7 @@ test("④ DC 预算：场景本体 ≤45 / 整机 ≤90（玻尔多房心采样�
   await waitCameraSettled(page);
   const whole = await sampleRender(page, 30);
   console.log(`[T4] 整机 DC=${whole.calls} tris=${whole.triangles} fps≈${whole.fps}`);
-  expect(whole.calls).toBeLessThanOrEqual(90);                          // §4.2 红线（T5 基线 89：扩建后不得更费）
+  expect(whole.calls).toBeLessThanOrEqual(130);                         // §4.2 2026-11-12 校准：整机 90→130（角色 v2 31 网格 + 视距小怪；T5 旧基线 89 已随之作废）
   // 场景本体口径：隐藏角色/Boss、清小怪（vfx 粒子池/雾门/篝火等游戏件仍在，略高于净场景）
   await page.evaluate(() => {
     const g = (window as unknown as {
